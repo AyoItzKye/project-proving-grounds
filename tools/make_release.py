@@ -73,7 +73,7 @@ RULES = tuple((p, None) for p in NOT_SHIPPED) + (
     ("native/tests/*.pdb", None),
     ("ghidra/**", None), ("tools/menu_titles/**", None),
     # docs: the code guide and the players' bot status sheet only (research and design notes stay here)
-    ("docs/CODE_GUIDE.md", "release"), ("docs/BOT_STATUS.pdf", "release"), ("docs/**", None),
+    ("docs/CODE_GUIDE.md", "release"), ("docs/BOT_STATUS.pdf", "release"), ("docs/bot_status.png", "release"), ("docs/**", None),
     ("tools/bsp2obj/**", None), ("tools/model2obj/**", None), ("tools/map_tools/**", None),
     ("tools/view_art/games/**", None), ("tools/view_art/maps/**", None),     # (MCC's own art: map_art.py builds it)
     ("tools/backup.py", None), ("tools/verify_checks.py", None), ("tools/test_verify_checks.py", None),("tools/identity_probe.py", None),

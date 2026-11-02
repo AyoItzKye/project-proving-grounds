@@ -28,7 +28,7 @@ These components keep their own licenses; the PolyForm Noncommercial terms cover
 ## The map tools (a separate program)
 
 The 3D bots of the profile view, the armor effect sprites and some map data are made from each player's own game
-files by bsp2obj.exe and model2obj.exe: Proving Grounds Map Tools, a separate project under the GNU General Public
+files by bsp2obj.exe and model2obj.exe: [Proving Grounds Map Tools](https://github.com/AyoItzKye/proving-grounds-map-tools), a separate project under the GNU General Public
 License v3.0, built on the Reclaimer map library (Gravemind2401 and contributors, GPL-3.0). The installer puts them in
 tools\map_tools. This project only runs them as separate programs and contains none of their code; their source,
 license and build steps are in their own repository.

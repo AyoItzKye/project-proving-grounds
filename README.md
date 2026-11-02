@@ -11,10 +11,19 @@ Reach and ODST Firefight (bots fill your team). Up to 15 bots: the game holds 16
 > Offline custom games only, with Easy Anti-Cheat off. The mod refuses to run with anti-cheat on and never touches
 > matchmaking, Xbox network or Steam online services.
 
+## What works right now
+
+An honest rating of every game, game mode and vehicle in this version, from green (good to go) to red (not working
+yet). Click the picture for the full sheet: what to expect in each mode and with each vehicle.
+
+[![How the bots play each game: summary](docs/bot_status.png)](docs/BOT_STATUS.pdf)
+
+**[Open the full bot status sheet (PDF)](docs/BOT_STATUS.pdf)**
+
 ## Install
 
 1. Check the [system requirements](#system-requirements).
-2. Download **ProjectProvingGrounds-Setup-&lt;version&gt;.exe** from this project's **Releases** page (on the right of
+2. Download **ProjectProvingGrounds-Setup-&lt;version&gt;.exe** from the [**Releases** page](https://github.com/AyoItzKye/project-proving-grounds/releases/latest) (on the right of
    the GitHub page).
 3. Run it. Windows may say "Windows protected your PC": the installer is not code-signed. Click **More info**, then
    **Run anyway**.
@@ -50,9 +59,6 @@ and bots for anyone who wants to study how they play (the zip has its own README
      Ctrl or C down, Shift fast; not in Halo 2 Anniversary yet).
    - **Settings**: each bot's profile with its 3D look, emblem and clan tag; re-roll them.
 4. Pick a map and game type, then START. The bots join a few seconds after the match loads.
-
-How well the bots handle each game, game mode and vehicle right now, green to red:
-[docs/BOT_STATUS.pdf](docs/BOT_STATUS.pdf).
 
 ## Difficulty
 
@@ -289,7 +295,7 @@ and documentation together with the project's author.
 
 - [Dear ImGui](https://github.com/ocornut/imgui) (MIT) draws the BOTS panel; [MinHook](https://github.com/TsudaKageyu/minhook)
   (BSD 2-Clause) hooks the game.
-- The map tools (bsp2obj, model2obj) are a separate GPL-3.0 project built on
+- The map tools (bsp2obj, model2obj) are a [separate GPL-3.0 project](https://github.com/AyoItzKye/proving-grounds-map-tools) built on
   [Reclaimer](https://github.com/Gravemind2401/Reclaimer) by Gravemind2401 and contributors.
 - CPU single-thread ratings in the requirements: PassMark.
 
