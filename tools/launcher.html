@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Project Proving Grounds</title>
+<style>
+  :root {
+    --bg: #0e1218; --card: #161c25; --line: #263040; --text: #e6ebf2; --dim: #9aa6b6; --accent: #4fb3ff;
+    --accent-ink: #04121f; --ok: #5fd38a; --warn: #f2c14e; --bad: #ff6b6b; --radius: 10px;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 "Segoe UI", system-ui, sans-serif; }
+  header { padding: 18px 24px 10px; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  h1 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: .2px; }
+  .sub { color: var(--dim); }
+  main { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 16px; padding: 8px 24px 16px; }
+  @media (max-width: 820px) { main { grid-template-columns: 1fr; } }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; }
+  h2 { margin: 0 0 10px; font-size: 16px; font-weight: 600; }
+  .rows { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; margin: 0 0 14px; }
+  .rows dt { color: var(--dim); }
+  .rows dd { margin: 0; overflow-wrap: anywhere; }
+  .ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--bad); } .dim { color: var(--dim); }
+  button { font: inherit; color: var(--text); background: #222b38; border: 1px solid #334156; border-radius: 8px;
+           padding: 9px 14px; cursor: pointer; }
+  button:hover { background: #2a3546; }
+  button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600;
+                   font-size: 17px; padding: 11px 26px; }
+  button.primary:hover { background: #6fc2ff; }
+  button[aria-busy="true"] { opacity: .7; cursor: progress; }
+  .actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  label.check { display: flex; gap: 8px; align-items: flex-start; margin: 10px 0 0; color: var(--text); }
+  .note { color: var(--dim); font-size: 13.5px; margin: 10px 0 0; }
+  .log { margin: 12px 0 0; background: #0b0f14; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px;
+         max-height: 160px; overflow: auto; font: 12.5px/1.45 Consolas, monospace; white-space: pre-wrap; color: #c9d3df; }
+  .log:empty { display: none; }
+  ol.steps { list-style: none; padding: 0; margin: 0 0 12px; display: grid; gap: 4px; }
+  ol.steps li { display: grid; grid-template-columns: 22px 110px 1fr; gap: 6px; }
+  .tool { display: grid; grid-template-columns: 170px 1fr; gap: 10px; align-items: center; padding: 8px 0;
+          border-top: 1px solid var(--line); }
+  .tool:first-of-type { border-top: 0; }
+  .tool button { width: 100%; text-align: left; }
+  .tool p { margin: 0; color: var(--dim); font-size: 13.5px; }
+  footer { padding: 0 24px 18px; display: flex; gap: 10px; flex-wrap: wrap; color: var(--dim); align-items: center; }
+  .banner { margin: 0 24px; padding: 10px 14px; border-radius: 8px; background: #3a1d22; border: 1px solid #6b2c35; }
+  .banner:empty { display: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Project Proving Grounds</h1>
+  <span class="sub">PvP bots for Halo: The Master Chief Collection</span>
+  <span class="sub" id="version"></span>
+</header>
+<div class="banner" id="banner" role="alert"></div>
+<main>
+  <div style="display:grid; gap:16px; align-content:start">
+    <section aria-labelledby="play-h">
+      <h2 id="play-h">Play</h2>
+      <dl class="rows" id="play-rows">
+        <dt>Game</dt><dd id="r-game" class="dim">Checking ...</dd>
+        <dt>Setup</dt><dd id="r-setup" class="dim">Checking ...</dd>
+        <dt>Other mods</dt><dd id="r-mods" class="dim">Checking ...</dd>
+      </dl>
+      <div class="actions">
+        <button class="primary" id="play">Play</button>
+        <span id="play-state" class="dim" aria-live="polite"></span>
+      </div>
+      <label class="check" id="clean-wrap" hidden>
+        <input type="checkbox" id="clean" checked>
+        <span>Start without those mods this time (they are moved aside and put back when MCC closes)</span>
+      </label>
+      <p class="note">Steam asks how to start MCC: choose the option with anti-cheat off. The bots play in offline
+        custom games only. In MCC open Multiplayer &gt; Custom Multiplayer; the BOTS tile is next to START (or press B).</p>
+      <div class="log" id="log-play" aria-live="polite"></div>
+    </section>
+
+    <section aria-labelledby="setup-h">
+      <h2 id="setup-h">First-time setup</h2>
+      <p class="note" style="margin-top:0">Builds the 3D bots, emblems, effects and map pictures from your own copy of
+        the game. Runs once; it takes a few minutes.</p>
+      <p id="setup-done" class="ok" hidden>All parts are ready.</p>
+      <ol class="steps" id="steps"></ol>
+      <div class="actions">
+        <button id="setup">Run setup</button>
+        <button id="setup-force">Rebuild everything</button>
+        <span id="setup-state" class="dim" aria-live="polite"></span>
+      </div>
+      <div class="log" id="log-setup"></div>
+    </section>
+  </div>
+
+  <section aria-labelledby="tools-h" style="align-self:start">
+    <h2 id="tools-h">Tools</h2>
+    <div class="tool"><button data-task="observer">Observer</button>
+      <p>Watch and replay matches: every player, what each bot saw and decided, your own stats. Import and export
+        recorded games.</p></div>
+    <div class="tool"><button data-task="lidar_sim">LiDAR Simulator</button>
+      <p>Bots map the maps on their own, no game needed. Bots play better on a mapped map.
+        <span id="r-lidar"></span></p></div>
+    <div class="tool"><button data-task="lidar_view">LiDAR Viewer</button>
+      <p>See a map's scan in 3D, live during a LiDAR match or stored.</p></div>
+    <div class="tool"><button data-task="paint">Paint the nav</button>
+      <p>Advanced: mark where bots may and may not walk on a map.</p></div>
+    <p class="note" id="tool-state" aria-live="polite"></p>
+  </section>
+</main>
+<footer>
+  <button id="folder">Open the install folder</button>
+  <button id="docs">Read the guide</button>
+  <span>Not affiliated with or endorsed by Microsoft.</span>
+</footer>
+<script>
+const $ = id => document.getElementById(id);
+const STEP_NAMES = {"bots": "Bots", "recording": "Match recording", "map art": "Map pictures", "logos": "Game logos", "3D bots": "3D bots",
+                    "effects": "Effects", "looks": "Looks"};
+let state = null, stepNote = {};
+
+async function post(path, body) {
+  const r = await fetch(path, {method: "POST", headers: {"X-Launcher": "1", "Content-Type": "application/json"},
+                               body: JSON.stringify(body || {})});
+  return r.json().catch(() => ({ok: false, message: "no answer"}));
+}
+
+function setText(id, text, cls) { const e = $(id); e.textContent = text; e.className = cls || ""; }
+
+function render(s) {
+  state = s;
+  $("version").textContent = "version " + s.version;
+  if (s.mcc) setText("r-game", "Found" + (s.mcc_running ? " (running)" : ""), "ok");
+  else setText("r-game", "Not found: install Halo: The Master Chief Collection through Steam", "bad");
+  const ready = s.setup.filter(x => x[1]).length;
+  setText("r-setup", ready === s.setup.length ? "Ready" : `${ready} of ${s.setup.length} parts ready: run the first-time setup below`,
+          ready === s.setup.length ? "ok" : "warn");
+  if (s.conflicts.length) {
+    setText("r-mods", `${s.conflicts.length} file(s) from other mods can clash: ` + s.conflicts.map(c => c.file).join(", "), "warn");
+    $("clean-wrap").hidden = false;
+  } else {
+    setText("r-mods", "None that clash" + (s.workshop ? ` (${s.workshop} Workshop item(s), only loaded when MCC starts with mods)` : ""), "ok");
+    $("clean-wrap").hidden = true;
+  }
+  $("r-lidar").textContent = `Mapped so far: ${s.lidar.mapped} of ${s.lidar.total} maps.`;
+  const list = $("steps"); list.innerHTML = "";
+  const allDone = ready === s.setup.length && !Object.values(stepNote).some(Boolean) && !s.running.setup && !s.running.setup_force;
+  $("setup-done").hidden = !allDone; list.hidden = allDone;
+  $("setup").hidden = allDone;
+  for (const [name, done] of s.setup) {
+    const li = document.createElement("li");
+    const note = stepNote[name];
+    const icon = note && note.startsWith("failed") ? ["!", "bad"] : note === "working" ? ["...", "warn"] : done ? ["OK", "ok"] : ["-", "dim"];
+    li.innerHTML = `<span class="${icon[1]}">${icon[0]}</span><span>${STEP_NAMES[name] || name}</span><span class="dim"></span>`;
+    li.lastChild.textContent = note && note !== "working" ? note : done ? "ready" : (note === "working" ? "working ..." : "not yet");
+    list.appendChild(li);
+  }
+  for (const [task, run] of Object.entries(s.running)) {
+    const b = task.startsWith("setup") ? $("setup") : task === "play" ? $("play") : document.querySelector(`[data-task="${task}"]`);
+    if (b) b.setAttribute("aria-busy", run ? "true" : "false");
+  }
+}
+
+async function refresh() {
+  try { render(await (await fetch("/status")).json()); $("banner").textContent = ""; }
+  catch (e) { $("banner").textContent = "The launcher stopped. Close this window and open Project Proving Grounds again."; }
+}
+
+const following = {};
+async function follow(task, box, stateEl) {
+  if (following[task]) return;
+  following[task] = true;
+  let from = 0;
+  $(box).textContent = "";
+  while (true) {
+    const r = await (await fetch(`/log/${task}?from=${from}`)).json();
+    from = r.next;
+    for (const line of r.lines) {
+      $(box).textContent += line + "\n";
+      const m = line.match(/^STEP \d+\/\d+ ([^:]+): (.*)$/);
+      if (m) stepNote[m[1]] = m[2].startsWith("working") ? "working" : m[2].startsWith("failed") ? m[2] : undefined;
+    }
+    $(box).scrollTop = $(box).scrollHeight;
+    if (!r.running) {
+      setText(stateEl, r.code === 0 ? "Done." : `Stopped with a problem (see the lines above).`, r.code === 0 ? "ok" : "bad");
+      break;
+    }
+    await new Promise(res => setTimeout(res, 700));
+  }
+  following[task] = false;
+  refresh();
+}
+
+$("play").onclick = async () => {
+  if (state && !state.mcc) { setText("play-state", "Install MCC through Steam first.", "bad"); return; }
+  if (state && state.setup.some(x => !x[1])) setText("play-state", "Starting (the first-time setup is not finished: the 3D bots or pictures may be missing) ...", "warn");
+  else setText("play-state", "Starting MCC ...", "dim");
+  const r = await post("/run/play", {clean: !$("clean-wrap").hidden && $("clean").checked});
+  if (!r.ok) { setText("play-state", r.message, "bad"); return; }
+  follow("play", "log-play", "play-state");
+};
+async function runSetup(task) {
+  setText("setup-state", "Working ... (a few minutes)", "dim");
+  const r = await post("/run/" + task);
+  if (!r.ok) { setText("setup-state", r.message, "bad"); return; }
+  follow(task, "log-setup", "setup-state");
+}
+$("setup").onclick = () => runSetup("setup");
+$("setup-force").onclick = () => runSetup("setup_force");
+for (const b of document.querySelectorAll("[data-task]")) {
+  b.onclick = async () => {
+    setText("tool-state", `Opening ${b.textContent} ...`, "dim");
+    const r = await post("/run/" + b.dataset.task);
+    setText("tool-state", r.ok ? `${b.textContent}: its window opens in a moment.` : r.message, r.ok ? "dim" : "bad");
+  };
+}
+$("folder").onclick = () => post("/folder");
+$("docs").onclick = () => post("/docs");
+refresh().then(() => {
+  if (location.search.includes("setup=1") && state && state.mcc && state.setup.some(x => !x[1])) runSetup("setup");
+});
+setInterval(refresh, 3000);
+setInterval(() => post("/ping"), 5000);
+post("/ping");
+</script>
+</body>
+</html>
