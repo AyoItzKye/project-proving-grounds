@@ -66,22 +66,25 @@ and bots for anyone who wants to study how they play (the zip has its own README
 
 ## Difficulty
 
-| | Easy | Normal | Heroic | Legendary |
-|---|---|---|---|---|
-| Reaction | a little slower than a person | a person's | faster | fastest |
-| Movement | rarely strafes, jumps only to get around | strafes often, jumps sometimes | strafes almost always, jump shots | always, jukes |
-| Plan | none: wanders in Slayer, straight at the objective otherwise | the team's | the team's | the team's |
-| Routes and power weapons | straight at the objective; a gun only if it sees one | some lanes, some weapons | sneaky routes, knows the spawns | hard spots, times every respawn |
-| Equipment and armor abilities | never | when it should | and to bait | every trick |
-| Awareness | looks where it walks | keeps known threats in view | checks flanks and radar | keeps threats in mind longest |
-| Teamwork | its own way | sometimes groups up | team shots | full focus fire |
-| Head shots (precision guns) | chest two shots in three | head half the time once your shield pops | nearly always | always |
+Pick a difficulty for each bot in the BOTS panel, or one for everyone. Every difficulty aims the way a person does;
+what changes is how fast the bots react and how smart they play.
 
-Every difficulty aims with the same hands; reaction and how a bot plays make the difference.
-
-**Scaling** gives every bot Legendary's play with hands set by one skill level that follows your results: after each
-game it moves toward the level where you and the bots come out even. It shows as a percentage of a skilled player
-(100%) and tops out at 1800%. The panel's **Advanced** tab locks it, shows each setting and keeps custom profiles.
+- **Easy**: relaxed games. Reacts a little slower than a person, rarely dodges and only jumps to get around. It does
+  not plan: in Slayer it wanders, in objective games it heads straight for the objective. It picks up a gun only if it
+  passes one, never uses equipment, and mostly aims at your chest.
+- **Normal**: plays like an average player. Reacts like a person, strafes in fights, follows its team's plan, knows
+  some routes and power weapons, uses equipment when it makes sense, and goes for your head about half the time once
+  your shields are down.
+- **Heroic**: plays like a good player. Reacts faster, strafes almost all the time and jump-shots, takes sneaky
+  routes, knows where enemies spawn, checks its flanks and radar, shoots together with its teammates, and lands
+  headshots nearly every time.
+- **Legendary**: plays like a top player. The fastest reactions, constant strafing and jukes, holds the best spots,
+  times every power weapon respawn, uses every equipment trick, focuses fire with its team, and always goes for the
+  head.
+- **Scaling**: adjusts to you. The bots play with Legendary's smarts, but their skill (how fast they react and how
+  well they aim) changes after every game, toward the level where you and the bots finish about even: win a lot and
+  they get tougher, lose a lot and they ease off. The panel shows it as a percentage, where 100% is a skilled player.
+  You can lock it at a level in the panel's **Advanced** tab.
 
 ## Play styles
 
