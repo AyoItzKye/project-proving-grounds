@@ -1,0 +1,83 @@
+name: Bug report
+description: Something went wrong with the bots, the launcher or a tool.
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! The more of this you fill in, the faster it gets fixed.
+
+        **Best of all, attach the bug report the mod saved:** press **F9** in the match right when it happens and type what went wrong. The report is saved with a recording of that moment in the install folder's `logs\bug_reports` (the launcher's **Open the install folder** button takes you there). Zip that report's folder and drag it into the box at the bottom of this form.
+
+        Before you post, check the [bot status sheet](https://github.com/AyoItzKye/project-proving-grounds/blob/main/docs/BOT_STATUS.pdf): things marked red are already known.
+  - type: input
+    id: version
+    attributes:
+      label: Mod version
+      description: Shown at the top of the launcher.
+      placeholder: "0.2.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: game
+    attributes:
+      label: Game
+      options:
+        - "Halo: CE"
+        - Halo 2
+        - Halo 2 Anniversary
+        - Halo 3
+        - "Halo 3: ODST (Firefight)"
+        - "Halo: Reach"
+        - Halo 4
+        - Not in a match (the launcher, setup or a tool)
+    validations:
+      required: true
+  - type: input
+    id: mode
+    attributes:
+      label: Game mode and map
+      placeholder: "e.g. Capture the Flag on Valhalla"
+  - type: dropdown
+    id: difficulty
+    attributes:
+      label: Bot difficulty
+      options:
+        - Easy
+        - Normal
+        - Heroic
+        - Legendary
+        - Scaling
+        - A mix
+        - Not in a match
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What the bots (or the mod) did. If it was in a match, roughly when (e.g. "about 5 minutes in").
+      placeholder: "e.g. Both bot drivers parked their Warthogs at the base and never drove off."
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect instead?
+  - type: textarea
+    id: attachments
+    attributes:
+      label: Bug report, screenshots or video
+      description: Drag the zipped F9 report folder here (or the Observer's Export game zip of that match; names and Xbox ids are removed from exports). Screenshots and clips help too.
+  - type: input
+    id: pc
+    attributes:
+      label: Your PC (optional)
+      description: Only if it is about performance (stutter, low frame rate).
+      placeholder: "e.g. Ryzen 5 5600X, 16 GB, how many bots"
+  - type: checkboxes
+    id: offline
+    attributes:
+      label: Check
+      options:
+        - label: I started MCC from the launcher's Play with Easy Anti-Cheat off, in an offline custom game.
+          required: true

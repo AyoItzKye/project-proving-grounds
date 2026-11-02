@@ -1,0 +1,16 @@
+name: Idea or request
+description: Something you would like the bots or the mod to do.
+title: "[Idea] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like?
+      placeholder: "e.g. Bots that use the Hornet in Halo 3."
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why, or how would you use it?

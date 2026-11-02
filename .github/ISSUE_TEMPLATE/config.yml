@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: What works right now (bot status sheet)
+    url: https://github.com/AyoItzKye/project-proving-grounds/blob/main/docs/BOT_STATUS.pdf
+    about: Every game, mode and vehicle rated green to red. Red items are already known.
+  - name: Download the latest version
+    url: https://github.com/AyoItzKye/project-proving-grounds/releases/latest
+    about: Check you are on the newest version before reporting.

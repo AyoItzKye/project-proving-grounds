@@ -22,6 +22,8 @@ yet). Click the picture for the full sheet: what to expect in each mode and with
 
 **[Open the full bot status sheet (PDF)](docs/BOT_STATUS.pdf)**
 
+Found a bug? **[Report it here](https://github.com/AyoItzKye/project-proving-grounds/issues/new?template=bug_report.yml)** (how: [Report a problem](#report-a-problem)).
+
 ## Install
 
 1. Check the [system requirements](#system-requirements).
@@ -244,7 +246,9 @@ use.
 
 Press **F9** in a match with bots on to save a bug report: the moment is kept with the recording around it in
 `logs\bug_reports\<date-time>`, and a note you type goes with it. Attach that folder (or the Observer's export of the
-game) to an issue on the project's GitHub page and say what you expected to happen.
+game) to a **[bug report](https://github.com/AyoItzKye/project-proving-grounds/issues/new?template=bug_report.yml)**: the
+form asks for the game, mode, map and difficulty and has a box to drop the zipped report into. Ideas and requests:
+**[New issue > Idea or request](https://github.com/AyoItzKye/project-proving-grounds/issues/new/choose)**.
 
 ### Where things are
 
