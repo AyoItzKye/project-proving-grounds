@@ -14,6 +14,14 @@ For everything that works, game by game, see the [bot status sheet](BOT_STATUS.p
 - **Spectate (no body)** is not available in Halo 2 Anniversary yet.
 - **Big maps with many bots can stutter on slower PCs**: use fewer bots.
 
+## How the bots play (every game)
+
+- **Allied bots won't get into a vehicle with you**, only with other bots: they don't hop in as your gunner or passenger, or take you as theirs.
+- **In CTF, a bot driver will pick up your flag carrier but won't drive back to your base** to score.
+- **Flying vehicles need reworking**: how bots fly and fight in the air is being redone.
+- **Bots lack urgency on offense**: when the objective means attacking (taking the flag, planting the bomb, pushing in Invasion), they're too slow and cautious about it.
+- **Theater mode doesn't work on matches with bots** yet.
+
 ## Halo: CE
 
 **Not working yet**
@@ -95,6 +103,7 @@ For everything that works, game by game, see the [bot status sheet](BOT_STATUS.p
 
 **Works, but buggy**
 
+- **Invasion on Boneyard**: The attackers loiter in the Tier 2 spawn area instead of pushing the objectives aggressively.
 - **Capture the Flag**: Bots capture flags and it plays well, but in big games the bot teams don't push the enemy flag enough.
 - **Assault**: Bots pick up and carry the bomb, but I haven't seen them score a plant in a real match yet.
 - **King of the Hill**: Bots hold the hill and score, but it can feel a little slow on the objective.
