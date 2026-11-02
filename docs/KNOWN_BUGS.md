@@ -9,6 +9,7 @@ For everything that works, game by game, see the [bot status sheet](BOT_STATUS.p
 - **The bots only work in offline custom games with Easy Anti-Cheat off.** Started with anti-cheat on, there is no BOTS tile. This is on purpose.
 - **An MCC update can break the mod** until a new version is out: the BOTS tile goes missing or bots don't join. Check the Releases page for a newer version.
 - **Windows Security can delete the injector** if the exclusion was not added during install. The launcher says so when you press Play; the README's Troubleshooting section shows the fix.
+- **Observer, LiDAR Viewer and Paint the nav only open once.** Close one of their windows and clicking it again in the launcher says it opens in a moment, but nothing opens, even after closing and reopening the launcher (the LiDAR Simulator is not affected). The tool is still running in the background without its window. Until the fix: open it in your web browser instead (Observer `http://127.0.0.1:8799/`, LiDAR Viewer `http://127.0.0.1:8797/`, Paint the nav `http://127.0.0.1:8796/`), or restart your PC and it opens from the launcher again. Fixed in the next version.
 - **Bots don't crouch-aim at a crouching player on a controller** in Halo: CE, Halo 2, Halo 3 and Reach: the mod can only tell you're crouching from the keyboard's crouch key there. Halo 2 Anniversary and Halo 4 read it from the game.
 - **Bots don't pick up weapons off the map in Halo 2 Anniversary and Halo 4** yet. They keep their starting guns.
 - **Spectate (no body)** is not available in Halo 2 Anniversary yet.
