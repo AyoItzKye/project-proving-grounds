@@ -43,7 +43,11 @@ def exported(key):
     if not os.path.exists(png):
         os.makedirs(SRC, exist_ok=True)
         exe = paths.need(paths.map_tool("model2obj"), "model2obj.exe (the map tools: tools/map_tools)")
-        subprocess.run([exe, MAP, "--bitmaps", TAGS[key], SRC], capture_output=True, check=True)
+        r = subprocess.run([exe, MAP, "--bitmaps", TAGS[key], SRC], capture_output=True, text=True, errors="replace")
+        if r.returncode or not os.path.exists(png):
+            said = (r.stdout + r.stderr).strip().splitlines()
+            raise SystemExit(f"the map tools could not read {os.path.basename(MAP)} (exit {r.returncode & 0xFFFFFFFF:#x}"
+                             + (f": {said[-1][:160]}" if said else "") + ")")
     return np.asarray(Image.open(png).convert("RGBA")).astype(np.float32) / 255.0
 
 
@@ -66,6 +70,8 @@ def white_alpha(src, size=None):
 
 
 def main():
+    if not os.path.exists(MAP):                      # (Steam installs each game on its own)
+        raise SystemExit("needs Halo: Reach installed (its Sword Base map has the effects)")
     os.makedirs(OUT, exist_ok=True)
     fire = exported("fire")
     write_rgba(palette_fire(fire, exported("grad_fire"), False), os.path.join(OUT, "fx_fire.rgba"))

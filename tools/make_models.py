@@ -102,34 +102,46 @@ GEAR = {"h3_spartan": (r"halo3\maps\guardian.map", r"mp_masterchief\gear\gear", 
 
 def main():
     exe = paths.need(paths.map_tool("model2obj"), "model2obj.exe (the map tools: tools/map_tools)")
+    made, skipped = [], []
     for name, species, game, mp, tag, weapon, opts in MODELS:
         if ONLY and name not in ONLY:
+            continue
+        if not os.path.exists(os.path.join(MCC, mp)) or (name in GEAR and not os.path.exists(os.path.join(MCC, GEAR[name][0]))):
+            skipped.append(name)                     # (that game is not installed: Steam installs each on its own)
+            print(f"{name}: skipped ({paths.GAME_NAMES.get(game, game)} is not installed)")
             continue
         tmp = os.path.join(ROOT, "maps", "_models", game)
         tex = os.path.join(tmp, "tex")
         os.makedirs(tex, exist_ok=True)
         body, held = os.path.join(tmp, species + ".obj"), os.path.join(tmp, name + "_weapon.obj")
         out = os.path.join(OUT, name + ".mdl")
-        r = subprocess.run([exe, os.path.join(MCC, mp), tag, body, "--uv", "--skin", "--tex", tex], capture_output=True, text=True)
-        w = subprocess.run([exe, os.path.join(MCC, mp), weapon, held, "--uv", "--tex", tex], capture_output=True, text=True)
+        r = subprocess.run([exe, os.path.join(MCC, mp), tag, body, "--uv", "--skin", "--tex", tex], capture_output=True,
+                           text=True, errors="replace")
+        w = subprocess.run([exe, os.path.join(MCC, mp), weapon, held, "--uv", "--tex", tex], capture_output=True,
+                           text=True, errors="replace")
         if r.returncode or w.returncode or not os.path.exists(body) or not os.path.exists(held):
-            print(f"{name}: not exported ({(r.stdout + w.stdout).strip()[-200:]})")
+            print(f"{name}: not exported ({(r.stdout + r.stderr + w.stdout + w.stderr).strip()[-200:]})")
             continue
         extra = []
         if name in GEAR:
             gmap, gtag, gspec = GEAR[name]
             gobj = os.path.join(tmp, species + "_gear.obj")
             g = subprocess.run([exe, os.path.join(MCC, gmap), gtag, gobj, "--uv", "--skin", "--tex", tex],
-                               capture_output=True, text=True)
-            if g.returncode or not os.path.exists(gobj):
-                sys.exit(f"{name}: its gear model was not exported ({g.stdout.strip()[-200:]})")
-            extra = ["--gear", gobj + "|" + gspec]
+                               capture_output=True, text=True, errors="replace")
+            if g.returncode or not os.path.exists(gobj):     # (the model without its backpack, not no model)
+                print(f"{name}: its gear model was not exported ({(g.stdout + g.stderr).strip()[-200:]})")
+            else:
+                extra = ["--gear", gobj + "|" + gspec]
         subprocess.run([sys.executable, "-I", os.path.join(HERE, "model_pack2.py"), species, body, held, out,
                         "--prefix", game] + opts + extra, check=True)
+        made.append(name)
     shutil.rmtree(os.path.join(ROOT, "maps", "_models", "h3", "tex"), ignore_errors=True) if "--clean" in sys.argv else None
     print(f"{prune(OUT)} unused textures removed")
     if not ONLY:
         subprocess.run([sys.executable, "-I", os.path.join(HERE, "emblems.py"), "extract", MCC])   # the bots' emblem art
+        with open(os.path.join(OUT, "made.txt"), "w", encoding="utf-8") as f:     # (tools/setup.py: this step ran)
+            f.write(f"made: {' '.join(made)}\nskipped, game not installed: {' '.join(skipped)}\n")
+    print(f"3D bots: {len(made)} made" + (f", {len(skipped)} skipped (games not installed)" if skipped else ""))
 
 
 if __name__ == "__main__":

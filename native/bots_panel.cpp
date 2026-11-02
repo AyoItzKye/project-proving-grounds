@@ -3083,9 +3083,10 @@ bool bots_panel(bots_panel_env& e) {
             if (toggle("Data collector", e.collector)) changed = true;
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled | ImGuiHoveredFlags_ForTooltip))
                 ImGui::SetTooltip("%s", !*e.enabled ? "Needs bots in the match: the bots' brain does the recording."
-                                  : "Records you every match: movement, game keys (only while MCC is in front),\n"
-                                    "shots, guns and equipment. The Observer shows your positioning,\n"
-                                    "reaction time, pace and accuracy. Saved on this PC in logs\\collect_*.jsonl.");
+                                  : "Records you every match from the game itself: movement, aim, shots,\n"
+                                    "guns and equipment (never your keyboard or controller). The Observer\n"
+                                    "shows your positioning, reaction time, pace and accuracy. Saved on this\n"
+                                    "PC in logs\\collect_*.jsonl.");
             ImGui::EndDisabled();
             ImGui::SameLine(0, px(36));
         }
@@ -3114,7 +3115,7 @@ bool bots_panel(bots_panel_env& e) {
     } else if (!*e.enabled) banner = "Bots are off: nobody on this list joins. Switch Bots on at the top.";
     else if (e.title == 1 && r.teams > 2) banner = "Halo: CE has two teams: bots on Green and later teams play as Red or Blue.";
     else if (e.collector && *e.collector)                   // (not in LiDAR mode: that banner comes first)
-        banner ="Data collector is on: you are recorded each match (game keys only while MCC is in front).";
+        banner = "Data collector is on: your movement, aim, shots and guns are recorded each match (never your keys).";
     if (banner) {
         ImVec2 a = body0, b(body0.x + grid_w, body0.y + px(40));
         dl->AddRectFilled(a, b, alpha(GOLD, 0.12f));

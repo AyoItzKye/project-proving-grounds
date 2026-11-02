@@ -15,7 +15,7 @@ Two places:
 
 | Folder | What |
 |---|---|
-| `collect/` | Data collector recordings (`collect_<map>_<date>-<time>.jsonl`): a person playing, with every player's position every tick and the keys the person pressed. Halo: CE, Halo 2, Halo 2 Anniversary, Halo 3, Halo: Reach and Halo 4 matches, with and without bots. |
+| `collect/` | Data collector recordings (`collect_<map>_<date>-<time>.jsonl`): a person playing, with every player's position every tick and the person's aim, guns and rounds. Halo: CE, Halo 2, Halo 2 Anniversary, Halo 3, Halo: Reach and Halo 4 matches, with and without bots. |
 | `matches/` | full recorded matches with bots as the Observer's export makes them: each zip holds `manifest.json` (the game, map, modes, score, every player marked human or bot), the brain's recording (`trace.jsonl`: everyone 4 times a second, every bot every tick with its decisions), the person's Data collector recording when it was on, MCC's post-game report and the Observer's analyses. Each zip's `manifest.json` lists the format of every row. |
 | `human/` | `reference.json` and `gold.json` as in the repository |
 
@@ -29,8 +29,8 @@ gives a recording's numbers.
 - The Windows user folder in any file path is replaced by `<home>`.
 - Every file was scanned for e-mail addresses, user folders, local drive paths and the recorder's own names and ids
   before it went in (`tools/human_data.py`, `tools/make_release.py`); the build stops on any hit.
-- Keys: only keys bound in MCC's own controls are recorded, and only while MCC was the window in front, so nothing
-  typed anywhere else is in the data.
+- No keys: the keyboard, mouse and controller are not in the data (the Data collector reads only the game; the key
+  rows the first version also recorded were left out of this zip).
 
 ## Data collector rows (`collect/*.jsonl`)
 
@@ -38,10 +38,9 @@ One JSON object per line; `t` is seconds since the match started.
 
 | Row | Fields |
 |---|---|
-| start (once) | `{"t", "collect": "start", "map", "game", "keys": {"<virtual key code>": name}}`: the map, the game and the keys bound in MCC |
+| start (once) | `{"t", "collect": "start", "map", "game"}`: the map and the game |
 | players (every tick, 30 a second) | `{"t", "p": [row per player]}`. Row: 0 player id, 1 team, 2 alive, 3-5 x y z (world units), 6 yaw, 7 pitch (radians), 8 shield, 9 health (1 = full), 10 riding a vehicle, 11 carrying the flag, 12 bot (1) or person (0); a person's row adds 13 what the crosshair is on `[x, y, z, on]` (on: a player id, `"v<handle>"` for a vehicle, null for the level; null when only sky) and 14 the seat `[vehicle kind, gun]` (null on foot) |
-| gear (on change) | `{"t", "id", "wpn", "inv", "ammo", "mag", "eq", "ab", "uz"}`: a person's gun in hand, guns carried, rounds, magazine, equipment, armor ability, zoom |
-| key (on change) | `{"t", "key": name, "vk", "down": 1 or 0}`: a bound key or controller button going down or up, read 200 times a second |
+| gear (on change) | `{"t", "id", "wpn", "inv", "ammo", "mag", "eq", "ab", "uz"}`: a person's gun in hand, guns carried, rounds, magazine, equipment, armor ability, zoom (a shot: the magazine of the gun in hand going down) |
 
 ## Related studies in the repository
 

@@ -186,7 +186,19 @@ def tracked():
     return [p for p in out.split("\n") if p]
 
 
+def untracked_release_files():
+    """New code not yet committed that the release would carry (brain, tools, native, installer): the release is made
+    from the tracked files, so it would be missing (map data a run wrote is not code: left to the player's commits)."""
+    out = subprocess.run(["git", "ls-files", "--others", "--exclude-standard"], cwd=ROOT, capture_output=True,
+                         text=True, check=True).stdout
+    return [p for p in out.split("\n") if p.startswith(("brain/", "tools/", "native/", "installer/"))
+            and where(p) == "release"]
+
+
 def build(out):
+    new = untracked_release_files()
+    if new:
+        raise SystemExit("commit these first (the release is made from committed files): " + ", ".join(new[:20]))
     pack = out + "-map-pack"
     for d in (out, pack):
         if os.path.exists(d):

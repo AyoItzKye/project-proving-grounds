@@ -60,7 +60,7 @@ Name: "{autodesktop}\Project Proving Grounds"; Filename: "{app}\python\pythonw.e
 Filename: "{app}\python\pythonw.exe"; Parameters: "-I ""{app}\tools\launcher.py"" --setup"; WorkingDir: "{app}"; Description: "Open Project Proving Grounds and run the first-time setup"; Flags: postinstall nowait skipifsilent
 
 [UninstallDelete]
-; the app windows' own Edge profile (tools/appwindow.py)
+; the app window's WebView2 data (cache, settings: tools/appwindow.py)
 Type: filesandordirs; Name: "{localappdata}\ProjectProvingGrounds"
 
 [Code]
@@ -80,6 +80,26 @@ var
 begin
   Result := ShellExec('runas', 'powershell.exe', '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "' + Command + '"',
                       '', SW_HIDE, ewWaitUntilTerminated, Code) and (Code = 0);
+end;
+
+function PowerShell(Command: String): Integer;
+begin
+  if not Exec('powershell.exe', '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "' + Command + '"',
+              '', SW_HIDE, ewWaitUntilTerminated, Result) then
+    Result := -1;
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+begin
+  Result := '';
+  if not DirExists(ExpandConstant('{app}\native')) then
+    exit;
+  // an earlier install being updated: MCC with the bots loaded holds botcore.dll; the mod's own programs (the
+  // launcher, the tools' servers, their windows) have no window Restart Manager can close, so they are ended here
+  if PowerShell('if (Get-Process MCC-Win64-Shipping -ErrorAction SilentlyContinue) { exit 3 }') = 3 then
+    Result := 'Close Halo: The Master Chief Collection first (the bots are loaded into it), then run Setup again.'
+  else
+    PowerShell('Get-Process | Where-Object { $_.Path -like ' + Quoted(ExpandConstant('{app}') + '\*') + ' } | Stop-Process -Force');
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
@@ -107,6 +127,8 @@ var
 begin
   if CurUninstallStep = usUninstall then
   begin
+    // (the mod's programs still running, e.g. a tool's server, would keep their files)
+    PowerShell('Get-Process | Where-Object { $_.Path -like ' + Quoted(ExpandConstant('{app}') + '\*') + ' } | Stop-Process -Force');
     if LoadStringFromFile(ExpandConstant('{app}') + MARK, Dir) then
       RunElevatedPowerShell('Remove-MpPreference -ExclusionPath ' + Quoted(String(Dir)));
     // (a silent uninstall keeps them: /SUPPRESSMSGBOXES answers Yes)

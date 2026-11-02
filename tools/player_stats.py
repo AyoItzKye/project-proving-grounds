@@ -2,7 +2,8 @@
 bots line up side by side.
 
 Input: a Data collector file (logs/collect_<map>_<stamp>.jsonl, tools/collector.py: everyone 30 times a second, your
-keys, guns and equipment) or, for older matches, a brain trace (its world lines: everyone 4 times a second, no keys).
+guns, rounds and equipment) or, for older matches, a brain trace (its world lines: everyone 4 times a second). Your
+shots are told by your magazine going down; no keys are read.
 The match's trace (same stamp) gives the bots' names, difficulty and trigger. Measures, for every player:
 
 - reaction: an enemy comes into view (line of sight, inside a 105 degree view: the player's MCC setting) after 1 s
@@ -15,7 +16,7 @@ The match's trace (same stamp) gives the bots' names, difficulty and trigger. Me
   the other first when two players saw each other), how much of the time an enemy had you in view.
 - accuracy: the share of trigger time on the body; damage dealt (a full shield and body = 2.0); kills; for you, by
   gun; with the gun's rounds known (CE, Halo 2, Halo 3), shots too.
-- guns and equipment (you): time per gun, switches, pickups; ability uses, when and for how long; key presses.
+- guns and equipment (you): time per gun, switches, pickups, shots; ability uses, when and for how long.
 
 usage: python -I player_stats.py <collect or trace file> [player id]      prints the report
 """
@@ -46,9 +47,10 @@ def wrap(a):
 
 
 def load(path):
-    """dict(kind, map, game, t [n], P {id: array [n, 12], nan where absent}, gear [...], keys [...], fire {id: bool [n]})"""
+    """dict(kind, map, game, t [n], P {id: array [n, 12], nan where absent}, gear [...], meta, cmds). Key rows of
+    files from before 0.2.0 are skipped."""
     lines = open(path, encoding="utf-8").read().splitlines()
-    head, ts, raw, gear, keys, meta, cmds = {}, [], [], [], [], {}, collections.defaultdict(list)
+    head, ts, raw, gear, meta, cmds = {}, [], [], [], {}, collections.defaultdict(list)
     for k, x in enumerate(lines):
         try:
             d = json.loads(x)
@@ -68,8 +70,6 @@ def load(path):
             head.setdefault("map", d["meta"].get("map"))
             head.setdefault("game", d["meta"].get("game"))
             meta[d["meta"]["bot"]["id"]] = d["meta"]["bot"]
-        elif "key" in d:
-            keys.append(d)
         elif "wpn" in d and "id" in d and "cmd" not in d:
             gear.append(d)
         elif "cmd" in d:                              # a trace's bot line: its trigger this tick
@@ -81,7 +81,7 @@ def load(path):
         for r in rows:
             P[r[0]][k] = r[1:13]                      # (people's rows go on: crosshair, ride)
     return dict(kind="collect" if "collect" in head else "trace", map=head.get("map"), game=head.get("game"), t=t,
-                P=P, gear=gear, keys=keys, meta=meta, cmds=cmds)
+                P=P, gear=gear, meta=meta, cmds=cmds)
 
 
 def companion_trace(path):
@@ -127,6 +127,27 @@ def on_ticks(t, events):
     return out
 
 
+def shot_times(gear, me):
+    """[(t, rounds)] person me fired, from the collector's gear lines: the gun in hand's magazine going down with the
+    same guns carried (a reload, a swap or a pickup is not a shot)."""
+    g = [x for x in gear if x["id"] == me]
+    out = []
+    for a, b in zip(g, g[1:]):
+        if a["wpn"] == b["wpn"] and a["wpn"] in a["inv"] and a["inv"] == b["inv"]:
+            i = a["inv"].index(a["wpn"])
+            if i < len(a["mag"]) and i < len(b["mag"]) and 0 <= b["mag"][i] < a["mag"][i]:
+                out.append((b["t"], a["mag"][i] - b["mag"][i]))
+    return out
+
+
+def firing(t, shots, hold=0.1):
+    """Per tick: a shot in the last hold seconds (the trigger, as the game saw it)."""
+    st = np.array([x[0] for x in shots])
+    if not len(st):
+        return np.zeros(len(t), bool)
+    return np.searchsorted(st, t, side="right") - np.searchsorted(st, t - hold, side="right") > 0
+
+
 class Match:
     def __init__(s, path, los=None, zones=None):
         s.path = path
@@ -153,8 +174,8 @@ class Match:
         s.alive = {i: np.nan_to_num(s.P[i][:, ALIVE]) > 0 for i in s.ids}
         s.team = {i: int(np.nanmax(s.P[i][:, TEAM])) for i in s.ids}
         s.bot = {i: bool(np.nanmax(s.P[i][:, BOT])) for i in s.ids}
-        fire_keys = [(k["t"], k["down"]) for k in s.keys if k["key"] == "fire"]
-        s.fire = {i: on_ticks(s.t, fire_keys) for i in s.ids if not s.bot[i]} if fire_keys else {}   # (your keys: the collector)
+        s.shots = {i: shot_times(s.gear, i) for i in s.ids if not s.bot[i]}
+        s.fire = {i: firing(s.t, sh) for i, sh in s.shots.items() if sh}   # (your magazine: the collector)
         for i, ev in s.cmds.items():
             if i in s.P:
                 s.fire[i] = on_ticks(s.t, ev)
@@ -197,7 +218,7 @@ class Match:
     def reactions(s, me):
         step = s.step_for(me)
         tt = s.t[np.arange(0, s.n, step)]
-        fire_t = np.array([k["t"] for k in s.keys if k["key"] == "fire" and k["down"]]) if not s.bot[me] else np.array([])
+        fire_t = np.array([t for t, _ in s.shots.get(me, [])])
         aims, fires, pre, lost = [], [], 0, 0
         for foe in s.enemies(me):
             idx, d, vis, aim, body = s.pair(me, foe, step)
@@ -406,12 +427,12 @@ class Match:
         return out
 
     def gear_report(s, me):
-        """Your guns, switches, pickups and ability uses from the collector's gear lines; key presses."""
+        """Your guns, switches, pickups, shots and ability uses from the collector's gear lines."""
         g = [x for x in s.gear if x["id"] == me]
         if not g:
             return None
         guns = collections.Counter()
-        switches, pickups, uses, use_len, shots = 0, collections.Counter(), [], [], 0
+        switches, pickups, uses, use_len = 0, collections.Counter(), [], []
         alive_t = lambda t0, t1: float(s.alive[me][(s.t >= t0) & (s.t < t1)].sum() * s.dt)
         for a, end in zip(g, [x["t"] for x in g[1:]] + [float(s.t[-1]) if s.n else g[-1]["t"]]):
             guns[a["wpn"]] += alive_t(a["t"], end)            # the gun in hand until the next change
@@ -425,29 +446,8 @@ class Match:
                 uses.append((b["t"], b["eq"]))
             if a["ab"] and not b["ab"] and uses:
                 use_len.append(b["t"] - uses[-1][0])
-            if a["wpn"] == b["wpn"] and a["wpn"] in a["inv"] and a["inv"] == b["inv"]:
-                i = a["inv"].index(a["wpn"])
-                if i < len(a["mag"]) and i < len(b["mag"]) and 0 <= b["mag"][i] < a["mag"][i]:
-                    shots += a["mag"][i] - b["mag"][i]
         return dict(guns=guns.most_common(), switches=switches, pickups=dict(pickups), uses=uses, use_len=use_len,
-                    shots=shots)
-
-    def key_report(s, me):
-        if s.bot[me] or not s.keys:
-            return None
-        minutes = s.alive[me].sum() * s.dt / 60.0 or 1.0
-        held, presses, holds = {}, collections.Counter(), collections.defaultdict(list)
-        for k in s.keys:
-            if k["down"]:
-                presses[k["key"]] += 1
-                held[k["key"]] = k["t"]
-            elif k["key"] in held:
-                holds[k["key"]].append(k["t"] - held.pop(k["key"]))
-        fire = holds.get("fire", [])
-        return dict(per_min={k: n / minutes for k, n in presses.most_common()},
-                    hold={k: float(np.median(v)) for k, v in holds.items() if v},
-                    fire_taps=sum(1 for h in fire if h < 0.15) / len(fire) if fire else None,
-                    fire_presses=presses.get("fire", 0))
+                    shots=sum(n for _, n in s.shots.get(me, [])))
 
     def player(s, me):
         r = s.reactions(me)
@@ -456,7 +456,7 @@ class Match:
                    reaction=r, shot_reaction=s.shot_reactions(me), pace=s.engagements(me), move=s.movement(me),
                    place=s.positioning(me), damage=s.damage(me), deaths=s.deaths(me))
         if not s.bot[me]:
-            out.update(gear=s.gear_report(me), keys=s.key_report(me))
+            out.update(gear=s.gear_report(me))
         return out
 
 
@@ -519,7 +519,7 @@ def page(a):
         dm = you["damage"] or {}
         v["you"] = dict(row=summary(you), pre=you["reaction"]["pre"], shot_ready=you["shot_reaction"]["ready"],
                         zones=you["place"]["zones"], looks=you["place"]["looks"], jumps=you["move"]["jumps_min"],
-                        p90=you["move"]["p90"], fire_s=dm.get("fire_s"), gear=you.get("gear"), keys=you.get("keys"),
+                        p90=you["move"]["p90"], fire_s=dm.get("fire_s"), gear=you.get("gear"),
                         fights=you["pace"]["n"])
     return v
 
@@ -534,7 +534,7 @@ def report(a):
     out = [f"{a['file']}: {a['map']} ({a['game']}), {a['seconds']:.0f} s, {a['rate']} samples a second"
            + (f"; bots' names and triggers from {a['trace']}" if a["trace"] else "")]
     if a["rate"] and a["rate"] < 10:
-        out.append("  (a trace: 4 samples a second, so times are good to about 0.25 s, and there are no keys)")
+        out.append("  (a trace: 4 samples a second, so times are good to about 0.25 s, and your shots are not known)")
     you = a["players"].get(str(a["you"])) if a["you"] is not None else None
     if you:
         r, pa, mv, pl, dm = you["reaction"], you["pace"], you["move"], you["place"], you["damage"] or {}
@@ -555,17 +555,13 @@ def report(a):
             out.append(f"  accuracy: on the body {fmt(dm.get('on_body'), pct=True)} of {dm.get('fire_s', 0):.0f} s of trigger; "
                        f"damage dealt {dm.get('dealt')}; kills {dm.get('kills')}; deaths {you['deaths']}")
         else:
-            out.append(f"  accuracy: needs your trigger (the Data collector records it); deaths {you['deaths']}")
-        g, k = you.get("gear"), you.get("keys")
+            out.append(f"  accuracy: needs your shots (the Data collector records your rounds); deaths {you['deaths']}")
+        g = you.get("gear")
         if g:
             out.append("  guns: " + ", ".join(f"{w} {sec:.0f} s" for w, sec in g["guns"]) + f"; {g['switches']} switches; "
                        f"pickups {g['pickups'] or 'none'}" + (f"; {g['shots']} shots counted" if g["shots"] else ""))
             out.append(f"  equipment: {len(g['uses'])} uses" + (f" ({', '.join(sorted({e for _, e in g['uses']}))}), "
                        f"{fmt(med(g['use_len']), ' s', 1)} each" if g["uses"] else ""))
-        if k:
-            out.append("  keys a minute: " + ", ".join(f"{n} {v:.0f}" for n, v in list(k["per_min"].items())[:12]))
-            out.append(f"  trigger: {k['fire_presses']} presses, held {fmt(k['hold'].get('fire'), ' s')} median, taps (under "
-                       f"0.15 s) {fmt(k['fire_taps'], pct=True)}")
     out.append("SIDE BY SIDE (bots by difficulty: the same measures)")
     out.append(f"  {'who':12s} {'aim s':>6s} {'shot s':>6s} {'fights/min':>10s} {'speed':>6s} {'stand':>6s} {'strafe':>6s} "
                f"{'1st look':>8s} {'on body':>8s}")

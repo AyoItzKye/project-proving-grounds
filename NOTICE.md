@@ -21,6 +21,7 @@ install from the user's own copy of the game.
 |---|---|---|
 | Dear ImGui (Omar Cornut) | native/third_party/imgui | MIT, native/third_party/imgui/LICENSE.txt |
 | MinHook (Tsuda Kageyu) | native/third_party/minhook | BSD 2-Clause, native/third_party/minhook/LICENSE.txt |
+| Microsoft Edge WebView2 SDK (headers and static loader, for the app window native/ppg_window.exe) | native/third_party/webview2 | BSD 3-Clause style, native/third_party/webview2/LICENSE.txt |
 
 These components keep their own licenses; the PolyForm Noncommercial terms cover this project's own code and data.
 

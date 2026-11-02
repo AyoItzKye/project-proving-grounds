@@ -389,7 +389,7 @@ def main():
         rows.append({"t": k / 30, "p": [[0, 0, 1, k * 0.07, 0.0, z, 0.0, 0.0, 1.0, 1.0, 0, 0, 0]]})
     path = os.path.join(tempfile.mkdtemp(), "collect_test_jumps.jsonl")
     with open(path, "w") as f:
-        f.write(json.dumps({"t": 0.0, "collect": "start", "map": "bloodgulch", "game": "h4", "keys": {}}) + "\n")
+        f.write(json.dumps({"t": 0.0, "collect": "start", "map": "bloodgulch", "game": "h4"}) + "\n")
         f.writelines(json.dumps(r) + "\n" for r in rows)
     m = player_stats.Match(path, los=lambda a, b: True, zones=lambda p: "a")
     got = round(m.movement(0)["jumps_min"] * m.alive[0][1:].sum() / 30 / 60)

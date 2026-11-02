@@ -76,7 +76,12 @@ def layers(mcc, wanted):
 
 
 def extract(mcc):
-    cat = catalog(os.path.join(mcc, "Data", "UI", "playercustomization.xml"))
+    need = [os.path.join(mcc, "Data", "UI", "playercustomization.xml")] + [
+        os.path.join(mcc, "Data", "UI", "texturepacks", "mainmenuandcampaigntexturepack" + x) for x in (".perm.bin", ".temp.bin")]
+    if not all(os.path.exists(p) for p in need):     # (a copy of MCC with its menu files missing: no emblems, no stop)
+        print("emblems skipped: MCC's menu files (Data\\UI) are missing from this copy of MCC")
+        return
+    cat = catalog(need[0])
     wanted = {n for f in cat["foregrounds"] for n in f[1:3]} | {b[1] for b in cat["backgrounds"]}
     pics = layers(mcc, wanted)
     # only emblems whose every layer is there (MCC's renderer refuses one with a layer missing)

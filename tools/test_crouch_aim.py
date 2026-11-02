@@ -69,7 +69,7 @@ def main():
                      f"{st['shots']} shots (want a kill and 30%+ hits)")
     # 3
     import live_bots
-    import collector
+    import crouch_key
     raw = [dict(index=0, name="Owner", team=0, unit=1, pos=(0.0, 0.0, 0.0), fwd=None, aim=(1.0, 0.0, 0.0), vehicle=-1,
                 health=1.0, shield=1.0, weapon="dmr"),
            dict(index=1, name="Bot1", team=1, unit=2, pos=(5.0, 0.0, 0.0), fwd=None, aim=(1.0, 0.0, 0.0), vehicle=-1,
@@ -89,10 +89,9 @@ def main():
     if s1 != {0: True, 1: True, 2: False} or s2 != {0: False, 1: False, 2: False}:
         fails.append(f"3. snapshot stance: {s1} / {s2} (want the person and bot 1 crouched, the dead bot not; then none)")
     held = {162}
-    keys = {162: "crouch", 32: "jump"}
-    on = collector.crouch_held(1, state=lambda vk: vk in held, front=lambda: True, keymap=keys)
-    away = collector.crouch_held(1, state=lambda vk: vk in held, front=lambda: False, keymap=keys)
-    up = collector.crouch_held(1, state=lambda vk: False, front=lambda: True, keymap=keys)
+    on = crouch_key.crouch_held(1, state=lambda vk: vk in held, front=lambda: True, vks=[162])
+    away = crouch_key.crouch_held(1, state=lambda vk: vk in held, front=lambda: False, vks=[162])
+    up = crouch_key.crouch_held(1, state=lambda vk: False, front=lambda: True, vks=[162])
     if not (on() and not away() and not up()):
         fails.append(f"3. crouch key: held {on()}, MCC behind {away()}, not held {up()} (want True, False, False)")
     # 4

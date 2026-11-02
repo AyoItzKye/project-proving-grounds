@@ -6,16 +6,13 @@
 2. tracefmt.crosshair: on a player in front (his id), on a vehicle ("v<handle>"); in a vehicle, the vehicle, its gun
    and who rides with you are passed over; nothing ahead and no level: None; dead: None
 3. Everyone.rows: your row gets your crosshair and ride (15, 16), a bot's row stays 15 long
-4. observer.key_events reads the game's Data collector file on from where it stopped (a live game's grows),
-   held_at tells the buttons held and just pressed, aim_text says it in words
+4. observer.aim_text says it in words; the Observer has no key reader (no keys are recorded)
 
 usage: python -I test_crosshair.py      -> "crosshair OK"
 """
-import json
 import math
 import os
 import sys
-import tempfile
 import types
 
 import numpy as np
@@ -114,36 +111,9 @@ def main():
     rows = Everyone().rows(1.0, [me, foe], {1}, lambda p, q: True, {0: ([10.0, 0.0, 0.4, 1], None)})
     if len(rows[0]) != 17 or rows[0][15:] != [[10.0, 0.0, 0.4, 1], None] or len(rows[1]) != 15:
         fails.append(f"3. world rows {rows} (want your crosshair and ride at 15, 16; the bot's row 15 long)")
-    # 4. the Observer reads your buttons
-    tmp = tempfile.mkdtemp(prefix="halo_keys_")
-    logs, observer.LOGS = observer.LOGS, tmp
-    try:
-        trace = os.path.join(tmp, "trace_reach_forge_halo_20991231-000002.jsonl")
-        col = os.path.join(tmp, "collect_reach_forge_halo_20991231-000002.jsonl")
-        open(trace, "w").close()
-        with open(col, "w") as f:
-            f.write(json.dumps(dict(t=0.0, collect="start", map="reach_forge_halo", game="reach", keys={})) + "\n")
-            f.write(json.dumps(dict(t=1.0, key="fire", vk=1, down=1)) + "\n")
-            f.write(json.dumps(dict(t=1.0, p=[[0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0]])) + "\n")
-            f.write(json.dumps(dict(t=1.2, key="pad RT", vk=0x10011, down=1)) + "\n")
-        first = observer.key_events(trace)
-        with open(col, "a") as f:
-            f.write(json.dumps(dict(t=1.5, key="fire", vk=1, down=0)) + "\n")
-        both = observer.key_events(trace)
-        if first != [[1.0, "fire", 1], [1.2, "pad RT", 1]] or both != first + [[1.5, "fire", 0]]:
-            fails.append(f"4. key events {first} then {both} (want fire and pad RT, then the release appended)")
-        held, recent = observer.held_at(both, 1.4)
-        if held != ["fire", "pad RT"] or [k for k, _ in recent] != ["fire", "pad RT"]:
-            fails.append(f"4. at 1.4 s: held {held}, pressed lately {recent} (want fire and pad RT both)")
-        if observer.held_at(both, 1.6)[0] != ["pad RT"]:
-            fails.append("4. at 1.6 s fire still held after its release")
-        if observer.key_events(os.path.join(tmp, "trace_reach_forge_halo.jsonl")) != []:
-            fails.append("4. a trace with no collector file gave buttons")
-    finally:
-        observer.LOGS = logs
-        for f in os.listdir(tmp):
-            os.remove(os.path.join(tmp, f))
-        os.rmdir(tmp)
+    # 4. in words; no key reader
+    if hasattr(observer, "key_events") or hasattr(observer, "held_at"):
+        fails.append("4. the Observer still reads keys")
     words = observer.aim_text([0, 0, 1, 0.0, 0.0, 0.0, 1, 1, 0, 0, 0, 0, 0, [], 1, [10.0, 0.0, 0.4, 1],
                                ["warthog", "warthog_gauss"]])
     if "crosshair on #1" not in words or "10.0 u off" not in words or "riding warthog on its warthog_gauss" not in words:

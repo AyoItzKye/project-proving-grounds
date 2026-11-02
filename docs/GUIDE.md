@@ -15,8 +15,8 @@ feed.
 
 ## Data collector and the Observer
 
-Turn on **Data collector** in the BOTS panel and play. It records your movement and aim, the keys you press (only keys
-bound in MCC, and only while MCC is the window in front), your trigger, guns and equipment, on this PC only
+Turn on **Data collector** in the BOTS panel and play. It records your movement and aim, your shots, guns and equipment, all read
+from the game itself (your keyboard, mouse and controller are never recorded), on this PC only
 (`logs\collect_<map>_<date>-<time>.jsonl`).
 
 Open the **Observer** from the launcher and pick a game: a live one shows LIVE. Scrub the timeline and click a bot to
@@ -29,13 +29,12 @@ measured the same way):
 - **Speed**, time standing still, sideways speed in fights, jumps.
 - **Positioning**: the zones you spend time in, fight distance and height, who aims first when you and an enemy see
   each other, how much of the time an enemy has you in view. **Show where you were on the map** draws it.
-- **Accuracy**: trigger time on a body, damage dealt, kills; your guns, switches, pickups, equipment uses and key
-  presses.
+- **Accuracy**: firing time on a body, damage dealt, kills; your guns, shots, switches, pickups and equipment uses.
 
 Games recorded without the Data collector still get positions, aim, pace and positioning from the bots' recording
-(4 times a second, no keys). The **Crosshairs** layer draws your line of sight to what your crosshair is on: red on a
+(4 times a second, without your shots). The **Crosshairs** layer draws your line of sight to what your crosshair is on: red on a
 player, gold on a vehicle, white on the ground or a wall. Click yourself on the map to see what your crosshair is on,
-what you ride and which gun, and the buttons you held. Text versions: `tools\observer.py you <trace file>` and
+what you ride and which gun. Text versions: `tools\observer.py you <trace file>` and
 `tools\observer.py at <trace file> <seconds>`.
 
 The Observer keeps the last 10 matches.

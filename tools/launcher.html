@@ -37,7 +37,7 @@
          max-height: 160px; overflow: auto; font: 12.5px/1.45 Consolas, monospace; white-space: pre-wrap; color: #c9d3df; }
   .log:empty { display: none; }
   ol.steps { list-style: none; padding: 0; margin: 0 0 12px; display: grid; gap: 4px; }
-  ol.steps li { display: grid; grid-template-columns: 22px 110px 1fr; gap: 6px; }
+  ol.steps li { display: grid; grid-template-columns: 22px 150px 1fr; gap: 6px; }
   .tool { display: grid; grid-template-columns: 170px 1fr; gap: 10px; align-items: center; padding: 8px 0;
           border-top: 1px solid var(--line); }
   .tool:first-of-type { border-top: 0; }
@@ -46,6 +46,11 @@
   footer { padding: 0 24px 18px; display: flex; gap: 10px; flex-wrap: wrap; color: var(--dim); align-items: center; }
   .banner { margin: 0 24px; padding: 10px 14px; border-radius: 8px; background: #3a1d22; border: 1px solid #6b2c35; }
   .banner:empty { display: none; }
+  .confirm { margin: 0 24px 18px; padding: 12px 16px; border-radius: var(--radius); background: var(--card);
+             border: 1px solid #6b2c35; }
+  .confirm p { margin: 0 0 10px; }
+  button.danger { background: #8f2a33; border-color: #b33a45; font-weight: 600; }
+  button.danger:hover { background: #a3313b; }
 </style>
 </head>
 <body>
@@ -85,7 +90,7 @@
       <ol class="steps" id="steps"></ol>
       <div class="actions">
         <button id="setup">Run setup</button>
-        <button id="setup-force">Rebuild everything</button>
+        <button id="setup-force" title="Builds every part again from your copy of MCC: for missing or broken 3D bots, pictures or effects, or after installing more MCC games">Repair</button>
         <span id="setup-state" class="dim" aria-live="polite"></span>
       </div>
       <div class="log" id="log-setup"></div>
@@ -111,8 +116,18 @@
 <footer>
   <button id="folder">Open the install folder</button>
   <button id="docs">Read the guide</button>
+  <button id="uninstall" hidden>Uninstall</button>
   <span>Not affiliated with or endorsed by Microsoft.</span>
 </footer>
+<div class="confirm" id="uninstall-ask" role="alertdialog" aria-labelledby="uninstall-q" hidden>
+  <p id="uninstall-q">Remove Project Proving Grounds from this PC? MCC itself is not changed. Every window of the mod
+    closes, then the uninstaller asks whether to keep your LiDAR scans and recorded matches.</p>
+  <div class="actions">
+    <button id="uninstall-yes" class="danger">Uninstall</button>
+    <button id="uninstall-no">Cancel</button>
+    <span id="uninstall-state" aria-live="polite"></span>
+  </div>
+</div>
 <script>
 const $ = id => document.getElementById(id);
 const STEP_NAMES = {"bots": "Bots", "recording": "Match recording", "map art": "Map pictures", "logos": "Game logos", "3D bots": "3D bots",
@@ -130,8 +145,10 @@ function setText(id, text, cls) { const e = $(id); e.textContent = text; e.class
 function render(s) {
   state = s;
   $("version").textContent = "version " + s.version;
-  if (s.mcc) setText("r-game", "Found" + (s.mcc_running ? " (running)" : ""), "ok");
+  if (s.mcc) setText("r-game", "Found" + (s.mcc_running ? " (running)" : "")
+                     + (s.missing_games.length ? `; not installed: ${s.missing_games.join(", ")} (bots play in the games you have)` : ""), "ok");
   else setText("r-game", "Not found: install Halo: The Master Chief Collection through Steam", "bad");
+  $("uninstall").hidden = !s.installed;
   const ready = s.setup.filter(x => x[1]).length;
   setText("r-setup", ready === s.setup.length ? "Ready" : `${ready} of ${s.setup.length} parts ready: run the first-time setup below`,
           ready === s.setup.length ? "ok" : "warn");
@@ -147,12 +164,14 @@ function render(s) {
   const allDone = ready === s.setup.length && !Object.values(stepNote).some(Boolean) && !s.running.setup && !s.running.setup_force;
   $("setup-done").hidden = !allDone; list.hidden = allDone;
   $("setup").hidden = allDone;
-  for (const [name, done] of s.setup) {
+  for (const [name, done, why] of s.setup) {
     const li = document.createElement("li");
     const note = stepNote[name];
-    const icon = note && note.startsWith("failed") ? ["!", "bad"] : note === "working" ? ["...", "warn"] : done ? ["OK", "ok"] : ["-", "dim"];
+    const icon = note && note.startsWith("failed") ? ["!", "bad"] : note === "working" ? ["...", "warn"]
+      : why ? ["-", "dim"] : done ? ["OK", "ok"] : ["-", "dim"];
     li.innerHTML = `<span class="${icon[1]}">${icon[0]}</span><span>${STEP_NAMES[name] || name}</span><span class="dim"></span>`;
-    li.lastChild.textContent = note && note !== "working" ? note : done ? "ready" : (note === "working" ? "working ..." : "not yet");
+    li.lastChild.textContent = note && note !== "working" ? note : why ? `not needed: ${why}`
+      : done ? "ready" : (note === "working" ? "working ..." : "not yet");
     list.appendChild(li);
   }
   for (const [task, run] of Object.entries(s.running)) {
@@ -178,7 +197,7 @@ async function follow(task, box, stateEl) {
     for (const line of r.lines) {
       $(box).textContent += line + "\n";
       const m = line.match(/^STEP \d+\/\d+ ([^:]+): (.*)$/);
-      if (m) stepNote[m[1]] = m[2].startsWith("working") ? "working" : m[2].startsWith("failed") ? m[2] : undefined;
+      if (m) stepNote[m[1]] = m[2].startsWith("working") ? "working" : m[2].startsWith("failed") || m[2].startsWith("skipped") ? m[2] : undefined;
     }
     $(box).scrollTop = $(box).scrollHeight;
     if (!r.running) {
@@ -216,6 +235,19 @@ for (const b of document.querySelectorAll("[data-task]")) {
 }
 $("folder").onclick = () => post("/folder");
 $("docs").onclick = () => post("/docs");
+function askUninstall(open) {
+  $("uninstall-ask").hidden = !open;
+  setText("uninstall-state", "");
+  (open ? $("uninstall-no") : $("uninstall")).focus();
+}
+$("uninstall").onclick = () => askUninstall(true);
+$("uninstall-no").onclick = () => askUninstall(false);
+$("uninstall-ask").onkeydown = e => { if (e.key === "Escape") askUninstall(false); };
+$("uninstall-yes").onclick = async () => {
+  const r = await post("/uninstall");
+  if (!r.ok) { setText("uninstall-state", r.message, "bad"); return; }
+  setText("uninstall-state", "Closing the mod's windows; the uninstaller opens in a moment ...", "dim");
+};
 refresh().then(() => {
   if (location.search.includes("setup=1") && state && state.mcc && state.setup.some(x => !x[1])) runSetup("setup");
 });

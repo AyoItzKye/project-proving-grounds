@@ -1,7 +1,7 @@
 """Project Proving Grounds' launcher: the window the Start Menu shortcut opens. It shows what is ready (the game, the
 first-time setup, the map tools, mapped maps, mods that can clash), starts MCC with the bots, runs the first-time setup
-and opens the tools (Observer, LiDAR Simulator, LiDAR Viewer, nav painter), each in its own app window
-(tools/appwindow.py).
+(Repair: all of it again), opens the tools (Observer, LiDAR Simulator, LiDAR Viewer, nav painter), each in its own app
+window (tools/appwindow.py), and uninstalls (the installer's own uninstaller, once everything of the mod is closed).
 
 A small local server (127.0.0.1 only) serves tools/launcher.html and runs the tasks as their own processes, with
 this Python. It stops a while after its window closes, unless a task it started is still running. Starting it again
@@ -9,6 +9,7 @@ while it runs just opens its window again.
 
 usage: python -I launcher.py [--port 8793] [--no-window] [--setup]   (--setup: runs the first-time setup if needed)
 """
+import glob
 import json
 import os
 import subprocess
@@ -62,10 +63,28 @@ def lidar_counts():
     return sum(os.path.exists(os.path.join(maps, d, "lidar.json")) for d in known), len(known)
 
 
+def uninstaller():
+    """The installer's uninstaller (unins000.exe in the install folder), or None in a copy not installed with it."""
+    found = sorted(glob.glob(os.path.join(ROOT, "unins*.exe")))
+    return found[-1] if found else None
+
+
+def uninstall(srv):
+    """Closes everything of the mod (the tools it started, their windows, this one), then opens the uninstaller: the
+    same one Windows' Settings > Apps runs, which asks before it removes anything."""
+    exe = uninstaller()
+    time.sleep(0.8)                                  # (the page's answer reaches it first)
+    conflicts.stop_inside(ROOT, keep={os.getpid()})
+    subprocess.Popen([exe], cwd=os.path.dirname(ROOT), creationflags=0x00000008)   # DETACHED_PROCESS
+    srv.shutdown()
+
+
 def status():
     found = conflicts.scan()
     mapped, total = lidar_counts()
-    return dict(version=version(), mcc=paths.mcc(), mcc_running=conflicts.mcc_running(),
+    mcc = paths.mcc()
+    return dict(version=version(), mcc=mcc, mcc_running=conflicts.mcc_running(), installed=bool(uninstaller()),
+                missing_games=[paths.GAME_NAMES[g] for g in paths.GAME_MAPS if g not in paths.games(mcc)] if mcc else [],
                 setup=setup.status()[1:], map_tools=bool(paths.map_tool("model2obj")),
                 lidar=dict(mapped=mapped, total=total), workshop=conflicts.workshop_count(),
                 conflicts=[dict(file=os.path.relpath(p, paths.mcc()), why=w) for p, w in found],
@@ -146,6 +165,14 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path == "/docs":
             os.startfile(os.path.join(ROOT, "README.md"))
             self.send({"ok": True})
+        elif self.path == "/uninstall":
+            if not uninstaller():
+                return self.send({"ok": False, "message": "This copy was not installed with the installer: to remove "
+                                  "it, delete its folder."}, code=400)
+            if conflicts.mcc_running():
+                return self.send({"ok": False, "message": "Close MCC first: the bots are loaded into it."}, code=400)
+            self.send({"ok": True})
+            threading.Thread(target=uninstall, args=(self.server,), daemon=True).start()
         else:
             self.send({"error": "not found"}, code=404)
 
@@ -161,9 +188,16 @@ def watch_idle(srv):
 
 
 def main():
+    if os.path.basename(sys.executable).lower() == "pythonw.exe":
+        # started by the shortcut under pythonw (no console window): start again under python.exe with a hidden
+        # console (CREATE_NO_WINDOW), which every program the launcher starts inherits, so none can flash a window
+        subprocess.Popen([PY, "-I", os.path.abspath(__file__), *sys.argv[1:]], cwd=ROOT,
+                         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        return
     port = int(sys.argv[sys.argv.index("--port") + 1]) if "--port" in sys.argv else PORT
     url = f"http://127.0.0.1:{port}/" + ("?setup=1" if "--setup" in sys.argv else "")
     conflicts.restore()                              # (files a clean launch moved aside, if the PC went off since)
+    appwindow.remove_old_edge_profile()              # (0.1.0's Edge profile, signed into the user's account by Windows)
     try:
         srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     except OSError:                                  # it runs already: show its window again

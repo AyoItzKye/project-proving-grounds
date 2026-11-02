@@ -718,9 +718,9 @@ def main():
             except Exception as e:
                 print(f"{what} not saved: {type(e).__name__}: {e}", flush=True)
     collector = None
-    from collector import crouch_held
+    from crouch_key import crouch_held
     try:
-        crouch_now = crouch_held(live.g.pid)           # the person's crouch key (snapshot)
+        crouch_now = crouch_held(live.g.pid)           # the person's crouch key held now (never saved)
     except Exception as e:                           # (no keyboard read: he reads as standing)
         print(f"crouch key not read: {type(e).__name__}: {e}", flush=True)
         crouch_now = lambda: False                   # noqa: E731
@@ -731,7 +731,7 @@ def main():
         stamp = same.group(1) if same else time.strftime("%Y%m%d-%H%M%S")
         try:
             collector = Collector(os.path.join(ROOT, "logs", f"collect_{o.map}_{stamp}.jsonl"), o.map, o.game,
-                                  live.g.pid, lambda: (still[2] if still[2] is not None else time.time()) - t0 - paused[0])
+                                  lambda: (still[2] if still[2] is not None else time.time()) - t0 - paused[0])
             print("data collector on:", collector.path, flush=True)
         except Exception as e:                       # never stops the bots
             print(f"data collector could not start: {type(e).__name__}: {e}", flush=True)
@@ -789,8 +789,6 @@ def main():
                     except Exception as e:
                         print(f"{now:6.1f}s bug report attach failed: {type(e).__name__}: {e}", flush=True)
                 if still[2] is not None:          # paused: nothing moves, nothing to do
-                    if collector:
-                        collector.keys.take()     # (his typing in the pause menu is not play: spaces read as jumps)
                     time.sleep(1 / HZ)
                     continue
                 try:                            # out of bounds, learned (brain/oob.py): a soft wall for every bot

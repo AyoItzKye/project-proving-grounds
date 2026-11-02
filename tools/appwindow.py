@@ -1,55 +1,50 @@
-"""Opens one of the project's pages (the launcher, the Observer, the LiDAR view, the nav painter) as its own app
-window: Microsoft Edge's app mode (no tabs, no address bar, its own title and taskbar button), which every Windows 10
-and 11 PC has. The window keeps its own Edge profile under %LOCALAPPDATA%\\ProjectProvingGrounds\\window, so it never
-touches the user's own browser profile. Without Edge the page opens in the default browser.
+"""Opens one of the project's pages (the launcher, the Observer, the LiDAR view, the nav painter) in its own app
+window: native/bin/ppg_window.exe, a small Windows program that shows the page through the WebView2 web view built into
+Windows 10 and 11. It is not a browser: no profile, no account sign-in, no sync, no extensions, no address bar; links to
+other sites open in the default browser. A developer copy without the built window opens the page in the default
+browser instead.
 
 usage: python -I appwindow.py <url> [width height]
 """
 import os
+import shutil
 import subprocess
 import sys
 import webbrowser
 
-
-def edge():
-    """msedge.exe's path (its App Paths registry entry, else the usual install folders), or None."""
-    try:
-        import winreg
-        for hive in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
-            try:
-                with winreg.OpenKey(hive, r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\msedge.exe") as k:
-                    p = winreg.QueryValueEx(k, None)[0]
-                    if p and os.path.exists(p):
-                        return p
-            except OSError:
-                continue
-    except ImportError:
-        pass
-    for base in (os.environ.get("ProgramFiles(x86)"), os.environ.get("ProgramFiles")):
-        p = os.path.join(base or "", "Microsoft", "Edge", "Application", "msedge.exe")
-        if base and os.path.exists(p):
-            return p
-    return None
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.normpath(os.path.join(HERE, ".."))
+WINDOW = os.path.join(ROOT, "native", "bin", "ppg_window.exe")
+ICON = os.path.join(ROOT, "installer", "icon.ico")
+TITLES = {"8793": "Project Proving Grounds", "8799": "Observer - Project Proving Grounds",
+          "8797": "LiDAR - Project Proving Grounds", "8796": "Paint the nav - Project Proving Grounds"}
 
 
-def command(url, size=(1400, 900), exe=None, profile=None):
-    """The command line that opens url as an app window, or None without Edge."""
-    exe = exe or edge()
-    if not exe:
+def command(url, size=(1400, 900), title=None):
+    """The command line that opens url in the app window, or None without the built window."""
+    if not os.path.exists(WINDOW):
         return None
-    profile = profile or os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "ProjectProvingGrounds",
-                                      "window")
-    return [exe, f"--app={url}", f"--window-size={size[0]},{size[1]}", f"--user-data-dir={profile}",
-            "--no-first-run", "--no-default-browser-check", "--disable-features=Translate"]
+    port = url.split(":")[2].split("/")[0] if url.count(":") >= 2 else ""
+    cmd = [WINDOW, "--url", url, "--title", title or TITLES.get(port, "Project Proving Grounds"),
+           "--width", str(size[0]), "--height", str(size[1])]
+    return cmd + (["--icon", ICON] if os.path.exists(ICON) else [])
 
 
-def open_window(url, size=(1400, 900)):
-    """Opens url as an app window (the default browser without Edge). Returns at once."""
-    cmd = command(url, size)
+def open_window(url, size=(1400, 900), title=None):
+    """Opens url in the app window (the default browser without it). Returns at once."""
+    cmd = command(url, size, title)
     if cmd:
         subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     else:
         webbrowser.open(url)
+
+
+def remove_old_edge_profile():
+    """Version 0.1.0 opened its pages in Edge with a profile of its own (%LOCALAPPDATA%\\ProjectProvingGrounds\\window),
+    which Windows signed into the user's Microsoft account and synced into: deleted (best effort; Edge may hold it)."""
+    old = os.path.join(os.environ.get("LOCALAPPDATA", ""), "ProjectProvingGrounds", "window")
+    if os.environ.get("LOCALAPPDATA") and os.path.isdir(old):
+        shutil.rmtree(old, ignore_errors=True)
 
 
 if __name__ == "__main__":

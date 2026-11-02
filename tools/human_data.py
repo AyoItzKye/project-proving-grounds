@@ -3,7 +3,8 @@ installer (docs/HUMAN_DATA.md says what is in it and how to read it).
 
 In the zip:
   collect/<file>.jsonl     every Data collector recording on this PC (logs/collect_*.jsonl): a person playing,
-                           every tick, with the keys they pressed (the format: docs/HUMAN_DATA.md)
+                           every tick: movement, aim, guns, rounds (the format: docs/HUMAN_DATA.md); no keys
+                           (those of 0.1.0's recordings are left out, collector.without_keys)
   matches/<match>.zip      every recorded match with bots still on this PC, as the Observer's export makes it
                            (tools/match_export.py: names replaced by Player 1, 2 ..., Xbox ids removed)
   human/                   the human reference numbers the bots are tuned against (maps/_human)
@@ -24,6 +25,7 @@ import zipfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.normpath(os.path.join(HERE, ".."))
 sys.path.insert(0, HERE)
+import collector  # noqa: E402
 import make_release  # noqa: E402
 import match_export  # noqa: E402
 
@@ -45,7 +47,8 @@ def build(out):
     n_collect = n_match = 0
     with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as z:
         for p in sorted(glob.glob(os.path.join(LOGS, "collect_*.jsonl"))):
-            z.writestr("collect/" + os.path.basename(p), clean(open(p, encoding="utf-8", errors="replace").read(), terms, p))
+            text = collector.without_keys(open(p, encoding="utf-8", errors="replace").read())
+            z.writestr("collect/" + os.path.basename(p), clean(text, terms, p))
             n_collect += 1
         work = tempfile.mkdtemp()
         try:

@@ -1,9 +1,9 @@
 """Offline checks for the Observer (tools/observer.py): the last 5 match recordings are kept; with a
-server running on --port (default 8799) the endpoints answer, chunks end on whole lines, files that are
+server running (its own on 8811, or the --port given) the endpoints answer, chunks end on whole lines, files that are
 not traces are refused, and the text mode describes a bot from a trace with the observer lines (a short
 simulator game).
 
-usage: python -I test_observer.py [port]      -> "observer OK"   (uses a server on port, else starts one on 8811)
+usage: python -I test_observer.py [port]      -> "observer OK"   (uses a server on port, else its own on 8811)
 """
 import glob
 import json
@@ -69,8 +69,9 @@ def recordings(fails):
 
 
 def main():
-    port = int(sys.argv[1]) if len(sys.argv) > 1 else 8799
-    u = f"http://127.0.0.1:{port}"
+    # a server of this copy: the one on the port given, else its own (the Observer on 8799 may be another install's,
+    # with other recordings)
+    u = f"http://127.0.0.1:{sys.argv[1] if len(sys.argv) > 1 else 8811}"
     fails = []
     recordings(fails)
     if fails:

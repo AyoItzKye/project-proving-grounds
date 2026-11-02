@@ -91,11 +91,67 @@ def report():
     return "\n".join(lines)
 
 
+def processes():
+    """[(pid, file name)] of every process, asked of Windows directly (a process snapshot): no child program, so
+    nothing opens a console window."""
+    import ctypes
+    import ctypes.wintypes as wt
+
+    class ENTRY(ctypes.Structure):
+        _fields_ = [("dwSize", wt.DWORD), ("cntUsage", wt.DWORD), ("th32ProcessID", wt.DWORD),
+                    ("th32DefaultHeapID", ctypes.c_size_t), ("th32ModuleID", wt.DWORD), ("cntThreads", wt.DWORD),
+                    ("th32ParentProcessID", wt.DWORD), ("pcPriClassBase", ctypes.c_long), ("dwFlags", wt.DWORD),
+                    ("szExeFile", ctypes.c_wchar * 260)]
+    k = ctypes.windll.kernel32
+    k.CreateToolhelp32Snapshot.restype = wt.HANDLE
+    snap = k.CreateToolhelp32Snapshot(0x2, 0)                  # TH32CS_SNAPPROCESS
+    if not snap or snap == wt.HANDLE(-1).value:
+        return []
+    out = []
+    try:
+        e = ENTRY()
+        e.dwSize = ctypes.sizeof(ENTRY)
+        ok = k.Process32FirstW(snap, ctypes.byref(e))
+        while ok:
+            out.append((e.th32ProcessID, e.szExeFile))
+            ok = k.Process32NextW(snap, ctypes.byref(e))
+        return out
+    finally:
+        k.CloseHandle(snap)
+
+
+def process_running(name):
+    """Whether a process with this file name runs."""
+    return any(n.lower() == name.lower() for _, n in processes())
+
+
+def stop_inside(folder, keep=()):
+    """Ends every process whose program file is inside folder (the mod's Python, its app windows, the injector) but
+    the pids in keep; returns how many. For the uninstaller: no file of the mod may be in use."""
+    import ctypes
+    import ctypes.wintypes as wt
+    k = ctypes.windll.kernel32
+    k.OpenProcess.restype = wt.HANDLE
+    root = os.path.normcase(os.path.abspath(folder)) + os.sep
+    n = 0
+    for pid, _ in processes():
+        if pid in keep or not pid:
+            continue
+        h = k.OpenProcess(0x1000 | 0x0001, False, pid)          # QUERY_LIMITED_INFORMATION | TERMINATE
+        if not h:
+            continue
+        try:
+            buf, size = ctypes.create_unicode_buffer(1024), wt.DWORD(1024)
+            if k.QueryFullProcessImageNameW(h, 0, buf, ctypes.byref(size)) and \
+                    os.path.normcase(buf.value).startswith(root) and k.TerminateProcess(h, 0):
+                n += 1
+        finally:
+            k.CloseHandle(h)
+    return n
+
+
 def mcc_running():
-    import subprocess
-    out = subprocess.run(["tasklist", "/FI", "IMAGENAME eq MCC-Win64-Shipping.exe"], capture_output=True,
-                         text=True).stdout
-    return "mcc-win64-shipping.exe" in out.lower()
+    return process_running("MCC-Win64-Shipping.exe")
 
 
 def restore_after_mcc(start_wait=180):

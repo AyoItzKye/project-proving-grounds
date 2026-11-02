@@ -11,8 +11,10 @@ step by step, skipping what is already there:
   7 effects     the armor effect sprites (tools/fx_art.py, the map tools)
   8 looks       each bot's armor and emblem as rolled (tools/looks_export.py)
 
-Each step prints one line, "STEP <n>/<total> <name>: done | already there | failed: <why>", which the launcher
-shows. A failed step does not stop the ones after it that do not need it.
+Each step prints one line, "STEP <n>/<total> <name>: done | already there | skipped (<why>) | failed: <why>", which
+the launcher shows. A failed step does not stop the ones after it that do not need it. Steam installs MCC's games one
+by one: what needs a game that is not installed is skipped (3D bots of that game, the effects without Halo: Reach),
+and a copy of MCC with its menu art missing gets plain logos and the maps' own top-down pictures.
 
 usage: python -I setup.py [--force]      (--force rebuilds every step)
        python -I setup.py --status       what is there, one line a step, nothing built
@@ -78,38 +80,65 @@ def _looks():
     return tool("looks_export.py")
 
 
-# (name, what shows it is done, builder, needs the game)
+def _no_reach():
+    """Why the effects step does not apply (None: it does): they come from a Halo: Reach map."""
+    return None if not paths.mcc() or "reach" in paths.games() else "Halo: Reach is not installed"
+
+
+# (name, what shows it is done, builder, needs the game, why it does not apply on this PC (None: it does))
 STEPS = (
-    ("bots", lambda: has("native/bin/bot_profiles.ini"), _bots, False),
-    ("recording", lambda: has("logs/trace_on"), _recording, False),
-    ("map art", lambda: len(glob.glob(os.path.join(HERE, "view_art", "maps", "*.jpg"))) >= 100, _map_art, True),
-    ("logos", lambda: has("native/bin/art/ce.rgba", "native/bin/art/h4.rgba"), _logos, True),
-    ("3D bots", lambda: has("native/bin/models/h3_spartan.mdl", "maps/_models/emblems_mcc"), _models, True),
-    ("effects", lambda: has("native/bin/art/fx_fire.rgba"), _effects, True),
-    ("looks", lambda: has("native/bin/bot_looks.ini"), _looks, False),
+    ("bots", lambda: has("native/bin/bot_profiles.ini"), _bots, False, None),
+    ("recording", lambda: has("logs/trace_on"), _recording, False, None),
+    ("map art", lambda: len(glob.glob(os.path.join(HERE, "view_art", "maps", "*.jpg"))) >= 100, _map_art, True, None),
+    ("logos", lambda: has("native/bin/art/ce.rgba", "native/bin/art/h4.rgba"), _logos, True, None),
+    ("3D bots", lambda: has("native/bin/models/made.txt") or has("native/bin/models/h3_spartan.mdl",
+                                                                 "maps/_models/emblems_mcc"), _models, True, None),
+    ("effects", lambda: has("native/bin/art/fx_fire.rgba"), _effects, True, _no_reach),
+    ("looks", lambda: has("native/bin/bot_looks.ini"), _looks, False, None),
 )
 TOTAL = len(STEPS) + 1
 
 
 def status():
-    """[(name, done)] for the game and every step."""
-    return [("game", bool(paths.mcc()))] + [(name, bool(done())) for name, done, _, _ in STEPS]
+    """[(name, done, note)] for the game and every step; a step that does not apply on this PC counts as done, its
+    note says why ("" otherwise)."""
+    out = [("game", bool(paths.mcc()), "")]
+    for name, done, _, _, skip in STEPS:
+        why = "" if done() else (skip() if skip else None) or ""
+        out.append((name, bool(done() or why), why))
+    return out
+
+
+def game_line(mcc):
+    """Step 1's line: where MCC is and which of its games are installed."""
+    if not mcc:
+        return "failed: The Master Chief Collection was not found (install it through Steam, or set HB_MCC)"
+    have = paths.games(mcc)
+    if not have:
+        return f"failed: {mcc} has none of MCC's games installed (Steam: MCC > Properties > DLC)"
+    missing = [paths.GAME_NAMES[g] for g in paths.GAME_MAPS if g not in have]
+    return f"done ({mcc}" + (f"; not installed: {', '.join(missing)}" if missing else "") + ")"
 
 
 def run(force=False):
     """Every step in order; returns the number that failed."""
     os.makedirs(BIN, exist_ok=True)
     mcc = paths.mcc()
-    print(f"STEP 1/{TOTAL} game: " + (f"done ({mcc})" if mcc else
-          "failed: The Master Chief Collection was not found (install it through Steam, or set HB_MCC)"), flush=True)
+    line = game_line(mcc)
+    print(f"STEP 1/{TOTAL} game: {line}", flush=True)
+    mcc = None if line.startswith("failed") else mcc
     failed = 0 if mcc else 1
-    for n, (name, done, build, needs_game) in enumerate(STEPS, 2):
+    for n, (name, done, build, needs_game, skip) in enumerate(STEPS, 2):
         if done() and not force:
             print(f"STEP {n}/{TOTAL} {name}: already there", flush=True)
             continue
         if needs_game and not mcc:
             print(f"STEP {n}/{TOTAL} {name}: failed: needs the game", flush=True)
             failed += 1
+            continue
+        why = skip() if skip else None
+        if why:
+            print(f"STEP {n}/{TOTAL} {name}: skipped ({why})", flush=True)
             continue
         print(f"STEP {n}/{TOTAL} {name}: working ...", flush=True)
         try:
@@ -125,7 +154,7 @@ def run(force=False):
 
 if __name__ == "__main__":
     if "--status" in sys.argv:
-        for name, done in status():
-            print(f"{name}: {'ready' if done else 'not yet'}")
+        for name, done, why in status():
+            print(f"{name}: {why or ('ready' if done else 'not yet')}")
     else:
         raise SystemExit(1 if run("--force" in sys.argv) else 0)

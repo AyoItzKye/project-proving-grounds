@@ -96,16 +96,37 @@ def thumbnail(folder, name, thumbs):
     return hits[0] if hits else None
 
 
+def drawn_logo(game):
+    """A plain logo (the game's short name in a frame) where MCC's own is not on this PC."""
+    from PIL import ImageDraw, ImageFont
+    text = {"ce": "CE", "h2": "H2", "h2a": "H2A", "h3": "H3", "odst": "ODST", "reach": "REACH", "h4": "H4"}[game]
+    im = Image.new("RGBA", (120, 120), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    d.rounded_rectangle((4, 24, 115, 95), 12, outline=(222, 230, 240, 255), width=4)
+    try:
+        font = ImageFont.truetype("segoeuib.ttf", 34 if len(text) < 4 else 24)
+    except OSError:
+        font = ImageFont.load_default(28)
+    d.text((60, 60), text, font=font, fill=(222, 230, 240, 255), anchor="mm")
+    return im
+
+
 def main():
     mcc =sys.argv[sys.argv.index("--mcc") + 1] if "--mcc" in sys.argv else MCC
     tex = os.path.join(mcc, "data", "ui", "texturepacks")
     for sub in ("games", "maps"):
         os.makedirs(os.path.join(OUT, sub), exist_ok=True)
-    ui = pack(os.path.join(tex, "globaluitexturepack"))
+    # MCC's menu art; a copy of MCC without it (files missing or damaged) gets plain logos and top-down pictures
+    have = lambda name: os.path.exists(os.path.join(tex, name + ".perm.bin"))   # noqa: E731
+    ui = pack(os.path.join(tex, "globaluitexturepack")) if have("globaluitexturepack") else {}
     for game, name in ICONS.items():
-        im = dds(ui[name], 120, 120, b"DXT5").convert("RGBA")     # 14400 bytes of BC3 = 120x120
+        if name in ui:
+            im = dds(ui[name], 120, 120, b"DXT5").convert("RGBA")     # 14400 bytes of BC3 = 120x120
+        else:
+            im = drawn_logo(game)
         im.crop(im.getchannel("A").point(lambda a: 255 if a > 24 else 0).getbbox()).save(os.path.join(OUT, "games", game + ".png"))
-    thumbs = {k: v for k, v in pack(os.path.join(tex, "ingamechapterpack")).items() if len(v) in THUMB_SIZES}
+    thumbs = {k: v for k, v in pack(os.path.join(tex, "ingamechapterpack")).items()
+              if len(v) in THUMB_SIZES} if have("ingamechapterpack") else {}
     names = json.load(open(os.path.join(OUT, "names.json"), encoding="utf-8"))
     missing = []
     for folder in sorted(os.listdir(os.path.join(ROOT, "maps"))):
@@ -120,14 +141,19 @@ def main():
         im = dds(thumbs[t], *THUMB_SIZES[len(thumbs[t])], b"DXT1").convert("RGB") if t else None
         if im is None:                                     # not in MCC: the map's own top-down picture
             missing.append(folder)
-            top = Image.open(os.path.join(d, "topdown.png")).convert("RGB")
-            top.thumbnail((THUMB_W, THUMB_W // 2))
             im = Image.new("RGB", (THUMB_W, THUMB_W // 2), (11, 15, 20))
-            im.paste(top, ((THUMB_W - top.width) // 2, (THUMB_W // 2 - top.height) // 2))
+            if os.path.exists(os.path.join(d, "topdown.png")):
+                top = Image.open(os.path.join(d, "topdown.png")).convert("RGB")
+                top.thumbnail((THUMB_W, THUMB_W // 2))
+                im.paste(top, ((THUMB_W - top.width) // 2, (THUMB_W // 2 - top.height) // 2))
         if im.width > THUMB_W:
             im = im.resize((THUMB_W, round(im.height * THUMB_W / im.width)), Image.LANCZOS)
         im.save(os.path.join(OUT, "maps", folder + ".jpg"), quality=85)
-    print(f"{len(ICONS)} game logos; MCC has no picture for: {', '.join(missing) or 'none'}")
+    if not ui or not thumbs:
+        print("MCC's menu art (data\\ui\\texturepacks) is missing from this copy of MCC: plain logos and top-down "
+              "pictures instead (Steam can repair it: MCC > Properties > Installed Files > Verify integrity)")
+    else:
+        print(f"{len(ICONS)} game logos; MCC has no picture for: {', '.join(missing) or 'none'}")
 
 
 if __name__ == "__main__":

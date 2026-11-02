@@ -99,8 +99,8 @@ All from the launcher, each in its own window:
 - **Observer**: replay recorded matches, see what every bot saw, thought, was told and did, and your own numbers next
   to the bots' (aim, reaction, fights, positioning). Import and export games to share them; names are replaced and
   Xbox ids removed in exports.
-- **Data collector** (a switch in the BOTS panel): records your movement, aim and keys for the Observer. Everything
-  stays on your PC.
+- **Data collector** (a switch in the BOTS panel): records your movement, aim, shots and guns for the Observer, read
+  from the game itself (never your keyboard or controller). Everything stays on your PC.
 - **LiDAR Simulator** and **LiDAR Viewer**: above.
 - **Paint the nav** (advanced): mark where bots may and may not walk.
 

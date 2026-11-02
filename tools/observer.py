@@ -24,7 +24,6 @@ import math
 import os
 import re
 import sys
-import threading
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -252,48 +251,6 @@ def squad_text(row):
             + (f", formed up with {' '.join(f'#{m}' for m in row[13])}" if row[13] else ", nobody with it"))
 
 
-_KEYS, _KEYS_LOCK = {}, threading.Lock()
-
-
-def key_events(path):
-    """Your buttons in a game, [[t, key, down 1|0], ...] time ordered, from its Data collector file (tools/collector.py:
-    keys bound in MCC, controller buttons as "pad A" ...); [] without one. A file is read on from where the last call
-    stopped (a live game's grows)."""
-    src = you_source(path)
-    if src == path:
-        return []
-    with _KEYS_LOCK:
-        off, out = _KEYS.get(src, (0, []))
-        size = os.path.getsize(src)
-        if size < off:
-            off, out = 0, []
-        with open(src, "rb") as f:
-            f.seek(off)
-            chunk = f.read(size - off)
-        cut = chunk.rfind(b"\n") + 1              # whole lines only: the rest next time
-        for line in chunk[:cut].splitlines():
-            if b'"key"' in line:
-                try:
-                    d = json.loads(line)
-                    out.append([d["t"], d["key"], d["down"]])
-                except (ValueError, KeyError):
-                    pass
-        _KEYS[src] = (off + cut, out)
-        return list(out)
-
-
-def held_at(events, t, back=2.0):
-    """(buttons held at t, [(key, seconds ago)] pressed in the back seconds before t) from key_events."""
-    held, recent = {}, []
-    for et, k, down in events:
-        if et > t:
-            break
-        held[k] = down
-        if down and t - et <= back:
-            recent.append((k, round(t - et, 2)))
-    return sorted(k for k, d in held.items() if d), recent
-
-
 def aim_text(r, vehicles=()):
     """A person's world row's crosshair and ride (rows 15, 16: brain/tracefmt.py crosshair, seat_of), in words; vehicles:
     the world line's [handle, kind, ...] rows, to name the one it is on."""
@@ -318,16 +275,11 @@ def cmd_at(path, t):
         print(f"score {w.get('score')} limit {w.get('limit')} time left {w.get('time_left')} posture {w.get('posture')}")
     for pid in sorted(tr.bots):
         print("\n".join(describe_bot(tr, pid, t)))
-    keys = key_events(path)
     for r in (w or {}).get("world", []):           # people: where they are, where their eyes are
         if not r[8] and r[2]:
             print(f"person {r[0]} team {r[1]} at {r[3:6]} facing {compass(r[10])}"
                   + (f", eyes on #{r[14]}" if len(r) > 14 and r[14] >= 0 else ", nobody in sights" if len(r) > 14 else "")
                   + squad_text(r) + aim_text(r, (w or {}).get("vehicles") or ()))
-    if keys:                                       # (the Data collector's: one person's buttons)
-        held, recent = held_at(keys, t)
-        print(f"buttons held: {', '.join(held) or 'none'}; pressed in the last 2 s: "
-              + (", ".join(f"{k} {a:.2f} s ago" for k, a in reversed(recent)) or "none"))
     calls = [c for c in tr.calls if t - 6.0 <= c["t"] <= t]
     if calls:
         print("callouts (last 6 s): " + "; ".join(f"{c['t']:.1f} team {c['team']} #{c['speaker']}: {c['call']}" for c in calls))
@@ -621,11 +573,6 @@ def serve(port, open_browser):
                         chunk = f.read(min(cap, max(0, size - off)))
                     cut = chunk.rfind(b"\n") + 1               # whole lines only: the rest comes next time
                     s.send(chunk[:cut], "text/plain; charset=utf-8", headers={"X-Next-Offset": off + cut, "X-Size": size})
-                elif u.path == "/keys":                         # your buttons (the Data collector's file), from
-                    path = safe_trace(q.get("file", ""))         # the from-th event on (a live game's page asks for
-                    if path is None:                             # the new ones each second)
-                        return s.send(b'{"error": "unknown trace"}', "application/json", 404)
-                    s.send(json.dumps(key_events(path)[int(q.get("from", 0)):]).encode(), "application/json")
                 elif u.path == "/you":                          # your numbers (tools/player_stats.py)
                     path = safe_trace(q.get("file", ""))
                     if path is None:

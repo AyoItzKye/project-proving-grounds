@@ -207,7 +207,7 @@ let lastPanel = 0, pollTimer = null;
 
 function freshGame(file, info) {
   return { file, info, meta: {}, bots: new Map(), thinks: new Map(), world: { t: [], rows: [] }, calls: [], loadouts: [], coach: [],
-    deaths: [], prevAlive: {}, tStart: Infinity, tEnd: 0, offset: 0, size: 0, hasThink: false, switches: new Map(), keys: null };
+    deaths: [], prevAlive: {}, tStart: Infinity, tEnd: 0, offset: 0, size: 0, hasThink: false, switches: new Map() };
 }
 function series(map, id) { if (!map.has(id)) map.set(id, { t: [], rows: [] }); return map.get(id); }
 function at(s, t) {          // the last row at or before t
@@ -304,19 +304,6 @@ async function pull(first) {
     if (!text || S.offset >= S.size) break;
   }
   if (!first) { setRange(); if (follow) now = S.tEnd; dirty = true; }
-  loadKeys();
-}
-async function loadKeys() {        // your buttons from the game's Data collector file (/keys): [[t, key, down], ...]
-  const game = S;
-  const have = (game.keys || []).length;
-  try { const r = await fetch(`/keys?file=${encodeURIComponent(game.file)}&from=${have}`), v = r.ok ? await r.json() : null;
-    if (v && game === S && (S.keys || []).length === have) S.keys = (S.keys || []).concat(v); }
-  catch (e) { /* the observer server will be asked again on the next pull */ }
-}
-function heldAt(t) {               // (held at t, [[key, s ago]] pressed in the 2 s before t)
-  const held = {}, recent = [];
-  for (const [et, k, down] of S.keys || []) { if (et > t) break; held[k] = down; if (down && t - et <= 2) recent.push([k, t - et]); }
-  return [Object.keys(held).filter((k) => held[k]).sort(), recent.reverse()];
 }
 
 let mapList = null;
@@ -368,31 +355,30 @@ function renderYou() {
   const cols = [["aim", "Aim", (x) => n(x)], ["shot", "Hit", (x) => n(x)], ["fights_min", "Fights", (x) => n(x, 1)],
     ["speed", "Speed", (x) => n(x)], ["standing", "Still", pc], ["strafe", "Strafe", (x) => n(x)],
     ["first_look", "1st look", pc], ["on_body", "On body", pc]];
-  const src = v.kind === "collect" ? `Data collector: ${v.rate} samples a second, with your keys.`
-    : `From the trace: ${v.rate} samples a second, no keys (times good to about 0.25 s). Turn on Data collector in the BOTS panel for your trigger, guns and exact times.`;
+  const src = v.kind === "collect" ? `Data collector: ${v.rate} samples a second, with your guns and shots.`
+    : `From the trace: ${v.rate} samples a second (times good to about 0.25 s). Turn on Data collector in the BOTS panel for your shots, guns and exact times.`;
   let h = `<div class="note">${esc(src)}</div>`;
   h += `<table class="ytab" aria-label="You beside the bots by difficulty"><thead><tr><th scope="col">Who</th>${cols.map(([, l]) => `<th scope="col">${l}</th>`).join("")}</tr></thead><tbody>`;
   for (const [name, x, me] of rows) h += `<tr${me ? ' class="me"' : ""}><td>${esc(name)}</td>${cols.map(([k, , f]) => `<td>${f(x[k])}</td>`).join("")}</tr>`;
   h += `</tbody></table>`;
   h += `<div class="note">Aim: seconds from a man coming into view to your aim on him. Hit: from being shot to your aim on someone. Fights: a minute alive. Speed: units a second. Still: time standing. Strafe: sideways speed in fights. 1st look: who aimed first when two players saw each other. On body: trigger time on a body.</div>`;
   h += `<div class="kv">`
-    + `<div>First shot</div><div>${r.fire == null ? "needs your keys (Data collector)" : `${n(r.fire, 2, " s")} after he comes into view`}</div>`
+    + `<div>First shot</div><div>${r.fire == null ? "needs your shots (Data collector)" : `${n(r.fire, 2, " s")} after he comes into view`}</div>`
     + `<div>Pre-aimed</div><div>${y.pre} times already on the spot he came from</div>`
     + `<div>Fights</div><div>${y.fights}, ${n(r.fight_len, 1, " s")} long, ${n(r.between, 1, " s")} between</div>`
     + `<div>After spawn</div><div>first fight ${n(r.to_first, 1, " s")} later</div>`
     + `<div>Fight distance</div><div>${n(r.dist, 1, " units")}, ${n(r.height, 1, " units")} above him</div>`
     + `<div>In their view</div><div>${pc(r.in_view)} of the time</div>`
-    + `<div>Damage</div><div>${r.dealt == null ? "needs your trigger (Data collector)" : `${n(r.dealt, 1)} (2.0 = one kill), ${r.kills} kills`}</div>`
+    + `<div>Damage</div><div>${r.dealt == null ? "needs your shots (Data collector)" : `${n(r.dealt, 1)} (2.0 = one kill), ${r.kills} kills`}</div>`
     + `<div>Deaths</div><div>${r.deaths}</div></div>`;
   let more = `<div class="kv"><div>Zones</div><div>${y.zones.map(([z, sh]) => `${esc(z)} ${pc(sh)}`).join(", ") || "–"}</div>`
     + `<div>Moving</div><div>${n(y.p90, 2)} units/s at the 90th percentile, ${n(y.jumps, 1)} jumps a minute</div>`;
   if (y.gear) more += `<div>Guns</div><div>${y.gear.guns.map(([w, s]) => `${esc(String(w).replace(/_/g, " "))} ${Math.round(s)} s`).join(", ")}</div>`
     + `<div>Switches</div><div>${y.gear.switches}; picked up ${Object.keys(y.gear.pickups).length ? esc(Object.entries(y.gear.pickups).map(([w, c]) => `${w.replace(/_/g, " ")} x${c}`).join(", ")) : "nothing"}</div>`
+    + `<div>Shots</div><div>${y.gear.shots}</div>`
     + `<div>Equipment</div><div>${y.gear.uses.length} uses${y.gear.uses.length ? ` (${esc([...new Set(y.gear.uses.map((u) => u[1]))].join(", "))})` : ""}</div>`;
-  if (y.keys) more += `<div>Keys a minute</div><div>${Object.entries(y.keys.per_min).slice(0, 10).map(([k, m]) => `${esc(k)} ${Math.round(m)}`).join(", ")}</div>`
-    + `<div>Trigger</div><div>${y.keys.fire_presses} presses, held ${n(y.keys.hold.fire, 2, " s")} median, ${pc(y.keys.fire_taps)} taps</div>`;
   h += `<p><button id="youmap" aria-pressed="${on.you}">${on.you ? "Hide" : "Show"} where you were on the map</button></p>`;
-  h += `<details><summary>More: zones, movement${y.gear ? ", guns, equipment, keys" : ""}</summary>${more}</div></details>`;
+  h += `<details><summary>More: zones, movement${y.gear ? ", guns, equipment" : ""}</summary>${more}</div></details>`;
   if (S.info && S.info.live) h += `<p><button id="youagain">Work it out again</button> (the game is still going)</p>`;
   el.className = ""; el.innerHTML = h;
   if ($("youagain")) $("youagain").onclick = loadYou;
@@ -689,7 +675,7 @@ function inspector(ps) {
     `<div>#${e} at ${x}, ${y}, ${z} <span class="${seen ? "chip on" : "chip"}">${seen ? "seen" : esc(src)}</span> <span class="sub">${age} s ago</span></div>`).join("") : `<div class="sub">no enemy known</div>`);
   el.innerHTML = h;
 }
-function personRows(p, ps) {     // a person: crosshair, ride and buttons (Oct 31 on; buttons need the Data collector)
+function personRows(p, ps) {     // a person: crosshair and ride (Oct 31 on)
   const sub = (t) => `<span class="sub">${t}</span>`;
   let cross = sub("not recorded in this game");
   if (p.aim === null) cross = "on the sky";
@@ -700,14 +686,7 @@ function personRows(p, ps) {     // a person: crosshair, ride and buttons (Oct 3
       : who ? `the ${esc(vehicleKind(who.slice(1)))}` : "the level") + ` ${sub(`${d} u away, at ${x}, ${y}, ${z}`)}`;
   }
   const ride = p.ride ? `${esc(p.ride[0].replace(/_/g, " "))}${p.ride[1] ? ` ${sub("on its " + esc(p.ride[1].replace(/_/g, " ")))}` : ""}` : "on foot";
-  let keys = sub("turn on Data collector in the BOTS panel to record buttons"), recent = "";
-  if (S.keys && S.keys.length) {
-    const [held, last] = heldAt(now);
-    keys = held.length ? held.map((k) => `<span class="chip on">${esc(k)}</span>`).join(" ") : sub("nothing held");
-    recent = last.length ? last.slice(0, 8).map(([k, a]) => `${esc(k)} ${sub(a.toFixed(2) + " s ago")}`).join(", ") : sub("none");
-  }
-  return `<div>Crosshair on</div><div>${cross}</div><div>Riding</div><div>${ride}</div><div>Holding</div><div>${keys}</div>` +
-    (recent ? `<div>Pressed (2 s)</div><div>${recent}</div>` : "");
+  return `<div>Crosshair on</div><div>${cross}</div><div>Riding</div><div>${ride}</div>`;
 }
 function feed() {
   const el = $("feed"), items = [];

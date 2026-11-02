@@ -68,15 +68,27 @@ def steam_commons():
     return tuple(uniq)
 
 
+def installed_in(common, name):
+    """Whether Steam's own record of an app (steamapps/appmanifest_<id>.acf beside this common folder) puts the app
+    with this install folder name here."""
+    rx = re.compile(r'"installdir"\s+"%s"' % re.escape(name), re.I)
+    for acf in glob.glob(os.path.join(os.path.dirname(common), "appmanifest_*.acf")):
+        try:
+            if rx.search(open(acf, encoding="utf-8", errors="replace").read()):
+                return True
+        except OSError:
+            continue
+    return False
+
+
 def app(name, env=None):
-    """An installed Steam app's folder by its install folder name (the env override first), or None."""
+    """An installed Steam app's folder by its install folder name (the env override first), or None. A folder of that
+    name can be left behind in another library (a game moved or uninstalled): the library Steam says has it comes
+    first."""
     if env and os.environ.get(env):
         return os.environ[env]
-    for common in steam_commons():
-        p = os.path.join(common, name)
-        if os.path.isdir(p):
-            return p
-    return None
+    found = [os.path.join(c, name) for c in steam_commons() if os.path.isdir(os.path.join(c, name))]
+    return next((p for p in found if installed_in(os.path.dirname(p), name)), found[0] if found else None)
 
 
 def mcc():
@@ -96,6 +108,20 @@ def steam_common():
         return os.path.dirname(m)
     commons = steam_commons()
     return commons[0] if commons else None
+
+
+# MCC's games: their map folders (Steam installs each game on its own, so some may be missing), and their names
+GAME_MAPS = {"ce": r"halo1\maps", "h2": r"halo2\h2_maps_win64_dx11", "h2a": r"groundhog\maps", "h3": r"halo3\maps",
+             "odst": r"halo3odst\maps", "reach": r"haloreach\maps", "h4": r"halo4\maps"}
+GAME_NAMES = {"ce": "Halo: CE", "h2": "Halo 2", "h2a": "Halo 2 Anniversary", "h3": "Halo 3", "odst": "Halo 3: ODST",
+              "reach": "Halo: Reach", "h4": "Halo 4"}
+
+
+def games(mcc_dir=None):
+    """The MCC games installed (their maps are there), in GAME_MAPS order."""
+    mcc_dir = mcc_dir or mcc()
+    return [g for g, d in GAME_MAPS.items()
+            if mcc_dir and glob.glob(os.path.join(mcc_dir, *d.split("\\"), "*.map"))]
 
 
 def map_tool(name):
@@ -144,8 +170,18 @@ def vcvars():
 
 if __name__ == "__main__":
     assert library_paths('"0"\n{\n\t"path"\t\t"D:\\\\Games\\\\Steam"\n}') == [os.path.normpath("D:\\Games\\Steam")]
+    import tempfile                                  # a folder left behind in one library, the install in another
+    with tempfile.TemporaryDirectory() as tmp:
+        old, new = (os.path.join(tmp, lib, "steamapps", "common") for lib in ("old", "new"))
+        for c in (old, new):
+            os.makedirs(os.path.join(c, MCC_NAME))
+        open(os.path.join(new, "..", "appmanifest_976730.acf"), "w").write(f'"AppState"\n{{\n\t"installdir"\t\t"{MCC_NAME}"\n}}')
+        assert installed_in(new, MCC_NAME) and not installed_in(old, MCC_NAME)
+        os.makedirs(os.path.join(new, MCC_NAME, "halo3", "maps"))
+        open(os.path.join(new, MCC_NAME, "halo3", "maps", "construct.map"), "w").close()
+        assert games(os.path.join(new, MCC_NAME)) == ["h3"] and games(os.path.join(old, MCC_NAME)) == []
     print("steam libraries:", ", ".join(steam_commons()) or "none found")
-    print("MCC:", mcc() or "not found (set HB_MCC)")
+    print("MCC:", mcc() or "not found (set HB_MCC)", "| games:", ", ".join(games()) or "none")
     for k in KITS:
         print(f"{k}:", kit(k) or "not installed")
     print("vcvars64.bat:", vcvars() or "not found (set HB_VCVARS)")

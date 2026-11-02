@@ -2400,7 +2400,7 @@ def main(o):
     try:                                           # LiDAR mode kept no Data collector, so his ability use was lost)
         from collector import Collector
         collector = Collector(os.path.join(ROOT, "logs", f"collect_{file_name(o.map)}_{run_stamp}.jsonl"), o.map, o.game,
-                              live.g.pid, lambda: time.time() - t0)
+                              lambda: time.time() - t0)
         print("data collector on:", collector.path, flush=True)
     except Exception as e:                          # never stops the mapping
         print(f"data collector could not start: {type(e).__name__}: {e}", flush=True)

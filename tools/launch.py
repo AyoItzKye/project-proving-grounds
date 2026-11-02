@@ -15,8 +15,9 @@ MCC = "MCC-Win64-Shipping.exe"
 
 
 def running(name):
-    out = subprocess.run(["tasklist", "/FI", f"IMAGENAME eq {name}"], capture_output=True, text=True).stdout
-    return name.lower() in out.lower()
+    sys.path.insert(0, HERE)
+    import conflicts
+    return conflicts.process_running(name)
 
 
 def main():

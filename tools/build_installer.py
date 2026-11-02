@@ -67,16 +67,17 @@ def stage_project():
 
 
 def stage_native(skip_build):
-    step("the mod: botcore.dll and inject.exe")
+    step("the mod: botcore.dll, inject.exe and the app window (ppg_window.exe)")
     nb = os.path.join(ROOT, "native", "bin")
     if not skip_build:
-        r = subprocess.run(["cmd", "/c", os.path.join(ROOT, "native", "build.bat")], cwd=os.path.join(ROOT, "native"),
-                           capture_output=True, text=True, errors="replace")
-        if "BUILD OK" not in r.stdout:
-            raise SystemExit("native build failed:\n" + r.stdout[-2000:])
+        for bat in ("build.bat", "build_window.bat"):
+            r = subprocess.run(["cmd", "/c", os.path.join(ROOT, "native", bat)], cwd=os.path.join(ROOT, "native"),
+                               capture_output=True, text=True, errors="replace")
+            if "BUILD OK" not in r.stdout:
+                raise SystemExit(f"native build ({bat}) failed:\n" + r.stdout[-2000:])
     dst = os.path.join(PAYLOAD, "native", "bin")
     os.makedirs(dst, exist_ok=True)
-    for f in ("botcore.dll", "inject.exe"):
+    for f in ("botcore.dll", "inject.exe", "ppg_window.exe"):
         shutil.copy2(os.path.join(nb, f), os.path.join(dst, f))
 
 

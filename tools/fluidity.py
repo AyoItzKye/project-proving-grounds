@@ -18,7 +18,7 @@ The habits (each 0-100 human-like; Fluidity = their weighted mean):
   herding      how much a team's moving bots head the same way (1 = all the same; humans spread out)
   explore      how many zones a player's lives cover (zone entropy) and how often the route out of spawn differs
   range        share of trigger time at a man farther than the gun's hold-fire line (brain/bot.py reach() x OUT_OF_REACH)
-  melee        melee presses a minute of close fighting (under 1.5 units)
+  melee        melee presses a minute of close fighting (under 1.5 units; bots only: no keys of a person are read)
   jumps        jumps a minute
   flick180     reversals over 150 degrees in a fifth of a second, out of fights, a minute
 
@@ -137,9 +137,6 @@ class Fluid:
             k = j
         if keep.all():
             return
-        # and the person's keys in them: typing a bug note in the pause menu counted every space as a jump and the
-        # letters as grenades and melees (Construct: his 8.9 grenades a minute)
-        m.keys = [e for e in m.keys if not any(a <= e["t"] <= b for a, b in cut)]
         m.t = m.t[keep]
         m.P = {i: a[keep] for i, a in m.P.items()}
         m.alive = {i: a[keep] for i, a in m.alive.items()}
@@ -164,17 +161,17 @@ class Fluid:
         k = np.clip(np.searchsorted(gt, tt, side="right") - 1, 0, len(g) - 1)
         return [g[j]["wpn"] for j in k]
 
-    def presses(s, i, bit, key):
-        """Times a button went down: the bot's buttons (trace), a person's keys (collector)."""
-        if s.m.bot[i]:
-            ev, out, was = s.series.get(i, []), [], False
-            for t, _, b in ev:
-                on = bool(b & bit)
-                if on and not was:
-                    out.append(t)
-                was = on
-            return np.array(out)
-        return np.array([k["t"] for k in s.m.keys if k["key"] == key and k["down"]])
+    def presses(s, i, bit):
+        """Times a bot's button went down (its trace); None for a person (no keys are recorded)."""
+        if not s.m.bot[i]:
+            return None
+        ev, out, was = s.series.get(i, []), [], False
+        for t, _, b in ev:
+            on = bool(b & bit)
+            if on and not was:
+                out.append(t)
+            was = on
+        return np.array(out)
 
     def combat(s, i, step):
         """Per sampled tick: aim on a visible enemy, firing, or hit in the last 2 s."""
@@ -368,7 +365,9 @@ class Fluid:
                 start = None
         if len(eps) < 3:
             return None
-        pr = s.presses(i, MELEE_BIT, "melee")
+        pr = s.presses(i, MELEE_BIT)
+        if pr is None:
+            return None
         n = 0
         for a, b in eps:
             hit = bool(len(pr)) and bool(((pr >= a) & (pr <= b + 0.5)).any())
@@ -379,7 +378,7 @@ class Fluid:
 
     def body_habits(s, i):
         """pitch_var: how much the view moves up and down out of fights (degrees, std); speed_var: how much the walking
-        speed varies (coefficient of variation while moving); nades: grenade presses a minute alive."""
+        speed varies (coefficient of variation while moving); nades: grenade presses a minute alive (bots only)."""
         m = s.m
         a = m.P[i]
         step = max(1, int(0.1 / m.dt))
@@ -393,7 +392,8 @@ class Fluid:
         mv = al[1:] & al[:-1] & (v > 0.5) & (v < 15.0) & (np.diff(tt) < 0.5)
         sv = float(np.std(v[mv]) / np.mean(v[mv])) if mv.sum() > 50 else None
         minutes = m.alive[i].sum() * m.dt / 60.0
-        nades = len(s.presses(i, 8, "grenade")) / minutes if minutes > 0.5 else None
+        pr = s.presses(i, 8)
+        nades = len(pr) / minutes if minutes > 0.5 and pr is not None else None
         return dict(pitch_var=pv, speed_var=sv, nades=nades)
 
     def herding(s, team):

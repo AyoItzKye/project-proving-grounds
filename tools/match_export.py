@@ -8,8 +8,8 @@ The zip (logs/exports/match_<map>_<date>-<time>.zip) holds:
   trace.jsonl            the brain's recording: everyone 4 times a second, every bot every tick (position, aim, goal,
                          the buttons it pressed), every bot decision with its scores, callouts, bot profiles,
                          loadout changes
-  collect.jsonl          the Data collector, when it was on: everyone every tick, people's guns, equipment and zoom,
-                         and the keys they pressed
+  collect.jsonl          the Data collector, when it was on: everyone every tick, people's guns, rounds, equipment
+                         and zoom (no keys: those of older recordings are left out)
   carnage_report.xml     MCC's own post-game report (kills, deaths, medals per player), when it is this match's
   objective_report.txt   objective play (tools/objective_report.py), player_stats.json the people's numbers
                          (tools/player_stats.py): the analyses the Observer shows
@@ -66,13 +66,11 @@ FORMATS = {
         "loadout": '{"t", "id", "loadout", "why", "n", "guns"}: a bot asking for another loadout and why',
     },
     "collect.jsonl": {
-        "start": '{"t", "collect": "start", "map", "game", "keys": {"<virtual key>": name}}: once; only keys bound in MCC',
+        "start": '{"t", "collect": "start", "map", "game"}: once',
         "p": '{"t", "p": [row per player]}: every tick. Row: 0 id, 1 team, 2 alive, 3-5 x y z, 6 yaw, 7 pitch, '
              '8 shield, 9 health, 10 riding a vehicle, 11 carrying the flag, 12 BOT (1 = a bot, 0 = a person)',
         "gear": '{"t", "id", "wpn", "inv", "ammo", "mag", "eq", "ab", "uz"}: a person\'s guns, rounds, equipment, '
-                'armor ability and zoom, on change',
-        "key": '{"t", "key", "vk", "down": 1 | 0}: a bound key going down or up (read 200 times a second, only while '
-               'MCC is the window in front)',
+                'armor ability and zoom, on change (a shot: the magazine of the gun in hand going down)',
     },
 }
 
@@ -185,7 +183,7 @@ In the recordings a player is a person or a bot by the "bot" column (trace.jsonl
 "p" rows: column 12).
 
 trace.jsonl: what every player did 4 times a second and what every bot did, decided and said every tick.
-collect.jsonl: the people's movement, aim, guns and the keys they pressed (present when the Data collector was on).
+collect.jsonl: the people's movement, aim, guns and rounds (present when the Data collector was on; no keys).
 carnage_report.xml: MCC's own post-game numbers. objective_report.txt, player_stats.json: the Observer's analyses.
 
 People's Xbox ids are removed and their names replaced ("Player 1" ...) unless the exporter kept them.
@@ -206,6 +204,7 @@ def export(trace, out=None, keep_names=False, logs=LOGS, mcc_temp=MCC_TEMP):
     removed.append("the Windows user folder in paths (now <home>)")
     analyses, errors = {}, {}
     sys.path.insert(0, HERE)
+    import collector
     try:
         import objective_report
         analyses["objective_report.txt"] = "\n".join(objective_report.report(trace)) + "\n"
@@ -235,6 +234,8 @@ def export(trace, out=None, keep_names=False, logs=LOGS, mcc_temp=MCC_TEMP):
         z.writestr("README.txt", README.format(fmt=FORMAT, ver=ver))
         for part, path in files.items():
             text = carnage if part == "carnage_report.xml" else open(path, encoding="utf-8", errors="replace").read()
+            if part == "collect.jsonl":
+                text = collector.without_keys(text)
             z.writestr(part, scrub(text, {} if keep_names else names))
         for part, text in analyses.items():
             z.writestr(part, scrub(text, {} if keep_names else names))
