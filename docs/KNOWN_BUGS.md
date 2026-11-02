@@ -20,7 +20,7 @@ For everything that works, game by game, see the [bot status sheet](BOT_STATUS.p
 - **In CTF, a bot driver will pick up your flag carrier but won't drive back to your base** to score.
 - **Flying vehicles need reworking**: how bots fly and fight in the air is being redone.
 - **Bots lack urgency on offense**: when the objective means attacking (taking the flag, planting the bomb, pushing in Invasion), they're too slow and cautious about it.
-- **Theater mode doesn't work on matches with bots** yet.
+- **Theater mode only works with bots in Halo: Reach.** Films of bot matches in every other game (Halo: CE, Halo 2, Halo 2 Anniversary, Halo 3, ODST and Halo 4) load, then stop with "an error occurred" as they start.
 
 ## Halo: CE
 
@@ -138,4 +138,4 @@ For everything that works, game by game, see the [bot status sheet](BOT_STATUS.p
 - **Warthog**: Bots get in, drive, gun and get out, but drivers stall about half the time.
 - **Ghost**: Bots drive it, but stall a lot, rarely fire and can't boost yet.
 
-*Last updated November 1, 2026.*
+*Last updated November 2, 2026.*
