@@ -50,6 +50,27 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Shortcuts:"
 
+[InstallDelete]
+; an update first clears the previous version's code and documents, so files a release dropped do not stay behind (the
+; player's logs, maps, LiDAR scans and the art the setup built are kept)
+Type: filesandordirs; Name: "{app}\docs"
+Type: filesandordirs; Name: "{app}\ghidra"
+Type: filesandordirs; Name: "{app}\native\tests"
+Type: filesandordirs; Name: "{app}\tools\menu_titles"
+Type: filesandordirs; Name: "{app}\tools\__pycache__"
+Type: filesandordirs; Name: "{app}\brain\__pycache__"
+Type: files; Name: "{app}\tools\*.py"
+Type: files; Name: "{app}\tools\*.html"
+Type: files; Name: "{app}\tools\*.ps1"
+Type: files; Name: "{app}\brain\*.py"
+Type: files; Name: "{app}\native\*.cpp"
+Type: files; Name: "{app}\native\*.h"
+Type: files; Name: "{app}\native\*.bat"
+Type: files; Name: "{app}\CODE_OF_CONDUCT.md"
+Type: files; Name: "{app}\CONTRIBUTING.md"
+Type: files; Name: "{app}\SECURITY.md"
+Type: files; Name: "{app}\requirements*.txt"
+
 [Files]
 Source: "{#Payload}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 

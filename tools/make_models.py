@@ -5,8 +5,9 @@ install (native/build.bat runs it when the models are missing); a few minutes, a
 Reach, H2A and Halo 4 too; Halo 4's alone 180 MB). Textures no model uses any more (an export numbers them anew) are
 removed afterwards.
 
-usage: python -I make_models.py [MCC folder] [--only h3_spartan,h3_elite] [--out <models folder>]
-       (--out: build somewhere else, e.g. while MCC has native/bin/models open)
+usage: python -I make_models.py [MCC folder] [--only h3_spartan,h3_elite] [--out <models folder>] [--clean-exports]
+       (--out: build somewhere else, e.g. while MCC has native/bin/models open; --clean-exports: delete the
+       exported meshes in maps/_models/<game> afterwards, as the first-time setup does)
 """
 import os
 import shutil
@@ -136,6 +137,9 @@ def main():
                         "--prefix", game] + opts + extra, check=True)
         made.append(name)
     shutil.rmtree(os.path.join(ROOT, "maps", "_models", "h3", "tex"), ignore_errors=True) if "--clean" in sys.argv else None
+    if "--clean-exports" in sys.argv:              # (the setup: the exports are only working space, ~2.4 GB; the packed
+        for game in {m[2] for m in MODELS}:        # models and their textures are in native/bin/models)
+            shutil.rmtree(os.path.join(ROOT, "maps", "_models", game), ignore_errors=True)
     print(f"{prune(OUT)} unused textures removed")
     if not ONLY:
         subprocess.run([sys.executable, "-I", os.path.join(HERE, "emblems.py"), "extract", MCC])   # the bots' emblem art

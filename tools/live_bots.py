@@ -936,7 +936,7 @@ def main():
                         reach_name_dump(live, os.path.join(ROOT, "logs", "reach_names.txt"))
                     except Exception as e:                     # (diagnostic only: never stops the bots)
                         print("reach name dump failed:", e, flush=True)
-                if trace and now - getattr(main, "world_at", -1.0) >= 0.25:   # everyone, for tools/match_report.py
+                if trace and now - getattr(main, "world_at", -1.0) >= 0.25:   # everyone, for tools/observer.py
                     main.world_at = now
                     bot_set = set(st["bots"].values())
                     trace.write(json.dumps(dict(

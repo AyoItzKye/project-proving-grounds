@@ -17,13 +17,13 @@ Open an issue first for anything bigger than a small fix, so the approach can be
 
 ## Pull requests
 
-- Set up a developer copy: [docs/BUILDING.md](docs/BUILDING.md).
+- Set up a developer copy: [docs/CODE_GUIDE.md](docs/CODE_GUIDE.md#building-from-source).
 - Keep a pull request to one change. Match the code around it: naming, comment density, idioms.
 - Comments explain what the code does and why. Numbers carry their units and where they came from (a measurement,
   a game's tag, a recorded match).
 - Every change to the bots' logic comes with a test in `tools\test_*.py` that fails without it, and
   `python -I tools\run_tests.py` passes.
-- A fix to how the bots play is judged on recorded matches (the Observer, `tools\match_report.py`), not only offline.
+- A fix to how the bots play is judged on recorded matches (the Observer), not only offline.
 - No personal data in code, tests or data files: no gamertags, Xbox ids, local paths or e-mail addresses.
   `python -I tools\make_release.py --scan <folder>` checks a folder.
 - Never add anything that works online, in matchmaking, or with anti-cheat on.

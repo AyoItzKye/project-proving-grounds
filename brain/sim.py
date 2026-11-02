@@ -438,7 +438,7 @@ class Sim:
                     s.flag_events.append((s.now, "captured", p.team))
 
     def run(s, seconds, trace=None, pace=False):
-        """trace: an open file: the live trace format (tools/match_report.py and tools/observer.py read
+        """trace: an open file: the live trace format (tools/observer.py reads
         both): bot and world lines, plus who is who, every decision and every callout (brain/tracefmt.py).
         pace: run at wall-clock speed."""
         wall0, sim0 = time.monotonic(), s.now
@@ -621,7 +621,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--seconds", type=float, default=600)
     ap.add_argument("--compare-comms", action="store_true")
-    ap.add_argument("--trace", help="one game only, written in the live trace format (tools/match_report.py)")
+    ap.add_argument("--trace", help="one game only, written in the live trace format (tools/observer.py)")
     ap.add_argument("--map", default="bloodgulch")
     ap.add_argument("--mode", default="slayer")
     ap.add_argument("--per-team", type=int, default=4)

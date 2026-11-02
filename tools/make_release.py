@@ -31,14 +31,49 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.normpath(os.path.join(HERE, ".."))
 MARK = ".release-build"          # written into an output folder this script made (only those are ever emptied)
 
+# not shipped: research, probe and test-automation scripts and old versions the mod does not run (nothing in the
+# launcher, the bots, the setup or the tools imports or starts them), and the tests of those
+NOT_SHIPPED = (
+    "tools/match_report.py",
+    "native/build_diag.bat", "native/diag.cpp", "native/filemon.cpp", "native/watch.cpp", "tools/ability_report.py",
+    "tools/ammo_check.py", "tools/ammo_scan.py", "tools/armory_tables.py", "tools/callers.py",
+    "tools/ce_projectiles.py", "tools/decode_buttons.py", "tools/difficulty_report.py", "tools/disasm.py",
+    "tools/dump_info.py", "tools/engagement.py", "tools/equipment_types.py", "tools/eval_trace.py",
+    "tools/export_maps.py", "tools/falcon_probe.py", "tools/fall_check.py", "tools/fight_check.py",
+    "tools/fight_ends.py", "tools/film_info.py", "tools/find_clock.py", "tools/find_counters.py",
+    "tools/find_like.py", "tools/find_stores.py", "tools/fit_physics.py", "tools/fluidity.py", "tools/forge_dump.py",
+    "tools/forge_palette.py", "tools/gen_zones.py", "tools/glass_mask.py", "tools/globals_dump.py",
+    "tools/goto_lobby.py", "tools/ground_offset.py", "tools/h2_action_probe.py", "tools/h2_action_record.py",
+    "tools/h2_export.py", "tools/h3_export.py", "tools/h3_waypoints.py", "tools/h4_round.py", "tools/host_walk.py",
+    "tools/human_check.py", "tools/input_replay.py", "tools/input_stalls.py", "tools/inv_phase3.py",
+    "tools/inv_spawns.py", "tools/invasion_report.py", "tools/limit_candidates.py", "tools/live_qc.py",
+    "tools/live_qc_batch.py", "tools/live_qc_run.py", "tools/live_walk.py", "tools/look_check.py",
+    "tools/look_diff.py", "tools/look_dump.py", "tools/look_names.py", "tools/look_photo.py", "tools/look_probe.py",
+    "tools/look_regions.py", "tools/look_sheet.py", "tools/look_sheet_aim.py", "tools/look_units.py",
+    "tools/make_zones.py", "tools/map_features.py", "tools/mcc_click.py", "tools/mcc_nav.py", "tools/mode_matrix.py",
+    "tools/mode_sims.py", "tools/mutate_weapons.py", "tools/mute_app.ps1", "tools/next_match.py",
+    "tools/object_frames.py", "tools/object_shapes.py", "tools/objects_near.py", "tools/original_vs_mcc.py",
+    "tools/panel_shots.py", "tools/pe_xref.py", "tools/placed_refresh.py", "tools/probe_action.py",
+    "tools/reach_export.py", "tools/reach_variant_dump.py", "tools/refresh_objects.py", "tools/reload_probe.py",
+    "tools/review_moves.py", "tools/scenario_extract.py", "tools/screenscan.py", "tools/set_gametype.py",
+    "tools/shuffle_suites.py", "tools/sim_variant.py", "tools/start_match.py", "tools/style_report.py",
+    "tools/tier_live.py", "tools/tier_matrix.py", "tools/unlock_all.py", "tools/variant_dump.py",
+    "tools/vehicle_clearance.py", "tools/vehicle_seats.py", "tools/vtable_of.py", "tools/walked_floor.py",
+    "tools/watch_write.py", "tools/xref.py", "tools/zoom_probe.py", "tools/test_ammo_check.py",
+    "tools/test_ammo_scan.py", "tools/test_armory.py", "tools/test_fluidity_fixes.py", "tools/test_goto_lobby.py",
+    "tools/test_looks.py", "tools/test_matrices.py", "tools/test_moves_review.py", "tools/test_vehicle_clearance.py",
+)
+
 # (pattern, where): the first match wins; paths are relative, forward slashes; "*" stays within a folder, "**" crosses
-RULES = (
+RULES = tuple((p, None) for p in NOT_SHIPPED) + (
     # left out
     ("logs/**", None), ("backups/**", None), ("downloads/**", None), ("reference/**", None),
     ("**/__pycache__/**", None), ("*.pyc", None), ("**/*.pyc", None),
     ("native/bin/**", None), ("native/**/*.obj", None), ("native/**/*.pdb", None), ("native/**/*.ilk", None),
     ("native/tests/*.pdb", None),
-    ("ghidra/**/*.java", "release"), ("ghidra/**", None),
+    ("ghidra/**", None), ("tools/menu_titles/**", None),
+    # docs: the code guide and the players' bot status sheet only (research and design notes stay here)
+    ("docs/CODE_GUIDE.md", "release"), ("docs/BOT_STATUS.pdf", "release"), ("docs/**", None),
     ("tools/bsp2obj/**", None), ("tools/model2obj/**", None), ("tools/map_tools/**", None),
     ("tools/view_art/games/**", None), ("tools/view_art/maps/**", None),     # (MCC's own art: map_art.py builds it)
     ("tools/backup.py", None), ("tools/verify_checks.py", None), ("tools/test_verify_checks.py", None),("tools/identity_probe.py", None),

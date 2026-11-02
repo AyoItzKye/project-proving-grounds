@@ -67,7 +67,7 @@ def _logos():
 def _models():
     if not paths.map_tool("model2obj"):
         return False, "the map tools are missing (tools/map_tools: reinstall, or see docs/BUILDING.md)"
-    return tool("make_models.py")
+    return tool("make_models.py", "--clean-exports")
 
 
 def _effects():

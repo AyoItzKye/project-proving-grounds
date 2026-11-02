@@ -56,13 +56,27 @@ def step(msg):
     print(f"== {msg}", flush=True)
 
 
+# in the public copy for developers, not in a player's install: the tests and their simulator, the build and release
+# tools, the panel preview, and the repository's community files
+DEV_ONLY = ("tools/test_*.py", "tools/run_tests.py", "tools/testdata.py", "tools/build_installer.py", "tools/make_release.py",
+            "tools/human_data.py", "tools/baseline_compare.py", "tools/clean_bin.py", "tools/zoom_match.py",
+            "brain/sim.py", "brain/sim_modes.py", "brain/simgear.py", "native/panel_preview.cpp", "native/build_preview.bat", "native/test_zoom.cpp",
+            "native/tests/**", "CODE_OF_CONDUCT.md", "CONTRIBUTING.md", "SECURITY.md", "requirements.txt",
+            "requirements-dev.txt", ".gitignore", make_release.MARK)
+
+
 def stage_project():
-    """The public copy and the map pack, merged into the payload."""
+    """The public copy (less DEV_ONLY) and the map pack, merged into the payload."""
     step("public copy and map pack (tools/make_release.py)")
     out, pack = make_release.build(os.path.join(BUILD, "release"))
     if not make_release.report(out) or not make_release.report(pack):
         raise SystemExit("the privacy scan found private data: not building")
-    shutil.copytree(out, PAYLOAD, dirs_exist_ok=True, ignore=shutil.ignore_patterns(make_release.MARK))
+    for dp, _, fs in os.walk(out):
+        for f in fs:
+            rel = os.path.relpath(os.path.join(dp, f), out).replace("\\", "/")
+            if not any(make_release.match(rel, p) for p in DEV_ONLY):
+                os.makedirs(os.path.join(PAYLOAD, os.path.dirname(rel)), exist_ok=True)
+                shutil.copy2(os.path.join(dp, f), os.path.join(PAYLOAD, rel))
     shutil.copytree(pack, PAYLOAD, dirs_exist_ok=True, ignore=shutil.ignore_patterns(make_release.MARK))
 
 
