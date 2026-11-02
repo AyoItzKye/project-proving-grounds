@@ -13,12 +13,16 @@ What it cannot know: anything the level data gets wrong (floors it lacks, steps 
 walk up), and its physics has ASSUMED numbers (jumpphys). In matches LiDAR bots try every sim jump
 and stop using ones they keep failing.
 
+Steered from its window (the LiDAR view's Simulator panel, Control below): pick a map (or a Forge layout the bots
+have played on) or every map, the speed (1x to 16x real time, or as fast as it runs), pause, stop, and spots on the
+map for the bots to cover first (click the map). Started with no map names it waits for a pick.
+
 Writes maps/<map>/lidar_sim.json (paint, airspace, deaths), merges called jumps into
 maps/<map>/lidar.json, and a line per map to logs/lidar_sim.md.
 
-usage: python -I lidar_sim.py [maps...] [--game ce] [--minutes 6] [--walkers 16] [--aircraft 8]
+usage: python -I lidar_sim.py [maps... | --all] [--game ce] [--minutes 6] [--walkers 16] [--aircraft 8]
                               [--speed 0] [--max-real 240] [--open] [--port 8797] [--hold 0]
-  maps      names (default: every map with level data, Halo CE first)
+  maps      names to run in turn (none: wait for a pick in the view); --all: every map with level data
   --speed   simulated seconds per real second (0: as fast as it runs)
   --max-real  real seconds at most per map (a huge campaign map would take hours)
   --hold    keep the view up this many seconds after the last map
@@ -29,6 +33,7 @@ import math
 import os
 import random
 import sys
+import threading
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -40,7 +45,7 @@ import numpy as np  # noqa: E402
 
 import jumpphys as J  # noqa: E402
 import lidar  # noqa: E402
-from lidar import BTN_JUMP, KIND_AIRSPACE, KIND_BOT, Hub, Recorder, Roomba, load, on_events, r2  # noqa: E402
+from lidar import BTN_JUMP, KIND_AIRSPACE, KIND_BOT, Hub, Recorder, Roomba, load, map_title, on_events, r2  # noqa: E402
 
 HZ = 20
 AIR_SPEED = 6.0                  # aircraft, units/s (ASSUMED: about a Banshee)
@@ -283,7 +288,7 @@ def merge_links(name, links):
     return new
 
 
-def run_map(name, o, switch, k, n, log):
+def run_map(name, o, switch, k, n, log, ctl=None):
     from brain.core import Vec
     from brain.maps import _TERRAIN, get_map, terrain, usable_links
     m = get_map(name)
@@ -321,11 +326,34 @@ def run_map(name, o, switch, k, n, log):
     sig = [id(l) for l in usable_links(rec.links)]
     t, dt, last_new, floor_n, t0 = 0.0, 1.0 / HZ, 0.0, 0, time.time()
     deaths = falls = 0
-    while t < o.minutes * 60 and time.time() - t0 < o.max_real:
-        hub.note = f"map {k} of {n}: {name} ({game}) · {t / 60:.1f} sim min"
+    if ctl is not None:
+        ctl.started(name, T, getattr(rec, "director", None))
+    speed, anchor, ran = None, (0.0, time.time()), 0.0       # pacing from the last speed change; real s run
+    while t < o.minutes * 60 and (ran < o.max_real or (ctl is not None and ctl.speed > 0)):
+        if ctl is not None:
+            if ctl.stop_now:
+                break
+            while ctl.paused and not ctl.stop_now:
+                hub.note = f"{map_title(name)}: paused at {t / 60:.1f} sim min"
+                time.sleep(0.1)
+                speed = None                          # (paced afresh from here)
+            ctl.feed(rec)
+        tick0 = time.time()
+        want = ctl.speed if ctl is not None else o.speed
+        if want != speed:
+            speed, anchor = want, (t, time.time())
+        hub.note = (f"map {k} of {n}: " if n > 1 else "") + \
+            f"{map_title(name)} ({game}) · {t / 60:.1f} sim min · " + (f"{speed:g}x" if speed else "full speed")
+        if ctl is not None:
+            ctl.t = t
+            ctl.rate(t)
         rec.players_pos = [tuple(b.p) for _, b in walkers if b.alive]
         if getattr(rec, "director", None) is not None:
             rec.director.plan(t, {rb.index: tuple(b.p) for rb, b in walkers if b.alive})
+            for i in rec.director.new_spot_bots:     # (sent to a marked spot: drop the old goal, go now)
+                if i < len(walkers) and walkers[i][0].trial is None:
+                    walkers[i][0].target = None
+            rec.director.new_spot_bots.clear()
         for rb, b in walkers:
             if not b.alive:
                 if t - b.dead_t >= 2.0:              # respawn
@@ -372,10 +400,11 @@ def run_map(name, o, switch, k, n, log):
             if t > 90 and t - last_new > 45 and all(c.idle == air.version for c in crafts):
                 break                                # nothing new for 45 s and the air is flown
         t += dt
-        if o.speed:
-            ahead = t / o.speed - (time.time() - t0)
+        if speed:
+            ahead = (t - anchor[0]) / speed - (time.time() - anchor[1])
             if ahead > 0:
-                time.sleep(ahead)
+                time.sleep(min(ahead, 0.5))
+        ran += time.time() - tick0
     rec.save(bot_seconds=t * len(walkers))
     new = merge_links(name, rec.links)
     want, flown = int(air.want.sum()), int((air.want & air.flown).sum())
@@ -386,16 +415,126 @@ def run_map(name, o, switch, k, n, log):
     log.write(line + "\n")
     log.flush()
     _TERRAIN.pop(name, None)                         # 122 maps: keep memory flat
+    if ctl is not None:
+        ctl.finished(name, floor_n, new, t, stopped=ctl.stop_now)
     return rec
 
 
 class Switch:
     current = None
+    control = None
+    last_seen = 0.0          # the view's last poll (lidar.serve): the simulator stops a while after it closes
+
+
+class Control:
+    """What the view asks of the simulator (POST /sim, tools/lidar.py serve) and what it shows (state() in /live).
+    The view's thread sets; the simulator's loop reads at every tick."""
+    SPEEDS = (1, 2, 4, 8, 16, 0)        # simulated seconds per real second; 0: as fast as it runs
+
+    def __init__(s, names):
+        s.lock = threading.Lock()
+        s.names, s.queue = list(names), []
+        s.current, s.T, s.director, s.t = None, None, None, 0.0
+        s.speed, s.paused, s.stop_now = 4.0, False, False
+        s.pending, s.clear = [], False
+        s.last = None                   # the last map finished: (name, floor cells, new jumps, sim minutes, stopped)
+
+    def command(s, d):
+        """One request from the view: (HTTP status, answer)."""
+        act = d.get("action")
+        with s.lock:
+            if act == "pick":
+                name = d.get("name")
+                if name not in s.names:
+                    return 404, dict(error="no level data for that map")
+                s.queue = [name]
+                s.stop_now, s.paused = s.current is not None, False   # (the map running now ends, this one starts)
+            elif act == "all":
+                s.queue = [m for m in s.names if "/variants/" not in m]
+                s.stop_now, s.paused = s.current is not None, False
+            elif act == "speed":
+                v = float(d.get("speed", 4))
+                if v not in s.SPEEDS:
+                    return 400, dict(error="speed must be one of " + ", ".join(map(str, s.SPEEDS)))
+                s.speed, s._rate, s.actual = v, None, 0.0     # (measured afresh at the new speed)
+            elif act in ("pause", "resume"):
+                s.paused = act == "pause" and s.current is not None
+            elif act == "stop":
+                s.queue, s.paused = [], False
+                s.stop_now = s.current is not None
+            elif act == "spot":
+                if s.T is None or s.current is None:
+                    return 409, dict(error="start a map first, then click where the bots should go")
+                pos = s.snap(float(d["x"]), float(d["y"]), float(d["z"]))
+                if pos is None:
+                    return 404, dict(error="no floor there: click on the map's ground")
+                s.pending.append(pos)
+                return 200, dict(spot=[round(v, 2) for v in pos])
+            elif act == "clear_spots":
+                s.clear, s.pending = True, []
+            else:
+                return 400, dict(error="unknown action")
+        return 200, dict(ok=True)
+
+    def snap(s, x, y, z):
+        """The walkable floor nearest a clicked point (its level nearest z, within 3 u), or None."""
+        from brain.core import Vec
+        T = s.T
+        if not (T.x0 <= x < T.x0 + T.nw * 0.25 and T.y0 <= y < T.y0 + T.nh * 0.25):
+            return None
+        c = T._center(*T._reachable_node(*T._node(Vec(x, y, z)), z))
+        if math.isnan(c.z) or math.hypot(c.x - x, c.y - y) > 3.0:
+            return None
+        return (c.x, c.y, c.z)
+
+    def next_map(s):
+        with s.lock:
+            s.stop_now = False
+            return s.queue.pop(0) if s.queue else None
+
+    def started(s, name, T, director):
+        with s.lock:
+            s.current, s.T, s.director, s.t, s._rate, s.actual = name, T, director, 0.0, None, 0.0
+            s.pending, s.clear = [], False
+
+    def feed(s, rec):
+        """Hands new spots (and a clear) to the running map's director: on the simulator's own thread."""
+        d = getattr(rec, "director", None)
+        with s.lock:
+            pend, clr, s.pending, s.clear = s.pending, s.clear, [], False
+        if d is not None:
+            if clr:
+                d.clear_spots()
+            for pos in pend:
+                d.add_spot(pos)
+
+    def finished(s, name, cells, links, t, stopped):
+        with s.lock:
+            s.current, s.T, s.director, s.paused = None, None, None, False
+            s.last = dict(name=name, title=map_title(name), cells=cells, links=links, minutes=round(t / 60, 1),
+                          stopped=bool(stopped))
+
+    def rate(s, t):
+        """Keeps the speed actually reached: simulated seconds per real second over the last 2-3 s."""
+        now = time.time()
+        r = getattr(s, "_rate", None)
+        if r is None or t < r[0] or now - r[1] > 3.0:
+            if r is not None and t >= r[0] and now > r[1]:
+                s.actual = (t - r[0]) / (now - r[1])
+            s._rate = (t, now)
+
+    def state(s):
+        d = s.director
+        return dict(current=s.current, title=map_title(s.current) if s.current else None, minutes=round(s.t / 60, 1),
+                    speed=s.speed, actual=round(getattr(s, "actual", 0.0), 1) if s.current else 0.0,
+                    speeds=list(s.SPEEDS), paused=s.paused, queue=len(s.queue), last=s.last,
+                    spots=d.spot_view() if d is not None else [], painted=round(getattr(d, "painted_share", 0.0), 3))
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("maps", nargs="*")
+    ap.add_argument("--all", action="store_true")
     ap.add_argument("--game")
     ap.add_argument("--minutes", type=float, default=6.0)
     ap.add_argument("--walkers", type=int, default=16)
@@ -407,27 +546,44 @@ def main():
     ap.add_argument("--hold", type=float, default=0.0)
     ap.add_argument("--no-director", action="store_true", help="bots pick their own goals (no LiDAR director): A/B runs")
     o = ap.parse_args()
-    names = o.maps
-    if not names:
-        names = sorted((d for d in os.listdir(os.path.join(ROOT, "maps"))
-                        if not d.startswith("_") and os.path.exists(os.path.join(ROOT, "maps", d, "heightmap.npz"))),
-                       key=lambda d: (GAMES.index(J.game_of(d)), d))
+    every = sorted(lidar.map_list_names(), key=lambda d: (GAMES.index(J.game_of(d.partition("/")[0])), d))
+    names = o.maps or ([m for m in every if "/variants/" not in m] if o.all else [])
     if o.game:
         names = [d for d in names if J.game_of(d) == o.game]
     switch = Switch()
-    switch.current = Hub(Recorder(names[0], count_run=False), "sim")
+    switch.control = ctl = Control(every)
+    ctl.queue = list(names)
+    idle = os.path.join(ROOT, "logs", "lidar_sim_idle.json")       # (waiting: an empty view, no old scan behind it)
+    switch.current = Hub(Recorder((names or every)[0], count_run=False, path=idle if not names else None), "sim")
+    switch.current.note = "Pick a map to simulate (Simulator panel)"
     srv = lidar.serve(switch, o.port)
     if o.open:
         import appwindow
         appwindow.open_window(f"http://127.0.0.1:{o.port}/")
+    if srv is None:                                   # another simulator or a LiDAR match holds the view: two would
+        print("Another LiDAR simulator or LiDAR match is already running: its window shows it. Not starting a second "
+              "one (both would save the same maps).", flush=True)
+        return
     os.makedirs(os.path.join(ROOT, "logs"), exist_ok=True)
+    waiting = not names                            # (no maps named: the view picks)
     with open(os.path.join(ROOT, "logs", "lidar_sim.md"), "a") as log:
-        log.write(f"\n## Run {time.strftime('%Y-%m-%d %H:%M')}: {len(names)} maps, {o.walkers} bots, {o.aircraft} aircraft\n\n"
+        log.write(f"\n## Run {time.strftime('%Y-%m-%d %H:%M')}: {len(names) or 'picked'} maps, {o.walkers} bots, {o.aircraft} aircraft\n\n"
                   "| map | game | sim min | floor cells painted | reachable cells (level data) | calls made | missed | "
                   "new links | deaths | falls | air flown / to fly (voxel) | ceiling | real time |\n|" + "---|" * 13 + "\n")
-        for k, name in enumerate(names, 1):
+        k = 0
+        switch.last_seen = time.time()
+        while True:
+            name = ctl.next_map()
+            if name is None:
+                if not waiting and not o.open:
+                    break                             # (named maps, no window: done)
+                if time.time() - switch.last_seen > 90:
+                    break                             # (its window closed a while ago)
+                time.sleep(0.3)
+                continue
+            k += 1
             try:
-                run_map(name, o, switch, k, len(names), log)
+                run_map(name, o, switch, k, k + len(ctl.queue), log, ctl)
             except Exception as e:                    # one broken map must not stop the tour
                 import traceback
                 print(f"{name}: FAILED {type(e).__name__}: {e}\n{traceback.format_exc(limit=-9)}", flush=True)

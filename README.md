@@ -84,8 +84,9 @@ game it moves toward the level where you and the bots come out even. It shows as
 The bots play better on a map they have mapped: every floor, height, jump and drop. No scans ship with the mod
 (each PC maps its own), and bots play unmapped maps with the map pack's height data in the meantime. Two ways:
 
-- **LiDAR Simulator** in the launcher: bots map every map from its level data, no game needed, many times faster than
-  real time. Leave it running; it shows how many maps are done.
+- **LiDAR Simulator** in the launcher, no game needed: **Pick a map** (or a Forge layout the bots have played on) and
+  watch the bots map it from its level data. Choose the speed (1x to 16x, or Max), pause or stop it, and turn on
+  **Click spots to cover** to send bots to places first. **Every map** maps them all in turn.
 - **LiDAR mode** in the BOTS panel: start any match and the bots walk the whole map while you watch. Jumps you land
   that beat walking are learned and every bot uses them.
 

@@ -27,6 +27,11 @@ import setup  # noqa: E402
 from brain import paths  # noqa: E402
 
 PORT = 8793
+# the console Python for the tasks, run with CREATE_NO_WINDOW: the launcher itself runs under pythonw.exe (no console
+# window), and a task under pythonw has no console, so every console program it starts (model2obj.exe for each 3D
+# model, inject.exe) would open a console window of its own; under python.exe with a hidden console they inherit it
+PY = os.path.join(os.path.dirname(sys.executable), "python.exe") \
+    if os.path.basename(sys.executable).lower() == "pythonw.exe" else sys.executable
 IDLE_STOP = 20.0          # seconds without a ping from the window before the server stops (no task running)
 LOGS = os.path.join(ROOT, "logs", "launcher")
 # task: (script and its arguments, keeps running on its own after it opened its window)
@@ -76,12 +81,12 @@ def start(task, clean=False):
     if task == "play" and clean:
         moved = conflicts.turn_off()
         if moved:                                    # put back once MCC has come and gone (its own process)
-            subprocess.Popen([sys.executable, "-I", os.path.join(HERE, "conflicts.py"), "--restore-after-mcc"],
+            subprocess.Popen([PY, "-I", os.path.join(HERE, "conflicts.py"), "--restore-after-mcc"],
                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), cwd=ROOT)
     args, _ = TASKS[task]
     os.makedirs(LOGS, exist_ok=True)
     log = open(os.path.join(LOGS, task + ".txt"), "w", encoding="utf-8")
-    procs[task] = subprocess.Popen([sys.executable, "-u", "-I", os.path.join(HERE, args[0]), *args[1:]], cwd=ROOT,
+    procs[task] = subprocess.Popen([PY, "-u", "-I", os.path.join(HERE, args[0]), *args[1:]], cwd=ROOT,
                                    stdout=log, stderr=subprocess.STDOUT,
                                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     return True, "started"

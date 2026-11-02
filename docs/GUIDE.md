@@ -91,10 +91,23 @@ are never counted as walls (Halo 2 Anniversary, Halo 4, ODST; the other games' l
 
 ### LiDAR Simulator (no game needed)
 
-The **LiDAR Simulator** in the launcher runs the same bots on every map's level data, many times faster than real
-time, and opens the 3D view: 16 bots map the floor and call jumps, 8 aircraft fly the air over the walked floor up to
-the map's ceiling. Jumps they land go into the map's LiDAR data, where bots in real matches try them and stop using ones
-that fail in the game. One map only, or slower to watch: `tools\lidar_sim.py --open <map> --speed 4`. The simulator only
+The **LiDAR Simulator** in the launcher runs the same bots on a map's level data and shows them in the 3D view: 16 bots
+map the floor and call jumps, 8 aircraft fly the air over the walked floor up to the map's ceiling. Its **Simulator**
+panel (bottom right):
+
+- **Pick a map**: the Maps list opens; click a map's picture (or its **Simulate** button). Forge layouts the bots have
+  played on are listed under their map. Picking another map while one runs stops it (what it mapped is saved).
+- **Every map**: all of them in turn, each saved when it finishes.
+- **Speed**: 1x (real time) to 16x, or **Max** (as fast as this PC runs it). The panel shows the speed actually
+  reached: big maps with 16 bots and 8 aircraft run slower than asked on most PCs.
+- **Pause** / **Resume** and **Stop** (it saves what was mapped).
+- **Click spots to cover** (or C): click the map where the bots should go first; the 3 nearest bots go to each spot
+  (pink ring), green once a bot got there, a red cross when no bot found a way within 2 minutes. **Clear spots**
+  removes them.
+
+A map runs until nothing new turns up for 45 seconds (6 simulated minutes at most); run it again to add to its scan.
+Jumps the bots land go into the map's LiDAR data, where bots in real matches try them and stop using ones that fail
+in the game. Command line: `tools\lidar_sim.py --open [maps...] [--all] [--speed 4]`. The simulator only
 knows the level data, so it cannot find floor the data lacks or steps the game lets you walk up; LiDAR mode in a match
 fills those in. Its jump physics is each game's own (gravity and jump speed measured from recorded matches, run speeds
 and fall damage from the official editing kits).

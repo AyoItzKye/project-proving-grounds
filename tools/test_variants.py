@@ -49,7 +49,7 @@ def main():
     # 1. filing
     a = variants.identify("reach_forge_halo", shields, placed, game="reach")
     if not a.startswith("reach_forge_halo/variants/v"):
-        fails.append(f"the owner's shield layout filed as {a}")
+        fails.append(f"the shield layout filed as {a}")
     if variants.identify("reach_forge_halo", shields, placed) != a:
         fails.append("the same layout again is another variant")
     grown_layout = shields + [(n, (p[0] + 0.0, p[1], p[2]), ax) for n, p, ax in build[:20]]
@@ -80,7 +80,7 @@ def main():
     want = os.path.normpath(os.path.join(maps.ROOT, "reach_forge_halo", "variants", v.rsplit("/", 1)[-1], "lidar.json"))
     import lidar
     rec = lidar.Recorder(v, count_run=False)
-    if os.path.normpath(rec.path) != want or not lidar.map_ok(v) or "variant" not in lidar.map_title(v):
+    if os.path.normpath(rec.path) != want or not lidar.map_ok(v) or "Forge layout" not in lidar.map_title(v):
         fails.append(f"LiDAR: data at {rec.path} (want {want}), view accepts it {lidar.map_ok(v)}, "
                      f"title {lidar.map_title(v)!r}")
     # 3. its window's nav: the whole level's inside it, sooner

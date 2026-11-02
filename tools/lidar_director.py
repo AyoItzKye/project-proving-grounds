@@ -27,6 +27,9 @@ JUMP_JOB_S = 40.0        # a jump job not reached by then is dropped
 ISLANDS = True           # give out island jump jobs (off: A/B runs)
 ISLAND_AFTER = 0.7       # ... once this share of the reachable floor is painted
 ISLAND_BOTS = 2          # ... to this many bots at a time
+SPOT_BOTS = 3            # bots sent to each spot a person marked to cover (the simulator's view)
+SPOT_DONE_R = 2.5        # a bot this close (flat, within 2 u up or down) has covered the spot
+SPOT_GIVE_UP = 120.0     # seconds: a spot no bot reached by then has no way there
 
 
 class LidarDirector:
@@ -46,6 +49,49 @@ class LidarDirector:
         s.next_t, s.regions, s.islands, s.jobs = 0.0, [], [], {}
         s.painted_share, s.reach_share = 0.0, 0.0
         s.last_line = 0.0
+        s.spots, s.new_spot_bots = [], []        # spots a person marked to cover; bots just sent to one
+
+    def add_spot(s, pos):
+        """A spot to cover: the nearest SPOT_BOTS free bots go there first (replanned at once)."""
+        s.spots.append(dict(pos=tuple(float(v) for v in pos), done=False, given_up=False, since=None))
+        s.next_t = 0.0
+
+    def clear_spots(s):
+        s.spots = []
+        s.jobs = {k: j for k, j in s.jobs.items() if j[0] != "spot"}
+        s.next_t = 0.0
+
+    def spot_view(s):
+        """[{pos, done, given_up, bots}] for the view."""
+        on = {}
+        for j in s.jobs.values():
+            if j[0] == "spot":
+                on[j[2]] = on.get(j[2], 0) + 1
+        return [dict(pos=[round(v, 2) for v in sp["pos"]], done=sp["done"], given_up=sp["given_up"], bots=on.get(k, 0))
+                for k, sp in enumerate(s.spots)]
+
+    def _spots(s, now, bots):
+        """Marks spots covered (a bot got there) or given up, and sends the nearest free bots to the open ones."""
+        for k, sp in enumerate(s.spots):
+            if sp["done"] or sp["given_up"]:
+                continue
+            x, y, z = sp["pos"]
+            if any(math.hypot(p[0] - x, p[1] - y) < SPOT_DONE_R and abs(p[2] - z) < 2.0 for p in bots.values()):
+                sp["done"] = True
+            elif sp["since"] is not None and now - sp["since"] > SPOT_GIVE_UP:
+                sp["given_up"] = True
+        open_ = {k for k, sp in enumerate(s.spots) if not sp["done"] and not sp["given_up"]}
+        s.jobs = {i: j for i, j in s.jobs.items() if j[0] != "spot" or (j[2] in open_ and i in bots)}
+        for k in sorted(open_):
+            sp = s.spots[k]
+            have = sum(1 for j in s.jobs.values() if j[0] == "spot" and j[2] == k)
+            free = sorted((math.hypot(p[0] - sp["pos"][0], p[1] - sp["pos"][1]) + 2.0 * abs(p[2] - sp["pos"][2]), i)
+                          for i, p in bots.items() if s.jobs.get(i, (None,))[0] not in ("spot", "jump"))
+            for _, i in free[:max(0, SPOT_BOTS - have)]:
+                s.jobs[i] = ("spot", sp["pos"], k, now)
+                s.new_spot_bots.append(i)
+            if sp["since"] is None and (have or free):
+                sp["since"] = now
 
     def _reach(s):
         """Reachable sample cells: Terrain.reach, recomputed over graph_h (new links bots landed count at once)."""
@@ -91,9 +137,12 @@ class LidarDirector:
         s.regions = s._pieces(reach & ~painted)
         s.region_lab = s._lab                     # sample grid -> region label (0: painted, unreachable or tiny)
         s.islands = s._pieces(~reach & ~painted)
+        s._spots(now, bots)
         taken = {}
         for idx, pos in sorted(bots.items()):
             job = s.jobs.get(idx)
+            if job and job[0] == "spot":
+                continue                              # (a marked spot: _spots keeps or ends it)
             keep = next((r for r in s.regions if job and job[0] == "go" and r[1] == job[2]), None) if job else None
             if keep is not None:                      # its region still has unpainted floor: keep it (new members)
                 s.jobs[idx] = ("go", None, keep[1], keep[2])
@@ -141,6 +190,8 @@ class LidarDirector:
         j = s.jobs.get(index)
         if not j:
             return None
+        if j[0] == "spot":
+            return ("go", j[1])
         if j[0] == "jump":
             if math.hypot(pos[0] - j[1][0], pos[1] - j[1][1]) < JUMP_NEAR:
                 s.jobs.pop(index, None)

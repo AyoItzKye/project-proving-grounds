@@ -636,7 +636,15 @@ def map_title(name):
     title = map_titles().get(base) or re.sub(r"^(h2a|h2|h3|h4|odst|reach)_", "", base).replace("_", " ").title()
     if vid:
         from brain.variants import info
-        title += ": " + ((info(name) or {}).get("name") or f"variant {vid}")
+        v = info(name) or {}
+        seen = (v.get("first_seen") or "")[:10]
+        when = ""
+        if seen:
+            try:
+                when = ", first played " + time.strftime("%b %d", time.strptime(seen, "%Y-%m-%d")).replace(" 0", " ")
+            except ValueError:
+                pass
+        title += ": " + (v.get("name") or f"Forge layout {vid[1:5].upper()}{when}")
     return title
 
 
@@ -709,12 +717,9 @@ def pickups_path(name):
     return os.path.join(ROOT, "logs", f"owner_pickups_{file_name(name)}.jsonl")
 
 
-def map_list():
-    """Every map with level data, for the view's map picker: its game, and its LiDAR scans (from
-    matches: lidar.json; from the simulator: lidar_sim.json) with runs, minutes and floor cells. Map variants filed
-    under a map (brain/variants.py) follow it, each with its own scans."""
-    import jumpphys
-    out = []
+def map_list_names():
+    """Every map with level data (maps/<map>/heightmap.npz), each followed by the Forge layouts filed under it
+    (maps/<map>/variants/<id>, brain/variants.py)."""
     names = []
     for name in sorted(os.listdir(os.path.join(ROOT, "maps"))):
         if name.startswith("_") or not os.path.exists(os.path.join(ROOT, "maps", name, "heightmap.npz")):
@@ -722,7 +727,16 @@ def map_list():
         names.append(name)
         vd = os.path.join(ROOT, "maps", name, "variants")
         names += [f"{name}/variants/{v}" for v in sorted(os.listdir(vd))] if os.path.isdir(vd) else []
-    for name in names:
+    return names
+
+
+def map_list():
+    """Every map with level data, for the view's map picker: its game, and its LiDAR scans (from
+    matches: lidar.json; from the simulator: lidar_sim.json) with runs, minutes and floor cells. Map variants filed
+    under a map (brain/variants.py) follow it, each with its own scans."""
+    import jumpphys
+    out = []
+    for name in map_list_names():
         d = os.path.join(ROOT, "maps", name)
         item = dict(name=name, title=map_title(name), mcc=name.partition("/")[0] in map_titles(),
                     game=jumpphys.game_of(name.partition("/")[0]))
@@ -2140,7 +2154,12 @@ def serve(hub, port=PORT):
                        "image/png" if u.path.endswith(".png") else "image/jpeg", cache=True)
             elif u.path == "/live":
                 since = int((parse_qs(u.query).get("since") or ["0"])[0])
-                s.send(json.dumps(h.live(max(0, since))).encode(), "application/json")
+                d = h.live(max(0, since))
+                ctl = getattr(hub, "control", None)  # the simulator's state for its panel (tools/lidar_sim.py)
+                if ctl is not None:
+                    d["sim"] = ctl.state()
+                    hub.last_seen = time.time()
+                s.send(json.dumps(d).encode(), "application/json")
             else:
                 s.send_error(404)
 
@@ -2154,6 +2173,22 @@ def serve(hub, port=PORT):
                 s.send(b"{}", "application/json")
                 hub.yielded = True
                 threading.Thread(target=lambda: (box["srv"].shutdown(), box["srv"].server_close()), daemon=True).start()
+                return
+            ctl = getattr(hub, "control", None)
+            if u.path == "/sim" and ctl is not None:     # the simulator's panel: pick, all, speed, pause, stop, spots
+                if s.headers.get("X-LiDAR") != "sim":    # (a page from another site cannot send it without asking)
+                    return s.send_error(403)
+                try:
+                    n = int(s.headers.get("Content-Length") or 0)
+                    code, answer = ctl.command(json.loads(s.rfile.read(n) or b"{}") if 0 < n < 65536 else {})
+                except (ValueError, KeyError, TypeError) as e:
+                    code, answer = 400, dict(error=f"bad request: {e}")
+                body = json.dumps(answer).encode()
+                s.send_response(code)
+                s.send_header("Content-Type", "application/json")
+                s.send_header("Content-Length", str(len(body)))
+                s.end_headers()
+                s.wfile.write(body)
                 return
             name, src = (q.get("name") or [""])[0], (q.get("src") or ["scan"])[0]
             if u.path != "/remove":

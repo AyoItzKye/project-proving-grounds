@@ -13,7 +13,7 @@
   canvas:active { cursor: grabbing; }
   .card { position: absolute; z-index: 2; background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 10px 14px; }
   #maps { background: rgba(12, 19, 28, 0.97); z-index: 3; }
-  #hud { top: 12px; left: 12px; min-width: 270px; max-width: 340px; }
+  #hud { top: 12px; left: 12px; min-width: 270px; max-width: 340px; max-height: calc(100% - 90px); overflow-y: auto; }
   #hud h1 { font-size: 16px; margin: 0 0 2px; font-weight: 600; letter-spacing: 0.5px; }
   #map { color: var(--dim); margin-bottom: 8px; overflow-wrap: break-word; }
   .pill { display: inline-block; padding: 1px 8px; border-radius: 9px; font-size: 12px; font-weight: 600; margin-left: 6px; vertical-align: 2px; }
@@ -35,6 +35,8 @@
   button { background: #16263a; color: var(--text); border: 1px solid var(--line); border-radius: 4px; padding: 5px 10px;
            font: inherit; font-size: 13px; cursor: pointer; }
   button[aria-pressed="true"] { background: #23507a; border-color: #3d7ab0; }
+  button:disabled { opacity: 0.4; cursor: default; }
+  button:disabled:hover { border-color: var(--line); }
   button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 1px; }
   button u { text-decoration-color: var(--dim); }
   #help { bottom: 12px; left: 12px; color: var(--dim); font-size: 12px; padding: 6px 10px; }
@@ -78,6 +80,22 @@
   #maps-note { margin: 0 0 8px; font-size: 13px; color: var(--sky); }
   #maps-note:empty { display: none; }
   #maps .empty { grid-column: 1 / -1; color: var(--dim); font-size: 13px; padding: 8px 2px; }
+  #sim { bottom: 12px; right: 12px; width: min(380px, calc(100% - 48px)); display: none; }
+  #sim.on { display: block; }
+  #sim h2 { font-size: 16px; margin: 0 0 6px; font-weight: 600; }
+  #sim p { margin: 6px 0; font-size: 13px; }
+  #sim-state { color: #e8f2ff; font-size: 14px !important; }
+  #sim .srow { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0; }
+  #sim .srow > span { color: var(--dim); font-size: 12px; min-width: 44px; }
+  #sim button.primary { background: #1d5f96; border-color: #3d8ad0; font-weight: 600; }
+  #sim .dim { color: var(--dim); }
+  body.cover canvas { cursor: crosshair; }
+  #maplist .msim { position: absolute; top: 6px; left: 6px; width: auto; height: auto; padding: 4px 10px; font-weight: 600;
+    background: #1d5f96; border-color: #3d8ad0; display: inline-block; }
+  #maplist .msim:hover, #maplist .msim:focus-visible { background: #2a77b8; }
+  #maplist li { position: relative; }
+  #maps-pick { margin: 0 0 8px; font-size: 13px; color: #e8f2ff; }
+  #maps-pick:empty { display: none; }
   #backlive { margin-top: 10px; align-self: flex-start; }
 </style>
 </head>
@@ -96,7 +114,7 @@
   <div class="row"><span>Upright walls (cover)</span><b id="nwall">0</b></div>
   <div class="row"><span>Jumps you landed</span><b id="nlinks">0</b></div>
   <div class="row"><span>Crouch paths you walked</span><b id="ncrawl">0</b></div>
-  <div class="row"><span>Paths you recorded (F6)</span><b id="nroute">0</b></div>
+  <div class="row"><span>Recorded paths</span><b id="nroute">0</b></div>
   <div class="row"><span>Jumps and drops bots can do</span><b id="ncan">0</b></div>
   <div class="row"><span>Weapon spots found</span><b id="nweap">0</b></div>
   <div class="row"><span>Map: weapons / objectives / usable</span><b id="nfeat">0</b></div>
@@ -124,7 +142,7 @@
     <div class="key"><span class="arc" style="border-color:#fff2b8"></span>A jump you made (dot: where you landed)</div>
     <div class="key"><span class="sw dot" style="background:#fff2b8"></span><span class="sw dot" style="background:#fff2b8;margin-left:-4px"></span>Dots at both ends: two-way (back and forth); one dot: one-way</div>
     <div class="key"><span class="sw dot" style="background:var(--violet)"></span>A crouch path you walked (dotted line)</div>
-    <div class="key"><span class="sw dot" style="background:var(--sky)"></span>A path you recorded with F6 (one way; dot: its end)</div>
+    <div class="key"><span class="sw dot" style="background:var(--sky)"></span>A recorded path (one way; dot: its end)</div>
     <div class="key"><span class="sw dot" style="background:#fff"></span>The path you are recording now</div>
     <div class="key"><span class="arc" style="border-color:#ccffe6"></span>A jump or drop bots can do (done twice)</div>
     <div class="key"><span class="arc" style="border-color:var(--red)"></span>Your jump, bots keep failing it</div>
@@ -146,10 +164,29 @@
   <button id="b-top" title="T"><u>T</u>op view</button>
   <button id="b-reset" title="R"><u>R</u>eset view</button>
 </div>
+<div id="sim" class="card" role="region" aria-label="Simulator">
+  <h2>Simulator</h2>
+  <p id="sim-state" role="status" aria-live="polite">Pick a map to simulate.</p>
+  <div class="srow">
+    <button id="sim-pick" class="primary" title="Choose a map (or a Forge layout) and watch the bots map it">Pick a map</button>
+    <button id="sim-all" title="Every map in turn">Every map</button>
+    <button id="sim-pause">Pause</button>
+    <button id="sim-stop" title="Stop and save what was mapped">Stop</button>
+  </div>
+  <div class="srow" id="sim-speeds" role="group" aria-label="Speed"><span>Speed</span></div>
+  <p id="sim-rate" class="dim"></p>
+  <div class="srow">
+    <button id="sim-cover" aria-pressed="false" title="C"><u>C</u>lick spots to cover</button>
+    <button id="sim-clear">Clear spots</button>
+  </div>
+  <p id="sim-spots" class="dim"></p>
+  <p id="sim-last" class="dim"></p>
+</div>
 <div id="maps" class="card" role="dialog" aria-label="Maps by game">
   <div class="head"><h2>Maps</h2><button id="maps-close" title="Esc" aria-label="Close the maps list">Close</button></div>
   <div id="games" role="group" aria-label="Game"></div>
   <label><input type="checkbox" id="scanned-only"> Scanned maps only</label>
+  <p id="maps-pick"></p>
   <p id="maps-note" role="status" aria-live="polite"></p>
   <ul id="maplist" aria-label="Maps"></ul>
   <button id="backlive" hidden>Back to the live scan</button>
@@ -359,6 +396,121 @@ function eye() {
   return [cam.tx + cam.dist * cp * Math.cos(cam.yaw), cam.ty + cam.dist * cp * Math.sin(cam.yaw), cam.tz + cam.dist * Math.sin(cam.pitch)];
 }
 
+
+// --- the simulator's panel (tools/lidar_sim.py Control, POST /sim): only when the simulator serves this view
+let simState = null, pickMode = false, coverMode = false;
+const spotOpen = new Buf(), spotDone = new Buf(), spotLost = new Buf();
+async function simPost(body) {
+  try {
+    const r = await fetch("/sim", { method: "POST", headers: { "X-LiDAR": "sim", "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    let data = {}; try { data = await r.json(); } catch (e) { data = {}; }
+    return { ok: r.ok, status: r.status, data };
+  } catch (e) { return { ok: false, status: 0, data: { error: "the simulator is not answering" } }; }
+}
+function speedName(v) { return v ? v + "x" : "Max"; }
+function renderSim() {
+  const s = simState, card = $("sim");
+  card.classList.toggle("on", !!s);
+  if (!s) return;
+  const box = $("sim-speeds");
+  if (box.children.length !== s.speeds.length + 1) {
+    while (box.children.length > 1) box.lastChild.remove();
+    for (const v of s.speeds) {
+      const b = document.createElement("button");
+      b.textContent = speedName(v); b.dataset.speed = v;
+      b.title = v ? v + " simulated seconds a second" : "as fast as this PC runs it";
+      b.onclick = async () => { const r = await simPost({ action: "speed", speed: v }); if (!r.ok) $("sim-rate").textContent = r.data.error || "Could not change the speed."; };
+      box.appendChild(b);
+    }
+  }
+  for (const b of box.querySelectorAll("button")) b.setAttribute("aria-pressed", +b.dataset.speed === s.speed);
+  const running = !!s.current;
+  $("sim-state").textContent = running
+    ? (s.paused ? "Paused: " : "Simulating ") + s.title + " · " + s.minutes.toFixed(1) + " sim min" + (s.queue ? " · " + s.queue + " more queued" : "")
+    : "Pick a map to simulate.";
+  $("sim-pause").textContent = s.paused ? "Resume" : "Pause";
+  $("sim-pause").disabled = $("sim-stop").disabled = !running;
+  $("sim-rate").textContent = running && !s.paused && s.actual
+    ? "Running at " + s.actual.toFixed(1) + "x" + (s.speed && s.actual < s.speed * 0.8 ? " (this PC's limit with 16 bots and 8 aircraft)" : s.speed ? "" : " (full speed)") : "";
+  const open = s.spots.filter(p => !p.done && !p.given_up), done = s.spots.filter(p => p.done), lost = s.spots.filter(p => p.given_up);
+  $("sim-spots").textContent = !running ? "" : coverMode
+    ? "Click the map where the bots should go first (the nearest 3 bots go to each spot)."
+    : s.spots.length ? open.length + " spot" + (open.length === 1 ? "" : "s") + " to cover (" + open.reduce((a, p) => a + p.bots, 0) + " bots on the way), " +
+      done.length + " covered" + (lost.length ? ", " + lost.length + " with no way there" : "")
+    : "No spots marked: turn on \"Click spots to cover\", then click the map.";
+  $("sim-clear").disabled = !s.spots.length;
+  $("sim-cover").disabled = !running;
+  if (!running && coverMode) setCover(false);
+  const l = s.last;
+  $("sim-last").textContent = l ? (l.stopped ? "Stopped " : "Finished ") + l.title + ": " + l.cells.toLocaleString() + " floor cells, " +
+    l.links + " new jump" + (l.links === 1 ? "" : "s") + " in " + l.minutes + " sim min. Saved." : "";
+  spotOpen.clear(); spotDone.clear(); spotLost.clear();
+  for (const p of s.spots) (p.done ? spotDone : p.given_up ? spotLost : spotOpen).push(p.pos[0], p.pos[1], p.pos[2] + 0.1);
+}
+function setCover(on) {
+  coverMode = on; $("sim-cover").setAttribute("aria-pressed", on); document.body.classList.toggle("cover", on); renderSim();
+}
+$("sim-pick").onclick = () => { pickMode = true; showMaps(true); };
+$("sim-all").onclick = async () => {
+  if (!confirm("Simulate every map in turn? It takes a few minutes a map; each map is saved when it finishes.")) return;
+  const r = await simPost({ action: "all" }); if (!r.ok) $("sim-state").textContent = r.data.error || "Could not start.";
+};
+$("sim-pause").onclick = () => simPost({ action: simState && simState.paused ? "resume" : "pause" });
+$("sim-stop").onclick = () => simPost({ action: "stop" });
+$("sim-cover").onclick = () => setCover(!coverMode);
+$("sim-clear").onclick = () => simPost({ action: "clear_spots" });
+async function simulate(m) {
+  const busy = simState && simState.current;
+  if (busy && !confirm("Stop " + simState.title + " (what it mapped so far is saved) and simulate " + m.title + "?")) return;
+  const r = await simPost({ action: "pick", name: m.name });
+  if (!r.ok) { $("maps-note").textContent = r.data.error || "Could not start " + m.title + "."; return; }
+  pickMode = false; showMaps(false);
+}
+function inv4(m) {   // the inverse of a 4x4 matrix (column-major, as mvp)
+  const a = m, o = new Array(16);
+  o[0] = a[5]*a[10]*a[15] - a[5]*a[11]*a[14] - a[9]*a[6]*a[15] + a[9]*a[7]*a[14] + a[13]*a[6]*a[11] - a[13]*a[7]*a[10];
+  o[4] = -a[4]*a[10]*a[15] + a[4]*a[11]*a[14] + a[8]*a[6]*a[15] - a[8]*a[7]*a[14] - a[12]*a[6]*a[11] + a[12]*a[7]*a[10];
+  o[8] = a[4]*a[9]*a[15] - a[4]*a[11]*a[13] - a[8]*a[5]*a[15] + a[8]*a[7]*a[13] + a[12]*a[5]*a[11] - a[12]*a[7]*a[9];
+  o[12] = -a[4]*a[9]*a[14] + a[4]*a[10]*a[13] + a[8]*a[5]*a[14] - a[8]*a[6]*a[13] - a[12]*a[5]*a[10] + a[12]*a[6]*a[9];
+  o[1] = -a[1]*a[10]*a[15] + a[1]*a[11]*a[14] + a[9]*a[2]*a[15] - a[9]*a[3]*a[14] - a[13]*a[2]*a[11] + a[13]*a[3]*a[10];
+  o[5] = a[0]*a[10]*a[15] - a[0]*a[11]*a[14] - a[8]*a[2]*a[15] + a[8]*a[3]*a[14] + a[12]*a[2]*a[11] - a[12]*a[3]*a[10];
+  o[9] = -a[0]*a[9]*a[15] + a[0]*a[11]*a[13] + a[8]*a[1]*a[15] - a[8]*a[3]*a[13] - a[12]*a[1]*a[11] + a[12]*a[3]*a[9];
+  o[13] = a[0]*a[9]*a[14] - a[0]*a[10]*a[13] - a[8]*a[1]*a[14] + a[8]*a[2]*a[13] + a[12]*a[1]*a[10] - a[12]*a[2]*a[9];
+  o[2] = a[1]*a[6]*a[15] - a[1]*a[7]*a[14] - a[5]*a[2]*a[15] + a[5]*a[3]*a[14] + a[13]*a[2]*a[7] - a[13]*a[3]*a[6];
+  o[6] = -a[0]*a[6]*a[15] + a[0]*a[7]*a[14] + a[4]*a[2]*a[15] - a[4]*a[3]*a[14] - a[12]*a[2]*a[7] + a[12]*a[3]*a[6];
+  o[10] = a[0]*a[5]*a[15] - a[0]*a[7]*a[13] - a[4]*a[1]*a[15] + a[4]*a[3]*a[13] + a[12]*a[1]*a[7] - a[12]*a[3]*a[5];
+  o[14] = -a[0]*a[5]*a[14] + a[0]*a[6]*a[13] + a[4]*a[1]*a[14] - a[4]*a[2]*a[13] - a[12]*a[1]*a[6] + a[12]*a[2]*a[5];
+  o[3] = -a[1]*a[6]*a[11] + a[1]*a[7]*a[10] + a[5]*a[2]*a[11] - a[5]*a[3]*a[10] - a[9]*a[2]*a[7] + a[9]*a[3]*a[6];
+  o[7] = a[0]*a[6]*a[11] - a[0]*a[7]*a[10] - a[4]*a[2]*a[11] + a[4]*a[3]*a[10] + a[8]*a[2]*a[7] - a[8]*a[3]*a[6];
+  o[11] = -a[0]*a[5]*a[11] + a[0]*a[7]*a[9] + a[4]*a[1]*a[11] - a[4]*a[3]*a[9] - a[8]*a[1]*a[7] + a[8]*a[3]*a[5];
+  o[15] = a[0]*a[5]*a[10] - a[0]*a[6]*a[9] - a[4]*a[1]*a[10] + a[4]*a[2]*a[9] + a[8]*a[1]*a[6] - a[8]*a[2]*a[5];
+  const det = a[0] * o[0] + a[1] * o[4] + a[2] * o[8] + a[3] * o[12];
+  if (!det) return null;
+  for (let k = 0; k < 16; k++) o[k] /= det;
+  return o;
+}
+function groundAt(cx, cy) {   // where a click meets the ground plane at the camera's target height (the server snaps it to floor)
+  const im = inv4(mvp); if (!im) return null;
+  const x = cx / canvas.clientWidth * 2 - 1, y = 1 - cy / canvas.clientHeight * 2;
+  const un = (z) => { const v = [x, y, z, 1], o = [0, 0, 0, 0];
+    for (let r = 0; r < 4; r++) for (let k = 0; k < 4; k++) o[r] += im[k * 4 + r] * v[k];
+    return [o[0] / o[3], o[1] / o[3], o[2] / o[3]]; };
+  const a = un(-1), b = un(1), dz = b[2] - a[2];
+  if (Math.abs(dz) < 1e-6) return null;
+  const t = (cam.tz - a[2]) / dz;
+  if (!(t > 0)) return null;
+  return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, cam.tz];
+}
+let clickAt = null;
+canvas.addEventListener("mousedown", e => { clickAt = e.button === 0 ? [e.clientX, e.clientY] : null; });
+canvas.addEventListener("mouseup", async e => {
+  if (!coverMode || !clickAt || Math.hypot(e.clientX - clickAt[0], e.clientY - clickAt[1]) > 5) return;   // (a drag turns the view)
+  const r0 = canvas.getBoundingClientRect(), g = groundAt(e.clientX - r0.left, e.clientY - r0.top);
+  if (!g) { $("sim-spots").textContent = "Click on the ground."; return; }
+  const r = await simPost({ action: "spot", x: g[0], y: g[1], z: g[2] });
+  if (!r.ok) $("sim-spots").textContent = r.data.error || "Could not mark that spot.";
+});
+
 // --- input
 let drag = null;
 canvas.addEventListener("contextmenu", e => e.preventDefault());
@@ -385,6 +537,7 @@ addEventListener("keydown", e => {
   if (e.key === "Escape" && $("maps").classList.contains("on")) { showMaps(false); $("b-maps").focus(); return; }
   if (e.target.tagName === "INPUT") return;
   if (e.key.toLowerCase() === "l") { showMaps(!$("maps").classList.contains("on")); return; }
+  if (e.key.toLowerCase() === "c" && simState && simState.current) { setCover(!coverMode); return; }
   const m = { e: "old", p: "trail", d: "dead", j: "link", g: "grid", f: "follow", w: "weap", a: "airsp", m: "feat" }[e.key.toLowerCase()];
   if (m) toggle(m); else if (e.key.toLowerCase() === "t") cam.pitch = 1.55; else if (e.key.toLowerCase() === "r") fit();
   else if (e.key === "ArrowLeft") cam.yaw += 0.08; else if (e.key === "ArrowRight") cam.yaw -= 0.08;
@@ -489,13 +642,21 @@ function renderMaps() {
     const st = b.querySelector(".mstat");
     st.textContent = (s ? (m.scan ? "" : "Simulator: ") + s.runs + " run" + (s.runs === 1 ? "" : "s") + ", " +
       s.cells.toLocaleString() + " floor cells, " + s.links + " paths · " + ago(s.updated) : "No scan yet (map features only)") +
-      (m.scan && m.sim ? " · simulator scan too" : "") + (m.mcc ? "" : " · editing kit test level, not in MCC");
+      (m.scan && m.sim ? " · simulator scan too" : "") + (m.mcc ? "" : " · editing kit test level, not in MCC") +
+      (m.name.includes("/variants/") ? " · Forge layout from your matches" : "");
     if (!s) st.classList.add("none");
     b.title = m.title + " (" + m.name + ")";
     b.dataset.key = "m:" + m.name;
     if (m.name === cur) b.setAttribute("aria-current", "true");
-    b.onclick = () => openMap(m, isLive(m));
+    b.onclick = () => pickMode && simState ? simulate(m) : openMap(m, isLive(m));
     li.appendChild(b); box.appendChild(li);
+    if (simState) {               // the simulator serves this view: simulate any map from here
+      const go = document.createElement("button");
+      go.className = "msim"; go.textContent = "Simulate"; go.dataset.key = "s:" + m.name;
+      go.title = "Watch the bots map " + m.title; go.setAttribute("aria-label", go.title);
+      go.onclick = () => simulate(m);
+      li.appendChild(go);
+    }
     if (s && !isLive(m)) {          // the map being scanned now cannot be removed (the run would write it back)
       const del = document.createElement("button");
       del.className = "mdel"; del.textContent = "Remove"; del.dataset.key = "d:" + m.name;
@@ -513,7 +674,7 @@ async function removeScan(m) {     // the scan from matches first; a map with on
   const src = m.scan ? "scan" : "sim", s = m[src];
   const what = src === "scan"
     ? s.runs + " run" + (s.runs === 1 ? "" : "s") + ", " + s.cells.toLocaleString() + " floor cells and " + s.links + " jumps and paths" +
-      (s.human_links ? ", " + s.human_links + " of them yours (your jumps, crouch paths and F6 paths)" : "") +
+      (s.human_links ? ", " + s.human_links + " of them yours (your jumps, crouch paths and recorded paths)" : "") +
       ". Bots stop using these jumps from the next match."
     : "The simulator's floor (" + s.cells.toLocaleString() + " cells), air space and the jumps it found. Bots stop using its jumps from the next match.";
   if (!confirm("Remove the " + (src === "sim" ? "simulator " : "") + "LiDAR scan of " + m.title + "?\n\n" + what +
@@ -538,6 +699,8 @@ function openMap(m, live) {
   location.search = p.toString();
 }
 function showMaps(on) {
+  if (!on) pickMode = false;
+  $("maps-pick").textContent = on && pickMode ? "Pick a map to simulate: click its picture. Forge layouts the bots played on are listed under their map." : "";
   $("maps").classList.toggle("on", on); $("b-maps").setAttribute("aria-pressed", on);
   clearInterval(mapsTimer);
   if (on) { loadMaps(); mapsTimer = setInterval(loadMaps, 5000); $("maps-close").focus(); }
@@ -553,6 +716,7 @@ async function poll() {
   if (d && d.session !== session) { location.reload(); return; }   // a new match: start clean, never paint over
   if (d) {
     lastOk = performance.now(); failed = false; mode = d.mode;
+    simState = d.sim || null; renderSim();
     for (const c of d.cells) addCell(c, false);
     seq = d.seq;
     if (d.cells.length) { gotData = true; if (heightRange()) buildGrid(); if (!fitted) fit(); }
@@ -588,8 +752,9 @@ async function poll() {
   else if (mode === "sim") setPill("replay", "SIMULATION");
   else setPill("stored", "STORED");
   if (offline && gotData) msg("");
-  else if (offline) msg("Cannot reach the mapper. It runs during a LiDAR match (BOTS panel &gt; LiDAR mode); after a match, open <b>LiDAR Viewer.bat</b> to see the stored map.");
+  else if (offline) msg("Cannot reach the mapper. It runs during a LiDAR match (BOTS panel &gt; LiDAR mode); after a match, open the <b>LiDAR Viewer</b> from the launcher to see the stored map.");
   else if (!gotData && mode === "stored") msg("No LiDAR data for this map yet.");
+  else if (simState && !simState.current && !simState.last) msg("Pick a map to simulate: <b>Pick a map</b> in the Simulator panel (bottom right).");
   else if (!gotData) msg("Waiting for the bots. They start mapping a few seconds after the match begins.");
   else msg("");
   $("help").textContent = offline && gotData ? "Mapper stopped (match over?): showing what it recorded. Drag to turn · right-drag to move · wheel to zoom"
@@ -648,6 +813,8 @@ function frame() {
   points(trying, -12, [0.31, 0.85, 1, 1], 1, false);
   lines(callLines, [1, 0.95, 0.72, 0.55]); points(calls, -16, [1, 0.95, 0.72, 1], 3, false);
   points(crafts, -12, [0.66, 0.94, 0.35, 1], 1, false);
+  points(spotOpen, -26, [1, 0.42, 0.85, 1], 3, false); points(spotDone, -22, [0.37, 0.88, 0.54, 1], 3, false);
+  points(spotLost, -22, [1, 0.29, 0.29, 0.9], 2, false);
   if (show.feat) {
     lines(teleLines, [0.3, 0.95, 1, 0.6]);
     for (const k in FEAT) { const [buf, col, size, shape] = FEAT[k]; points(buf, size, col, shape, false); }
