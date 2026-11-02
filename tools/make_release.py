@@ -187,7 +187,9 @@ def load_terms(path=None):
 def scan_text(text, terms=()):
     """{kind: count} of private data in one file's text (terms: personal terms), and the count of development quotes."""
     found = {k: len(re.findall(p, text)) for k, p in PRIVATE.items()}
-    found["personal term"] = sum(len(re.findall(re.escape(t), text, re.I)) for t in terms)
+    # (a GitHub account in a link, the project's own pages, is public by nature: not counted as a personal term)
+    bare = re.sub(r"(?i)github\.com/[\w-]+", "github.com/", text)
+    found["personal term"] = sum(len(re.findall(re.escape(t), bare, re.I)) for t in terms)
     found["Xbox id"] = sum(1 for m in re.findall(XBOX_ID, text) if m.lower() not in MADE_UP_IDS)
     return {k: n for k, n in found.items() if n}, len(re.findall(QUOTES, text))
 
