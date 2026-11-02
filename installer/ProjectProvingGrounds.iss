@@ -2,10 +2,12 @@
 ; (Payload) and passes the version: ISCC /DAppVersion=0.1.0 /DPayload=<folder> /DBuildDir=<folder> this file.
 ;
 ; Installs for the current user (no administrator rights needed) into %LOCALAPPDATA%\Programs\Project Proving Grounds,
-; with a Start Menu shortcut to the launcher and an optional desktop one. Asks before each optional step: the Windows
-; Security exclusion for the mod's folder (native\bin: Windows Security can mistake the injector that loads the mod
-; into MCC for malware) is off unless ticked, and asks for administrator permission only then. Uninstalling removes the
-; exclusion again and asks whether to keep the player's LiDAR scans, learned map data and recorded matches.
+; with a Start Menu shortcut to the launcher and an optional desktop one. A page of its own asks for the Windows Security
+; exclusion for the mod's folder (native\bin), which the bots need: Windows Security deletes the injector that loads the
+; mod into MCC. It is ticked, unticking it asks again, and it is added before the files are copied (administrator
+; permission asked then); an update over an install that has it skips the page. Silent installs add it unless
+; /EXCLUSION=no. Uninstalling removes the exclusion again and asks whether to keep the player's LiDAR scans, learned map
+; data and recorded matches.
 
 #ifndef AppVersion
   #define AppVersion "0.0.0"
@@ -47,7 +49,6 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Shortcuts:"
-Name: "defender"; Description: "Add the mod's folder (native\bin) to Windows Security's exclusions, so it does not delete the injector that loads the bots into MCC (asks for administrator permission)"; GroupDescription: "Windows Security:"; Flags: unchecked
 
 [Files]
 Source: "{#Payload}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -102,20 +103,71 @@ begin
     PowerShell('Get-Process | Where-Object { $_.Path -like ' + Quoted(ExpandConstant('{app}') + '\*') + ' } | Stop-Process -Force');
 end;
 
+var
+  SecurityPage: TInputOptionWizardPage;
+  ExclusionAdded: Boolean;
+
+procedure InitializeWizard;
+begin
+  SecurityPage := CreateInputOptionPage(wpSelectTasks, 'Windows Security exclusion (required)',
+    'The bots can''t load into the game without it.',
+    'Project Proving Grounds loads its bots into Halo: MCC with a small program called an injector. Windows Security ' +
+    'treats injectors as suspicious and usually deletes them, and then the bots can''t load.' + #13#10 + #13#10 +
+    'Setup adds one exclusion, for the mod''s own program folder (native\bin), and nothing else. Windows asks for ' +
+    'administrator permission when Setup adds it, and uninstalling removes it again.' + #13#10 + #13#10 +
+    'Using another antivirus? Add the same folder to its exclusions after installing.',
+    False, False);
+  SecurityPage.Add('Add the Windows Security exclusion for the mod''s folder (required)');
+  SecurityPage.Values[0] := True;
+end;
+
+function HasExclusion: Boolean;                { added by an earlier install of this folder }
+begin
+  Result := FileExists(ExpandConstant('{app}') + MARK);
+end;
+
+function ShouldSkipPage(PageID: Integer): Boolean;
+begin
+  Result := (PageID = SecurityPage.ID) and HasExclusion;
+end;
+
+function NextButtonClick(CurPageID: Integer): Boolean;
+begin
+  Result := True;
+  if (CurPageID = SecurityPage.ID) and not SecurityPage.Values[0] then
+    Result := MsgBox('Without the exclusion, Windows Security will most likely delete the injector, and the bots won''t ' +
+                     'load into the game.' + #13#10 + #13#10 + 'You can add it yourself later: Windows Security > Virus ' +
+                     '& threat protection > Manage settings > Exclusions.' + #13#10 + #13#10 +
+                     'Continue without it?', mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES;
+end;
+
+function WantExclusion: Boolean;
+begin
+  if HasExclusion then
+    Result := False
+  else if WizardSilent then
+    Result := CompareText(ExpandConstant('{param:exclusion|yes}'), 'no') <> 0
+  else
+    Result := SecurityPage.Values[0];
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   Dir: String;
 begin
-  if (CurStep = ssPostInstall) and WizardIsTaskSelected('defender') then
+  Dir := ExpandConstant('{app}\native\bin');
+  // before the files are copied, so Windows Security does not delete the injector while they are
+  if (CurStep = ssInstall) and WantExclusion then
   begin
-    Dir := ExpandConstant('{app}\native\bin');
-    if RunElevatedPowerShell('Add-MpPreference -ExclusionPath ' + Quoted(Dir)) then
-      SaveStringToFile(ExpandConstant('{app}') + MARK, Dir, False)
-    else
-      SuppressibleMsgBox('The Windows Security exclusion was not added (permission was not given, or Windows Security ' +
-                         'is managed by another program). The bots still work; if Windows Security removes inject.exe, ' +
-                         'the launcher says so.', mbInformation, MB_OK, IDOK);
+    ExclusionAdded := RunElevatedPowerShell('Add-MpPreference -ExclusionPath ' + Quoted(Dir));
+    if not ExclusionAdded then
+      SuppressibleMsgBox('The Windows Security exclusion was not added (permission was not given, or another antivirus ' +
+                         'manages Windows Security). The bots need it to load.' + #13#10 + #13#10 + 'To add it yourself: ' +
+                         'Windows Security > Virus & threat protection > Manage settings > Exclusions > Add or remove ' +
+                         'exclusions > Add an exclusion > Folder, and choose:' + #13#10 + Dir, mbInformation, MB_OK, IDOK);
   end;
+  if (CurStep = ssPostInstall) and ExclusionAdded then
+    SaveStringToFile(ExpandConstant('{app}') + MARK, Dir, False);
 end;
 
 var

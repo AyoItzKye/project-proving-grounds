@@ -18,12 +18,14 @@ Reach and ODST Firefight (bots fill your team). Up to 15 bots: the game holds 16
    the GitHub page).
 3. Run it. Windows may say "Windows protected your PC": the installer is not code-signed. Click **More info**, then
    **Run anyway**.
-4. The installer asks where to install (your user folder; no administrator rights needed) and offers two options:
-   - a desktop shortcut;
-   - **adding the mod's folder to Windows Security's exclusions** (off unless you tick it; asks for administrator
-     permission). The mod loads into MCC with a small injector, the kind of program antivirus tools are suspicious
-     of. Without the exclusion Windows Security may delete it; the launcher tells you if it does.
-5. At the end the launcher opens and runs the **first-time setup** (a few minutes): it builds the 3D bots, emblems,
+4. The installer asks where to install (your user folder; no administrator rights needed) and whether you want a
+   desktop shortcut.
+5. **The Windows Security exclusion (required).** The mod loads its bots into MCC with a small injector, and Windows
+   Security treats injectors as suspicious and usually deletes them, so the bots can't load without the exclusion. The
+   installer adds one exclusion, for the mod's own `native\bin` folder and nothing else, and Windows asks for
+   administrator permission when it does. Leave it ticked. Uninstalling removes it again. Using another antivirus? Add
+   the same folder to its exclusions too.
+6. At the end the launcher opens and runs the **first-time setup** (a few minutes): it builds the 3D bots, emblems,
    effects and map pictures from your own copy of the game. None of the game's files ship with the mod.
 
 Optional download on the same Releases page: **human-play-data-&lt;version&gt;.zip**, recorded matches of people
@@ -128,7 +130,7 @@ what to expect on each, and MCC's own per-game requirements: [docs/SYSTEM_REQUIR
 | What you see | What to do |
 |---|---|
 | No BOTS tile in the lobby | MCC was started with anti-cheat on: quit it and press Play again, choosing anti-cheat off. Or MCC updated since this version of the mod: check Releases for a newer one. |
-| The launcher says Windows Security removed inject.exe | Reinstall and tick the Windows Security option, or add the install folder's native\bin to the exclusions yourself. |
+| The launcher says Windows Security removed inject.exe | The exclusion is missing. Restore inject.exe from Windows Security > Protection history, then run the installer again with the exclusion ticked, or add the install folder's native\bin yourself (Windows Security > Virus & threat protection > Manage settings > Exclusions). |
 | Bots do not join | The brain's log is logs\brain.txt in the install folder (Open the install folder in the launcher). |
 | The game stutters with many bots | Use fewer bots; see the requirements. |
 | Another mod (ReShade, an ASI loader ...) | The launcher lists files from other mods that can clash and offers to start without them for one session. |

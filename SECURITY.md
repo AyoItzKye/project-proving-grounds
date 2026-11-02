@@ -4,7 +4,8 @@
 
 - It loads a DLL (`native\bin\botcore.dll`) into Halo: The Master Chief Collection with a small injector
   (`inject.exe`), only while MCC runs with Easy Anti-Cheat off. Antivirus programs often flag DLL injectors; the
-  installer offers a Windows Security exclusion for that one folder, off unless you tick it.
+  installer adds a Windows Security exclusion for that one folder (required: Windows Security deletes the injector
+  otherwise), with administrator permission asked first; uninstalling removes it.
 - It runs local servers for its windows (the launcher, the Observer, the LiDAR view, the nav painter) on 127.0.0.1
   only: nothing is reachable from other PCs. Actions that change anything need a header only the tool's own page sends.
 - It writes files inside its install folder and in its windows' own browser profile
