@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/banner.jpg" alt="Halo MCC: Project Proving Grounds" width="100%"></p>
+
 # Project Proving Grounds
 
 PvP bots for **Halo: The Master Chief Collection** on PC. Bots join your offline custom games as real players on the
