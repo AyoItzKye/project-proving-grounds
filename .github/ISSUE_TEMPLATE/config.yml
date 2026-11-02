@@ -1,5 +1,8 @@
 blank_issues_enabled: false
 contact_links:
+  - name: Known bugs
+    url: https://github.com/AyoItzKye/project-proving-grounds/blob/main/docs/KNOWN_BUGS.md
+    about: What is already known to be broken or buggy in this version.
   - name: What works right now (bot status sheet)
     url: https://github.com/AyoItzKye/project-proving-grounds/blob/main/docs/BOT_STATUS.pdf
     about: Every game, mode and vehicle rated green to red. Red items are already known.

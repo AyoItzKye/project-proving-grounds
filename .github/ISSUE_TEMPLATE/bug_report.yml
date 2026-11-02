@@ -10,7 +10,7 @@ body:
 
         **Best of all, attach the bug report the mod saved:** press **F9** in the match right when it happens and type what went wrong. The report is saved with a recording of that moment in the install folder's `logs\bug_reports` (the launcher's **Open the install folder** button takes you there). Zip that report's folder and drag it into the box at the bottom of this form.
 
-        Before you post, check the [bot status sheet](https://github.com/AyoItzKye/project-proving-grounds/blob/main/docs/BOT_STATUS.pdf): things marked red are already known.
+        Before you post, check the [known bugs](https://github.com/AyoItzKye/project-proving-grounds/blob/main/docs/KNOWN_BUGS.md) and the [bot status sheet](https://github.com/AyoItzKye/project-proving-grounds/blob/main/docs/BOT_STATUS.pdf): those are already known.
   - type: input
     id: version
     attributes:
