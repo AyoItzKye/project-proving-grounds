@@ -302,6 +302,9 @@ How the code works, part by part and file by file, and how to build it and run t
 Built by the Project Proving Grounds contributors with **Claude**, Anthropic's AI model, which wrote most of the code
 and documentation together with the project's author.
 
+> Making this mod cost Anthropic an estimated **$3,893** in compute. That's more than a Warthog, and the bots still
+> can't drive one back to base with the flag. Worth every credit. Sorry, Anthropic.
+
 - [Dear ImGui](https://github.com/ocornut/imgui) (MIT) draws the BOTS panel; [MinHook](https://github.com/TsudaKageyu/minhook)
   (BSD 2-Clause) hooks the game.
 - The map tools (bsp2obj, model2obj) are a [separate GPL-3.0 project](https://github.com/AyoItzKye/proving-grounds-map-tools) built on
