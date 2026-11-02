@@ -44,7 +44,7 @@ RULES = (
     ("tools/backup.py", None), ("tools/verify_checks.py", None), ("tools/test_verify_checks.py", None),("tools/identity_probe.py", None),
     ("docs/HANDOFF*.md", None), ("docs/oct31/**", None), ("docs/evidence/**", None), ("docs/ENGINEER_CHECKS.md", None),
     ("docs/RELEASE_PLAN.md", None), ("docs/RELEASE_CHECKLIST.md", None), ("docs/PLAN_*.md", None),
-    ("docs/play_status.html", None), ("docs/VISION.md", None), ("docs/research/11-kev-vs-ollama.md", None),
+    ("docs/play_status.*", None), ("docs/VISION.md", None), ("docs/research/11-kev-vs-ollama.md", None),
     ("*.bat", None), ("*.lnk", None),
     ("maps/*/variants/**", None), ("maps/*/lidar*.json", None), ("maps/*/nav_learned.json", None),
     ("maps/*/los_learned.json", None), ("maps/*/rides.json", None), ("maps/*/moves_review.json", None),

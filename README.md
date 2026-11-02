@@ -49,6 +49,9 @@ and bots for anyone who wants to study how they play ([docs/HUMAN_DATA.md](docs/
    - **Settings**: each bot's profile with its 3D look, emblem and clan tag; re-roll them.
 4. Pick a map and game type, then START. The bots join a few seconds after the match loads.
 
+How well the bots handle each game, game mode and vehicle right now, green to red:
+[docs/BOT_STATUS.pdf](docs/BOT_STATUS.pdf).
+
 ## Difficulty
 
 | | Easy | Normal | Heroic | Legendary |
