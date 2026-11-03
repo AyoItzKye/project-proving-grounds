@@ -19,6 +19,7 @@ For everything that works, game by game, see the [bot status sheet](BOT_STATUS.p
 
 - **Allied bots won't get into a vehicle with you**, only with other bots: they don't hop in as your gunner or passenger, or take you as theirs.
 - **In CTF, a bot driver will pick up your flag carrier but won't drive back to your base** to score.
+- **Bots get into destroyed vehicles**: the mod can't read a vehicle's health yet, so a bot can't tell a wrecked one from a working one.
 - **Flying vehicles need reworking**: how bots fly and fight in the air is being redone.
 - **Bots lack urgency on offense**: when the objective means attacking (taking the flag, planting the bomb, pushing in Invasion), they're too slow and cautious about it.
 - **Theater mode only works with bots in Halo: Reach.** Films of bot matches in every other game (Halo: CE, Halo 2, Halo 2 Anniversary, Halo 3, ODST and Halo 4) load, then stop with "an error occurred" as they start.
