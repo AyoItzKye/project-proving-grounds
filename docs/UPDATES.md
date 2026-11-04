@@ -7,7 +7,7 @@ What changed in each version. Download the newest one from the [Releases page](h
 These are done but still being tested, so they are not in a download yet:
 
 - **Choose which MCC to use.** The launcher gets a Game folder row: pick any copy of MCC (handy if you keep more than one), or go back to the one Steam installed. ([#1](https://github.com/AyoItzKye/project-proving-grounds/issues/1))
-- **Invasion on any Reach map.** Invasion was only recognized on Spire, Boneyard and Breakpoint, so on Forge and custom maps the bots played Slayer. ([#2](https://github.com/AyoItzKye/project-proving-grounds/issues/2))
+- **Invasion on any Reach map.** Invasion was only recognized on Spire, Boneyard and Breakpoint, so on Forge and custom maps the bots played Slayer. Now it is detected everywhere and bots respawn in each phase's zone. Carrying the bomb and core and taking the zones on Forge maps comes later (the mod can't read Forge labels yet). ([#2](https://github.com/AyoItzKye/project-proving-grounds/issues/2))
 - **Walls that come and go.** Forge pieces that appear and disappear between phases or rounds are walls only while they stand, so bots stop walking into them.
 - **No more getting into wrecks.** Bots can tell a destroyed vehicle from a working one, in every game except Halo: CE (where multiplayer vehicles can't be destroyed).
 - **Boarding and the Plasma Launcher.** Bots board a distracted tank from the front and melee the driver, and hold a Plasma Launcher lock on a vehicle before firing.
