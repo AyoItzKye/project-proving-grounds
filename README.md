@@ -20,7 +20,7 @@ yet). Click the picture for the full sheet: what to expect in each mode and with
 
 [![How the bots play each game: summary](docs/bot_status.png)](docs/BOT_STATUS.pdf)
 
-**[Open the full bot status sheet (PDF)](docs/BOT_STATUS.pdf)** · **[Known bugs](docs/KNOWN_BUGS.md)**
+**[Open the full bot status sheet (PDF)](docs/BOT_STATUS.pdf)** · **[Known bugs](docs/KNOWN_BUGS.md)** · **[Updates](docs/UPDATES.md)**
 
 Found a bug? **[Report it here](https://github.com/AyoItzKye/project-proving-grounds/issues/new?template=bug_report.yml)** (how: [Report a problem](#report-a-problem)).
 
