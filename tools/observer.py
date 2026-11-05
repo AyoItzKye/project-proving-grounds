@@ -1,7 +1,8 @@
 """The Observer.
 
 It reads the brain's traces (logs/trace_<map>_<date>-<time>.jsonl, one per match while logs/trace_on
-exists, the last 10 kept by tools/play.py; older and hand-named ones, saved ones in logs/evidence,
+exists, the newest 5 not saved and every saved one kept, each up to its last 15 minutes: the Recording settings,
+tools/recording.py; older and hand-named ones, saved ones in logs/evidence,
 simulator traces): every bot's position, facing, goal, fight reasons and overrides
 each tick; every decision with its top scores, flags, director order and beliefs; every callout
 (brain/tracefmt.py). Two ways in:
@@ -27,6 +28,7 @@ import sys
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)                 # (python -I leaves this folder off the path: tools/recording.py)
 ROOT = os.path.join(HERE, "..")
 LOGS = os.path.join(ROOT, "logs")
 MAPS = os.path.join(ROOT, "maps")
@@ -38,8 +40,11 @@ LIVE_S = 15.0            # a trace written to this recently is a match being pla
 # ---------------------------------------------------------------- traces
 
 def trace_files():
-    """Every trace there is, newest first: [{file (relative to logs), label, map, bytes, mtime, live}]."""
-    out = []
+    """Every trace there is, newest first: [{file (relative to logs), label, map, bytes, mtime, live, kept}]. kept: a
+    match in the queue (tools/recording.py) saved or not; None for the rest (bug reports, imported, evidence: always
+    kept)."""
+    import recording
+    out, saved = [], recording.saved(LOGS)
     for path in glob.glob(os.path.join(LOGS, "trace_*.jsonl")) + glob.glob(os.path.join(LOGS, "evidence", "*.jsonl")) \
             + glob.glob(os.path.join(LOGS, "sim_*.jsonl")) + glob.glob(os.path.join(LOGS, "bug_reports", "*", "trace.jsonl")) \
             + glob.glob(os.path.join(LOGS, "qc_keep", "*.jsonl")) \
@@ -49,8 +54,10 @@ def trace_files():
         label = match_label(path) or bug_label(path) or rel.replace(".jsonl", "")
         if rel.startswith("imported/"):
             label = "Imported: " + label
+        stamp = recording.stamp_of(path) if "/" not in rel else None
         out.append(dict(file=rel, label=label, map=trace_map(path),
-                        bytes=st.st_size, mtime=st.st_mtime, live=time.time() - st.st_mtime < LIVE_S))
+                        bytes=st.st_size, mtime=st.st_mtime, live=time.time() - st.st_mtime < LIVE_S,
+                        kept=(stamp in saved) if stamp else None))
     return sorted(out, key=lambda d: -d["mtime"])
 
 
@@ -76,7 +83,7 @@ TIER_NAME = {"novice": "Easy", "average": "Normal", "strong": "Heroic", "top": "
 
 def match_label(path):
     """A recorded match's name in the game list, "Match, Easy": when it started and its difficulty
-    (tools/play.py names them trace_<map>_<date>-<time>.jsonl and keeps the last 10)."""
+    (tools/play.py names them trace_<map>_<date>-<time>.jsonl)."""
     m = re.search(r"_(\d{8}-\d{6})\.jsonl$", path)
     if not m:
         return None
@@ -527,9 +534,25 @@ def serve(port, open_browser):
             s.wfile.write(body)
 
         def do_POST(s):
-            if urlparse(s.path).path != "/import" or s.headers.get("X-Observer") != "1":   # (only its own page)
+            where = urlparse(s.path).path
+            if where not in ("/import", "/keep", "/settings") or s.headers.get("X-Observer") != "1":   # (its own page)
                 return s.send_error(404)
             n = int(s.headers.get("Content-Length") or 0)
+            if where != "/import":                      # Keep game, Recording settings (tools/recording.py)
+                import recording
+                try:
+                    body = json.loads(s.rfile.read(n) if 0 < n < 1 << 16 else b"{}")
+                    if where == "/settings":
+                        got = recording.save_settings({k: int(body[k]) for k in recording.LIMITS if k in body})
+                        return s.send(json.dumps(got).encode(), "application/json")
+                    path = safe_trace(body.get("file", ""))
+                    stamp = recording.stamp_of(path) if path and "/" not in body["file"] else None
+                    if not stamp:
+                        return s.send(b'{"error": "only recorded matches can be kept"}', "application/json", 400)
+                    recording.keep(stamp, bool(body.get("keep")), LOGS)
+                    return s.send(json.dumps(dict(kept=stamp in recording.saved(LOGS))).encode(), "application/json")
+                except (ValueError, TypeError, KeyError, OSError) as e:
+                    return s.send(json.dumps(dict(error=str(e))).encode(), "application/json", 400)
             if not 0 < n <= 1 << 30:
                 return s.send(b'{"error": "no file, or bigger than 1 GB"}', "application/json", 400)
             try:
@@ -546,6 +569,11 @@ def serve(port, open_browser):
             try:
                 if u.path in ("/", "/index.html"):
                     s.send(open(page, "rb").read(), "text/html; charset=utf-8")
+                elif u.path == "/settings":                     # the Recording settings (tools/recording.py)
+                    import recording
+                    got = recording.settings()
+                    s.send(json.dumps(dict(games=got["games"], minutes=got["minutes"], limits=recording.LIMITS)).encode(),
+                           "application/json")
                 elif u.path == "/traces":
                     s.send(json.dumps(trace_files()).encode(), "application/json")
                 elif u.path == "/maps":
@@ -598,12 +626,20 @@ def serve(port, open_browser):
             except (ValueError, OSError) as e:
                 s.send(json.dumps(dict(error=str(e))).encode(), "application/json", 500)
 
-    srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     url = f"http://127.0.0.1:{port}/"
-    print(f"Observer: {url}  (Ctrl+C to stop)", flush=True)
     if open_browser:
         sys.path.insert(0, HERE)
         import appwindow
+    try:
+        # (no address reuse: on Windows two Observers could both serve the port; now the second one finds the first)
+        srv = type("Server", (ThreadingHTTPServer,), dict(allow_reuse_address=False))(("127.0.0.1", port), Handler)
+    except OSError:                                     # an Observer runs already (its window was closed): show it
+        if open_browser:
+            appwindow.open_window(url)
+        print(f"Observer already running: {url}", flush=True)
+        return
+    print(f"Observer: {url}  (Ctrl+C to stop)", flush=True)
+    if open_browser:
         appwindow.open_window(url)
     try:
         srv.serve_forever()

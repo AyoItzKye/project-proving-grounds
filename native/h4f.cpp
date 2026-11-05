@@ -251,6 +251,7 @@ static uint32_t f_near_vehicle(h4f_game& G, uint8_t* tls, uint8_t* unit) {
         uint8_t* o = *(uint16_t*)e && e[4] == 1 ? *(uint8_t**)(e + 0x10) : nullptr;   // type 1: a vehicle
         if (!o || *(uint32_t*)(o + 0x24) != 0xFFFFFFFFu) continue;                      // top level (not a gun on one)
         if (G.id == 7 && ((const float*)(o + 0x7C))[2] < 0.5f) continue;                // on its side or roof
+        if (o[0x16C] & 4) continue;   // destroyed (damage flags bit 2: both games' object_get_health reads 0 then)
         const float* q = (const float*)(o + 0x40);
         float d = (q[0] - me[0]) * (q[0] - me[0]) + (q[1] - me[1]) * (q[1] - me[1]);
         if (d < best && fabsf(q[2] - me[2]) < 2.5f) { best = d; veh = ((uint32_t)*(uint16_t*)e << 16) | (uint32_t)i; }

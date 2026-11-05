@@ -30,6 +30,7 @@ ISLAND_BOTS = 2          # ... to this many bots at a time
 SPOT_BOTS = 3            # bots sent to each spot a person marked to cover (the simulator's view)
 SPOT_DONE_R = 2.5        # a bot this close (flat, within 2 u up or down) has covered the spot
 SPOT_GIVE_UP = 120.0     # seconds: a spot no bot reached by then has no way there
+OBJECTIVE_SHARE = 0.5    # at most this share of the bots on gametype objectives at a time (tools/lidar.py Objectives)
 
 
 class LidarDirector:
@@ -49,16 +50,22 @@ class LidarDirector:
         s.next_t, s.regions, s.islands, s.jobs = 0.0, [], [], {}
         s.painted_share, s.reach_share = 0.0, 0.0
         s.last_line = 0.0
-        s.spots, s.new_spot_bots = [], []        # spots a person marked to cover; bots just sent to one
+        s.spots, s.new_spot_bots = [], []        # spots to cover (marked, objectives); bots just sent to one
 
-    def add_spot(s, pos):
-        """A spot to cover: the nearest SPOT_BOTS free bots go there first (replanned at once)."""
-        s.spots.append(dict(pos=tuple(float(v) for v in pos), done=False, given_up=False, since=None))
+    def add_spot(s, pos, bots=SPOT_BOTS, label=None):
+        """A spot to cover: the nearest `bots` free bots go there first (replanned at once). label: a gametype
+        objective's role (tools/lidar.py Objectives: one bot each), None for a spot a person marked."""
+        sp = dict(pos=tuple(float(v) for v in pos), done=False, given_up=False, since=None, bots=bots, label=label)
+        s.spots.append(sp)
         s.next_t = 0.0
+        return sp
 
     def clear_spots(s):
-        s.spots = []
-        s.jobs = {k: j for k, j in s.jobs.items() if j[0] != "spot"}
+        """The spots a person marked (the objectives stay)."""
+        keep = [k for k, sp in enumerate(s.spots) if sp.get("label")]
+        s.spots = [s.spots[k] for k in keep]
+        s.jobs = {k: (*j[:2], keep.index(j[2]), *j[3:]) if j[0] == "spot" else j
+                  for k, j in s.jobs.items() if j[0] != "spot" or j[2] in keep}
         s.next_t = 0.0
 
     def spot_view(s):
@@ -67,8 +74,8 @@ class LidarDirector:
         for j in s.jobs.values():
             if j[0] == "spot":
                 on[j[2]] = on.get(j[2], 0) + 1
-        return [dict(pos=[round(v, 2) for v in sp["pos"]], done=sp["done"], given_up=sp["given_up"], bots=on.get(k, 0))
-                for k, sp in enumerate(s.spots)]
+        return [dict(pos=[round(v, 2) for v in sp["pos"]], done=sp["done"], given_up=sp["given_up"], bots=on.get(k, 0),
+                     label=sp.get("label")) for k, sp in enumerate(s.spots)]
 
     def _spots(s, now, bots):
         """Marks spots covered (a bot got there) or given up, and sends the nearest free bots to the open ones."""
@@ -82,16 +89,34 @@ class LidarDirector:
                 sp["given_up"] = True
         open_ = {k for k, sp in enumerate(s.spots) if not sp["done"] and not sp["given_up"]}
         s.jobs = {i: j for i, j in s.jobs.items() if j[0] != "spot" or (j[2] in open_ and i in bots)}
+        cost = lambda p, sp: math.hypot(p[0] - sp["pos"][0], p[1] - sp["pos"][1]) + 2.0 * abs(p[2] - sp["pos"][2])
+        is_free = lambda i: s.jobs.get(i, (None,))[0] not in ("spot", "jump")
         for k in sorted(open_):
             sp = s.spots[k]
+            if sp.get("label"):
+                continue                              # (objectives: below)
             have = sum(1 for j in s.jobs.values() if j[0] == "spot" and j[2] == k)
-            free = sorted((math.hypot(p[0] - sp["pos"][0], p[1] - sp["pos"][1]) + 2.0 * abs(p[2] - sp["pos"][2]), i)
-                          for i, p in bots.items() if s.jobs.get(i, (None,))[0] not in ("spot", "jump"))
-            for _, i in free[:max(0, SPOT_BOTS - have)]:
+            free = sorted((cost(p, sp), i) for i, p in bots.items() if is_free(i))
+            for _, i in free[:max(0, sp.get("bots", SPOT_BOTS) - have)]:
                 s.jobs[i] = ("spot", sp["pos"], k, now)
                 s.new_spot_bots.append(i)
             if sp["since"] is None and (have or free):
                 sp["since"] = now
+        # objectives: one bot each, the nearest free bot and objective paired first, at most OBJECTIVE_SHARE of the
+        # bots at a time (the rest keep painting the map)
+        taken = {j[2] for j in s.jobs.values() if j[0] == "spot"}
+        want = [k for k in sorted(open_) if s.spots[k].get("label") and k not in taken]
+        on = sum(1 for j in s.jobs.values() if j[0] == "spot" and s.spots[j[2]].get("label"))
+        free = [i for i in bots if is_free(i)]
+        while want and free and on < max(1, math.ceil(OBJECTIVE_SHARE * len(bots))):
+            _, i, k = min((cost(bots[i], s.spots[k]), i, k) for i in free for k in want)
+            s.jobs[i] = ("spot", s.spots[k]["pos"], k, now)
+            s.new_spot_bots.append(i)
+            if s.spots[k]["since"] is None:
+                s.spots[k]["since"] = now
+            free.remove(i)
+            want.remove(k)
+            on += 1
 
     def _reach(s):
         """Reachable sample cells: Terrain.reach, recomputed over graph_h (new links bots landed count at once)."""

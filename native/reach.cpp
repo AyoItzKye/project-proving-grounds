@@ -92,11 +92,12 @@ static uint32_t hr_near_vehicle(uint8_t* tls, uint8_t* unit, bool turret) {
         if (!*(uint16_t*)e || e[4] != 1 || !o) continue;
         uint32_t parent = *(uint32_t*)(o + 0x14);
         if ((parent != 0xFFFFFFFFu) != turret) continue;
+        if (o[0x138] & 4) continue;      // destroyed (damage flags bit 2: object_get_health reads 0, ghidra/hr_object_get_health.c)
         const float* p = (const float*)(o + 0x44);
         float px = p[0], py = p[1], pz = p[2];
         if (turret) {
             uint8_t* po = hr_object(tls, parent);
-            if (!po) continue;
+            if (!po || (po[0x138] & 4)) continue;   // (the gun on a wreck)
             const float* b = (const float*)(po + 0x44);
             if (fabsf(px) < 3.0f && fabsf(py) < 3.0f) { px += b[0]; py += b[1]; pz += b[2]; }   // (at its marker)
         }

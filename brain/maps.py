@@ -39,6 +39,13 @@ def load_map(name):
     builtin = vd != d and bool(variants.base_area(objs))
     own = lambda fn: (os.path.join(vd, fn) if os.path.exists(os.path.join(vd, fn)) and not builtin
                       else os.path.join(d, fn))
+    mv = os.path.join(vd, "mvar_objects.json") if vd != d else None
+    if mv and os.path.exists(mv):       # its own .mvar file read (brain/mvar.py): its labelled objects, spawns, weapons
+        mo = read_json(mv)              # and vehicles replace the scenario's; the scenario's CTF stands stay where the
+        ctf = [f for f in objs["netgame_flags"] if f["type"] in ("ctf - flag", "CTF flag return")]   # file has none
+        has = {f["id"] for f in mo["netgame_flags"] if f["type"] == "ctf - flag"} >= {0, 1}
+        objs = dict(objs, netgame_flags=mo["netgame_flags"] + ([] if has else ctf), mvar=mo.get("source"),
+                    **{k: mo[k] for k in ("spawns", "equipment", "vehicles") if mo.get(k)})
     for f in objs["netgame_flags"]:     # Halo 3's names for Reach's (Construct Team Oddball: no ball spots,
         f["type"] = H3_TYPES.get(f["type"], f["type"])    # so the ball was never found and the match ran as Slayer)
     flags = {f["id"]: _v(f["pos"]) for f in objs["netgame_flags"] if f["type"] == "ctf - flag"}
@@ -365,9 +372,12 @@ def _build(m, window):
     game = next((g for g in ("reach", "h4", "h2a") if m["name"].startswith(g + "_")), None)
     blocks = static_boxes(m["objects"], game) if game and "variant" not in m else []
     if "variant" in m and m.get("live_blocks") is None:
-        from .forge import nav_pieces
+        from .forge import nav_pieces, piece_key
         from .variants import pieces_of
-        m["live_blocks"], m["shields"] = nav_pieces(pieces_of(m["variant"]), m["variant"].get("game") or "reach")
+        # pieces seen to come and go (variant.json "dynamic", forge.PieceWatch): walls only while they stand
+        dyn = set(m["variant"].get("dynamic", ()))
+        m["live_blocks"], m["shields"] = nav_pieces([p for p in pieces_of(m["variant"]) if piece_key(p[0], p[1]) not in dyn],
+                                                    m["variant"].get("game") or "reach")
     blocks = list(blocks) + list(m.get("live_blocks") or [])
     T = Terrain(m["heightmap"], m["bases"], extra_floor=floor, blocks=blocks, slit_rule=m["name"].startswith(SLIT_GAMES),
                 stair_rule=m["name"].startswith(("h4_", "h2a_")),

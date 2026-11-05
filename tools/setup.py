@@ -112,7 +112,10 @@ def status():
 def game_line(mcc):
     """Step 1's line: where MCC is and which of its games are installed."""
     if not mcc:
-        return "failed: The Master Chief Collection was not found (install it through Steam, or set HB_MCC)"
+        if paths.chosen():
+            return f"failed: the MCC folder you chose is not there any more ({paths.chosen()}): choose it again in the launcher"
+        return ("failed: The Master Chief Collection was not found (choose its folder in the launcher, Game folder; or "
+                "install it through Steam)")
     have = paths.games(mcc)
     if not have:
         return f"failed: {mcc} has none of MCC's games installed (Steam: MCC > Properties > DLC)"

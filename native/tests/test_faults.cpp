@@ -223,7 +223,8 @@ int main() {
         fails++;
     }
     // 8. Halo 4's boarding pick: a vehicle on its roof 1 u off is passed over for the standing one 2.5 u off
-    static uint8_t standing[0x100], on_roof[0x100];
+    // (objects 0x200: a live one reaches past its damage flags at +0x16C; 0x100 read the next fixture there)
+    static uint8_t standing[0x200], on_roof[0x200];
     *(uint32_t*)(standing + 0x24) = *(uint32_t*)(on_roof + 0x24) = 0xFFFFFFFFu;   // top level
     ((float*)(standing + 0x40))[0] = 2.5f;
     ((float*)(on_roof + 0x40))[0] = 1.0f;
@@ -239,10 +240,17 @@ int main() {
     memset(unit + 0x40, 0, 12);                       // the bot at the origin
     uint32_t pick = f_near_vehicle(G, tls, unit);
     if (pick != ((0x0A0Au << 16) | 4)) { printf("FAIL 8: Halo 4 picked %08x (want the standing one, 0a0a0004)\n", pick); fails++; }
+    // ... and a destroyed one (damage flags +0x16C bit 2, s156) standing 1 u off is passed over too
+    ((float*)(on_roof + 0x7C))[2] = 1.0f;
+    on_roof[0x16C] = 4;
+    pick = f_near_vehicle(G, tls, unit);
+    if (pick != ((0x0A0Au << 16) | 4)) { printf("FAIL 8: Halo 4 picked %08x by a wreck (want 0a0a0004)\n", pick); fails++; }
 
     // 9. Halo 3 boarding (objects at TLS +0x38: +0x20 count, +0x48 entries of 0x18: +0 salt, +3 type, +0x10 the object;
     // object +0x10 parent, +0x50 position, +0x5C forward, +0x68 up)
-    static uint8_t h3_hdr[0x60], h3_ents[6][0x18], h3_unit[0x100], hog[0x100], roof[0x100], gun[0x100], act3[0x100];
+    // (objects 0x200: a live one reaches past its damage flags at +0x110; 0x100 read the next fixture's parent there)
+    static uint8_t h3_hdr[0x60], h3_ents[6][0x18], h3_unit[0x200], hog[0x200], roof[0x200], gun[0x200], act3[0x100],
+        wreck[0x200];
     put_ptr(tls + 0x38, h3_hdr);
     *(int32_t*)(h3_hdr + 0x20) = 6;
     put_ptr(h3_hdr + 0x48, h3_ents);
@@ -261,6 +269,8 @@ int main() {
     h3_put(1, 0x0101, 1, hog, 0xFFFFFFFFu, 2.0f, 0.0f, 0.0f, 1.0f);       // a standing Warthog 2 u off
     h3_put(2, 0x0202, 1, roof, 0xFFFFFFFFu, 1.0f, 0.0f, 0.0f, -1.0f);     // one on its roof 1 u off
     h3_put(3, 0x0303, 1, gun, hog_h, -0.5f, 0.0f, 0.5f, 1.0f);            // the standing one's gun (relative)
+    h3_put(4, 0x0404, 1, wreck, 0xFFFFFFFFu, 0.5f, 0.0f, 0.0f, 1.0f);     // a destroyed one standing 0.5 u off
+    wreck[0x110] = 4;                                                     // (damage flags bit 2, s156: passed over)
     const uint32_t use_seat0 = HB_BTN_ACTION | (1u << HB_SEAT_SHIFT);
     memset(act3, 0, sizeof act3);
     h3_board(tls, act3, h3_unit, use_seat0);

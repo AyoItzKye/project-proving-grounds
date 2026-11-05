@@ -590,8 +590,8 @@ class Terrain:
                 hit |= np.isfinite(low) & (z < low) & (low > base)
         for a in avoid:                                  # (spot, r) or (spot, r, height band: out of bounds)
             q, r, band = a if len(a) == 3 else (a[0], a[1], 3.0)
-            if abs(q.z - p.z) < band:
-                hit |= (xs - q.x) ** 2 + (ys - q.y) ** 2 < r * r
+            if abs(q.z - p.z) < band and (q.x - p.x) ** 2 + (q.y - p.y) ** 2 < (far + r) ** 2:   # (in reach only:
+                hit |= (xs - q.x) ** 2 + (ys - q.y) ** 2 < r * r              # a map's kill zones are 100s of discs)
         k = int(np.argmax(hit)) if hit.any() else -1
         return float(t[k]) if k >= 0 else far
 
@@ -1018,12 +1018,16 @@ class Terrain:
         prev = s.lz[start]
         tan = float(s.tz[start]) if s.tz is not None else 0.0
         ll = None
+        oob = getattr(s, "oob", None)                # (set_oob: no shortcut into out of bounds, unless leaving it)
+        oob = oob if oob is not None and not oob[start] else None
         for k in range(1, n + 1):
             t = k / n
             jj, ii = s._cell(Vec(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t))
             ll = s._layer(jj, ii, prev, reach_from=prev, tan=tan)
             if ll is None or s.lz[ll, jj, ii] < prev - 0.6:
                 return False      # (no drop off a ledge: the path search knows its rails and slits, Countdown)
+            if oob is not None and oob[ll, jj, ii]:
+                return False
             if (s.near_wall[ll, jj, ii] and (ground is None or not ground[ll, jj, ii]) and (jj, ii) != start[1:]
                     and (jj, ii) != (j, i)):
                 return False      # a shortcut would scrape a wall: follow the (centred) path instead
@@ -1201,6 +1205,18 @@ class Terrain:
         bars[key] = new
         s._refresh_barriers()
 
+    def set_barriers(s, items):
+        """set_barrier for many at once, {key: (a, b, z0, z1, through, on)}, with one refresh (brain/forge.py
+        PieceWatch: a wall of pieces appearing together)."""
+        bars = s.__dict__.setdefault("barriers", {})
+        changed = False
+        for key, (a, b, z0, z1, through, on) in items.items():
+            new = (a.x, a.y, b.x, b.y, z0, z1, None if through is None else (through.x, through.y), on)
+            if bars.get(key) != new:
+                bars[key], changed = new, True
+        if changed:
+            s._refresh_barriers()
+
     def set_glass(s, key, pos, axes, lo, hi):
         """A piece that stops shots but not sight of it being there (a Forge shield, brain/forge.py): its box (pos,
         (forward, left, up), min, max in its own axes); sight lines through it are blocked."""
@@ -1288,16 +1304,23 @@ class Terrain:
         getattr(s, "_hfields", {}).clear()
 
     # --- out of bounds (brain/oob.py): learned spots of the games' kill and soft kill zones, a soft wall for every bot
-    def set_oob(s, spots, version=None):
-        """Each spot's floors within oob.R (flat) and oob.DZ of its height are out of bounds: every step into one costs
-        BARRIER_COST (the reversed walking graphs, as a barrier's: _apply_oob), a goal there moves to the nearest floor
-        out of it (_reachable_node), the vehicles' ground leaves them out (built again on the next drive), a pilot's
-        probe sees each spot (oob_avoid). Cheap when the version has not changed."""
+    def set_oob(s, spots, version=None, volumes=None):
+        """Each spot's floors within oob.R (flat) and oob.DZ of its height are out of bounds, and the floors of the map's
+        known volumes (volumes: oob.volumes, kept from the last call when None; oob.floor_mask): every step into one
+        costs BARRIER_COST (the reversed walking graphs, as a barrier's: _apply_oob), a goal there moves to the nearest
+        floor out of it (_reachable_node), the vehicles' ground leaves them out (built again on the next drive), a
+        pilot's probe sees each spot and volume (oob_avoid). Cheap when the version has not changed."""
+        from . import oob as O
+        if volumes is not None and volumes is not getattr(s, "_oob_vols", None):
+            s._oob_vols = volumes
+            s._oob_vmask = O.floor_mask(volumes, s.lz, s.x0, s.y0, NAV_CELL) if volumes else None
+            s._oob_air = [(Vec(x, y, z), r, band) for x, y, z, r, band in O.air_discs(volumes)]
+            s._oob_version = None
         if version is not None and getattr(s, "_oob_version", None) == version:
             return
-        from . import oob as O
         s._oob_version = version
-        mask = np.zeros(s.lz.shape, bool)
+        vm = getattr(s, "_oob_vmask", None)
+        mask = vm.copy() if vm is not None else np.zeros(s.lz.shape, bool)
         k = int(O.R / NAV_CELL) + 1
         for x, y, z, *_ in spots:
             if not s.inside(x, y):
@@ -1332,9 +1355,10 @@ class Terrain:
             g._hb_oob = idx
 
     def oob_avoid(s):
-        """The out of bounds spots for a pilot's probe (fly_clear's avoid): (spot, oob.R, oob.AIR_DZ)."""
+        """The out of bounds spots for a pilot's probe (fly_clear's avoid): (spot, oob.R, oob.AIR_DZ), and the known
+        volumes' discs (oob.air_discs)."""
         from . import oob as O
-        return [(q, O.R, O.AIR_DZ) for q in getattr(s, "oob_spots", ())]
+        return [(q, O.R, O.AIR_DZ) for q in getattr(s, "oob_spots", ())] + getattr(s, "_oob_air", [])
 
     def out_of_bounds(s, p):
         """Is p on a floor out of bounds (set_oob)?"""
@@ -1436,7 +1460,8 @@ class Terrain:
                 l, j, i = int(ls[k]), int(js[k] + j0), int(is_[k] + i0)
         l, j, i = s._reachable_node(l, j, i, goal.z)
         sj, si = j - j % 2, i - i % 2          # share fields between goals in the same half-unit square
-        key = (l, sj, si) if s.lwalk[l, sj, si] and abs(s.lz[l, sj, si] - s.lz[l, j, i]) < 0.3 else (l, j, i)
+        key = (l, sj, si) if s.lwalk[l, sj, si] and abs(s.lz[l, sj, si] - s.lz[l, j, i]) < 0.3 and \
+            (getattr(s, "oob", None) is None or not s.oob[l, sj, si]) else (l, j, i)   # (not one out of bounds)
         jump = jump and hasattr(s, "graph_jump")
         human = human and not jump and hasattr(s, "graph_h")      # graph_jump already holds people's jumps
         cache = s._jfields if jump else s._hfields if human else s._fields
@@ -1699,10 +1724,13 @@ class Terrain:
         away: Countdown, the waypoint dropped through a slit the graph had no edge into). Never through our own cell's
         floor: no such edge."""
         N, flat_cost = s.nh * s.nw, cost.ravel()
+        oob = s.oob.ravel() if getattr(s, "oob", None) is not None else None
         for _ in range(n):
             k = l * N + j * s.nw + i
             nb = s.graph.indices[s.graph.indptr[k]:s.graph.indptr[k + 1]]
             w = s.graph.data[s.graph.indptr[k]:s.graph.indptr[k + 1]]
+            if oob is not None and not oob[k]:       # (set_oob: a step in costs what the field's edges in cost; the
+                w = w + np.where(oob[nb], s.BARRIER_COST, 0.0)   # field prices leaving cheap, so a cell in reads near)
             nl, rem = np.divmod(nb, N)
             nj, ni = np.divmod(rem, s.nw)
             near = (np.abs(nj - j) <= 1) & (np.abs(ni - i) <= 1)       # walking steps (not teleporters or jumps)

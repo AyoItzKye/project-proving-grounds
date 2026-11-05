@@ -265,6 +265,7 @@ const FEAT = {   // kind or objective role -> [buffer, colour, size, shape (1 do
   // stations read live (brain/stations.py): armor abilities, spawn points, kill / safe / trait zones, the owner's notes
   ability: [new Buf(), [1, 0.55, 0.15, 1], -15, 4, true], spawn: [new Buf(), [0.6, 0.9, 0.6, 0.8], -7, 1, false],
   zone: [new Buf(), [1, 0.35, 0.35, 0.9], -14, 3, true], mark: [new Buf(), [1, 0.84, 0.3, 1], -17, 4, true],
+  kill_edge: [new Buf(), [1, 0.35, 0.35, 0.55], -4, 1, false],   // a known kill / soft kill zone's rims (brain/oob.py)
 };
 const teleLines = new Buf();
 let featLabels = [], featCount = { weapons: 0, objectives: 0, interact: 0 };
@@ -282,7 +283,7 @@ function setFeatures(fd) {
     let key = f.kind;
     if (f.kind === "objective") { key = f.team === 0 ? "obj_red" : f.team === 1 ? "obj_blue" : "obj"; featCount.objectives++; }
     else if (f.kind === "weapon" || f.kind === "powerup") featCount.weapons++;
-    else if (!["grenade", "ammo", "vehicle", "spawn", "mark"].includes(f.kind)) featCount.interact++;
+    else if (!["grenade", "ammo", "vehicle", "spawn", "mark", "kill_edge"].includes(f.kind)) featCount.interact++;
     const st = FEAT[key]; if (!st) continue;
     st[0].push(f.pos[0], f.pos[1], f.pos[2] + 0.12);
     if (st[4]) label(f.pos, f.kind === "teleporter" ? (f.station ? f.name : f.exit ? "teleporter exit" : "teleporter")
@@ -432,13 +433,16 @@ function renderSim() {
   $("sim-pause").disabled = $("sim-stop").disabled = !running;
   $("sim-rate").textContent = running && !s.paused && s.actual
     ? "Running at " + s.actual.toFixed(1) + "x" + (s.speed && s.actual < s.speed * 0.8 ? " (this PC's limit with 16 bots and 8 aircraft)" : s.speed ? "" : " (full speed)") : "";
-  const open = s.spots.filter(p => !p.done && !p.given_up), done = s.spots.filter(p => p.done), lost = s.spots.filter(p => p.given_up);
-  $("sim-spots").textContent = !running ? "" : coverMode
+  const marked = s.spots.filter(p => !p.label), objs = s.spots.filter(p => p.label);   // (label: a gametype objective)
+  const open = marked.filter(p => !p.done && !p.given_up), done = marked.filter(p => p.done), lost = marked.filter(p => p.given_up);
+  const objLine = !running || !objs.length ? "" : "Gametype objectives: " + objs.filter(p => p.done).length + " of " + objs.length +
+    " visited" + (objs.some(p => p.given_up) ? ", " + objs.filter(p => p.given_up).length + " with no way there" : "") + ". ";
+  $("sim-spots").textContent = objLine + (!running ? "" : coverMode
     ? "Click the map where the bots should go first (the nearest 3 bots go to each spot)."
-    : s.spots.length ? open.length + " spot" + (open.length === 1 ? "" : "s") + " to cover (" + open.reduce((a, p) => a + p.bots, 0) + " bots on the way), " +
+    : marked.length ? open.length + " spot" + (open.length === 1 ? "" : "s") + " to cover (" + open.reduce((a, p) => a + p.bots, 0) + " bots on the way), " +
       done.length + " covered" + (lost.length ? ", " + lost.length + " with no way there" : "")
-    : "No spots marked: turn on \"Click spots to cover\", then click the map.";
-  $("sim-clear").disabled = !s.spots.length;
+    : "No spots marked: turn on \"Click spots to cover\", then click the map.");
+  $("sim-clear").disabled = !marked.length;
   $("sim-cover").disabled = !running;
   if (!running && coverMode) setCover(false);
   const l = s.last;
@@ -578,7 +582,7 @@ async function loadStored() {
     const url = browseName ? "/map?name=" + encodeURIComponent(browseName) + "&src=" + encodeURIComponent(browseSrc) : "/map";
     const d = await (await fetch(url)).json();
     cell = d.cell; zstep = d.zstep; mode = d.mode; session = d.session; browsing = !!d.browse;
-    document.title = "LiDAR · " + d.title;
+    document.title = (mode === "sim" ? "LiDAR Simulator · " : mode === "live" ? "LiDAR live · " : "LiDAR · ") + d.title;
     $("map").textContent = d.title + " (" + gameName(gameOf(d.map)) + ")" + (d.src === "sim" ? " · simulator scan" : "") +
       (d.runs ? " · " + d.runs + " run" + (d.runs === 1 ? "" : "s") + ", " + d.bot_minutes + " bot-minutes" : " · no scan yet");
     for (const w of d.walk) addCell(w, true);
@@ -752,6 +756,7 @@ async function poll() {
   else if (mode === "sim") setPill("replay", "SIMULATION");
   else setPill("stored", "STORED");
   if (offline && gotData) msg("");
+  else if (offline && simState) msg("The LiDAR Simulator has stopped. Open it again from the launcher.");
   else if (offline) msg("Cannot reach the mapper. It runs during a LiDAR match (BOTS panel &gt; LiDAR mode); after a match, open the <b>LiDAR Viewer</b> from the launcher to see the stored map.");
   else if (!gotData && mode === "stored") msg("No LiDAR data for this map yet.");
   else if (simState && !simState.current && !simState.last) msg("Pick a map to simulate: <b>Pick a map</b> in the Simulator panel (bottom right).");

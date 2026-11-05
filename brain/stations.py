@@ -81,11 +81,13 @@ def classify(path, typ):
     for pat, kind in ZONES:
         if re.search(pat, n):
             return kind, n
+    # (before spawns: Halo 3's ctf_flag_spawn_point and assault_bomb_spawn_point are objectives' stands, not players'.
+    # mp_flag_base: Reach's Forge objective marker, every game type's (flag stands, plates, hills on a layout))
+    if re.search(r"^(ctf_)?flag$|ff_flag|flag_stand|flag_spawn|flag_return|mp_flag_base|oddball|assault_bomb|bomb_spawn|bomb_goal|"
+                 r"goal_area|koth_hill|hill_marker|hill_beacon|territor|capture_plate|skull", n):
+        return "objective", n
     if re.search(r"respawn_point|initial_spawn_point|spawn_point", n):
         return "spawn", n
-    if re.search(r"^(ctf_)?flag$|ff_flag|flag_stand|oddball|assault_bomb|bomb_spawn|koth_hill|hill_marker|territor|"
-                 r"capture_plate|skull", n):
-        return "objective", n
     if re.search(r"switch|button|terminal|control_panel|lever", n):
         return "control", n
     if typ == 1:

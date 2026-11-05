@@ -193,3 +193,74 @@ def block(name, pos, axes, skip_materials=("energy", "hologram"), game="reach"):
     if hi[2] - lo[2] < 0.35 or (hi[0] - lo[0]) * (hi[1] - lo[1]) < 0.04:
         return None
     return pos, axes, lo, hi, name
+
+
+# --- pieces that come and go during a match (a game type's walls: Invasion opens its phase gates by deleting them and
+# puts them back for the next round). The nav is built once from the pieces read at the start (brain/maps.py), each
+# stamped in for good, so a wall that appeared later was open floor to the bots (they pressed into it for minutes).
+GONE_READS = 2         # reads in a row a piece must be missing to count as gone (one read can miss an object)
+
+
+def piece_key(name, pos):
+    """A piece's name and place to the half unit, as variant.json "dynamic" files it."""
+    return f"{name}@{round(pos[0] * 2) / 2:g},{round(pos[1] * 2) / 2:g},{round(pos[2] * 2) / 2:g}"
+
+
+def outline(pos, axes, lo, hi):
+    """A piece's box seen from above: its four sides [(a, b)] (x, y) and its world height (z0, z1). (ponytail: the box's
+    forward / left plane; a piece rolled on its side is outlined a little off.)"""
+    f, l, u = axes
+    pts = [(pos[0] + a * f[0] + b * l[0], pos[1] + a * f[1] + b * l[1])
+           for a, b in ((lo[0], lo[1]), (hi[0], lo[1]), (hi[0], hi[1]), (lo[0], hi[1]))]
+    zs = [pos[2] + a * f[2] + b * l[2] + c * u[2] for a in (lo[0], hi[0]) for b in (lo[1], hi[1]) for c in (lo[2], hi[2])]
+    return [(pts[k], pts[(k + 1) % 4]) for k in range(4)], (min(zs), max(zs))
+
+
+class PieceWatch:
+    """A map variant's pieces read again during the match (tools/live_bots.py, every few seconds): a solid piece
+    standing that the nav was not built with is a wall (its box's four sides, Terrain.set_barriers) while it stands; a
+    piece the nav was built with that goes missing is dynamic: update returns it for variant.json "dynamic", and the
+    next match's nav is built without it (brain/maps.py), so it is a wall here only while it stands. (A piece stamped in
+    at this match's start that goes stays a wall until the match ends: the nav has no way to take a stamp out.)"""
+
+    def __init__(s, built, dynamic=(), game="reach"):
+        s.dynamic = set(dynamic)
+        s.built = {piece_key(n, p) for n, p, _ in built} - s.dynamic   # stamped into this match's nav
+        s.game, s.missing, s.walls, s.absent = game, {}, {}, {}
+
+    def update(s, pieces, T):
+        """pieces: this read's [(name, pos, axes)]. Puts the walls on T; returns the built-in keys newly gone."""
+        here = {piece_key(n, p): (n, p, a) for n, p, a in pieces}
+        for k in s.built:
+            s.missing[k] = 0 if k in here else s.missing.get(k, 0) + 1
+        gone = {k for k in s.built if s.missing[k] == GONE_READS} - s.dynamic
+        s.dynamic |= gone
+        items = {}
+        for k, (n, p, a) in here.items():
+            s.absent[k] = 0
+            if k in s.built or k in s.walls:
+                continue
+            b = block(n, p, a, game=s.game)
+            if b is None:
+                continue
+            sides, (z0, z1) = outline(b[0], b[1], b[2], b[3])
+            if z1 - z0 < 0.5:
+                continue                              # (a floor tile: walked on, not into)
+            s.walls[k] = (sides, z0, z1)
+        bars = T.__dict__.get("barriers", {})
+        for k, (sides, z0, z1) in s.walls.items():
+            if k not in here:
+                s.absent[k] = s.absent.get(k, 0) + 1
+            on = s.absent.get(k, 0) < GONE_READS
+            for j, (a, b) in enumerate(sides):
+                key = f"fp:{k}:{j}"
+                if on or key in bars:                 # (a terrain swapped in by a grown window: put back)
+                    items[key] = (_vec(a), _vec(b), z0, z1, None, on)
+        if items:
+            T.set_barriers(items)
+        return gone
+
+
+def _vec(xy):
+    from .core import Vec
+    return Vec(xy[0], xy[1], 0.0)

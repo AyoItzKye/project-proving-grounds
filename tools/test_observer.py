@@ -1,4 +1,4 @@
-"""Offline checks for the Observer (tools/observer.py): the last 5 match recordings are kept; with a
+"""Offline checks for the Observer (tools/observer.py): the newest 5 unsaved match recordings are kept; with a
 server running (its own on 8811, or the --port given) the endpoints answer, chunks end on whole lines, files that are
 not traces are refused, and the text mode describes a bot from a trace with the observer lines (a short
 simulator game).
@@ -26,8 +26,9 @@ def get(u):
 
 
 def recordings(fails):
-    """The last 10 matches are kept (tools/play.py match_trace; the player: 5: 10): a new match deletes the oldest beyond
-    that, hand-named traces stay, and the game list names a match by its start and difficulty."""
+    """The newest 5 unsaved matches are kept (tools/play.py match_trace, tools/recording.py; the owner, Nov 3: "record
+    by default 5 games, and the newest one should overwrite the oldest"): a new match deletes the oldest unsaved beyond
+    that, a kept one and hand-named traces stay, and the game list names a match by its start and difficulty."""
     import tempfile
     sys.path.insert(0, HERE)
     import observer
@@ -41,14 +42,17 @@ def recordings(fails):
                 f.write(json.dumps(dict(t=0.0, meta=dict(map="reach_52_ivory_tower", game="reach",
                                                          bot=dict(id=1, tier="top" if k == 5 else "novice")))) + "\n")
             os.utime(os.path.join(tmp, n), (1e9 + k, 1e9 + k))     # recorded in this order
-        new = play.match_trace("reach_52_ivory_tower", logs=tmp)
+        import recording
+        recording.keep(names[0][-len("20261020-120000.jsonl"):-len(".jsonl")], logs=tmp)   # kept in the Observer
+        new = play.match_trace("reach_52_ivory_tower", logs=tmp, games=5)
         open(new, "w").close()
         left = sorted(os.listdir(tmp))
         if not os.path.exists(own):
             fails.append("a hand-named trace was deleted")
-        if sorted(set(left) - {os.path.basename(own)}) != sorted(names[2:] + [os.path.basename(new)]):
-            fails.append(f"after a 12th match the recordings are {left} (want the last 10)")
-        got = observer.match_label(os.path.join(tmp, names[5]))
+        if sorted(set(left) - {os.path.basename(own), "saved_games.json"}) != sorted([names[0]] + names[-4:] +
+                                                                                     [os.path.basename(new)]):
+            fails.append(f"after a 12th match the recordings are {left} (want the kept one and the last 5)")
+        got = observer.match_label(_one(tmp, names[5]))
         if got != "Match Oct 25 12:00, Legendary":
             fails.append(f"game list label {got!r}")
         # MCC's post-game report goes beside the last match's trace when the next match starts (it overwrites its one
@@ -58,14 +62,23 @@ def recordings(fails):
             open(play.CARNAGE, "w").write("<report/>")
             last = os.path.join(tmp, names[-1])
             os.utime(play.CARNAGE, (1e9 + 9000, 1e9 + 9000))          # hours after the last trace: not its report
-            if play.keep_carnage([os.path.join(tmp, n) for n in names[2:]]):
+            if play.keep_carnage([os.path.join(tmp, n) for n in names[-4:]]):
                 fails.append("kept a post-game report written long after the last match")
             os.utime(play.CARNAGE, (1e9 + 10 + 60, 1e9 + 10 + 60))    # a minute after the last trace's end
-            got = play.keep_carnage([os.path.join(tmp, n) for n in names[2:]])
+            got = play.keep_carnage([os.path.join(tmp, n) for n in names[-4:]])
             if got != last[:-len(".jsonl")] + ".carnage.xml" or open(got).read() != "<report/>":
                 fails.append(f"the post-game report was not kept beside the last trace ({got})")
         finally:
             play.CARNAGE = report
+
+
+def _one(tmp, name):
+    """A Legendary match's trace (back after it was rotated out above), for the game list's label."""
+    path = os.path.join(tmp, name)
+    with open(path, "w") as f:
+        f.write(json.dumps(dict(t=0.0, meta=dict(map="reach_52_ivory_tower", game="reach", bot=dict(id=1, tier="top"))))
+                + "\n")
+    return path
 
 
 def main():
@@ -114,6 +127,22 @@ def run(u, fails):
             fails.append(f"served a file that is not a trace: {bad}")
         except urllib.error.HTTPError:
             pass
+    rec = json.loads(get(u + "/settings").read())        # the Recording settings (tools/recording.py)
+    if not (2 <= rec.get("games", 0) <= 50 and 1 <= rec.get("minutes", 0) <= 600) or "kept" not in traces[0]:
+        fails.append(f"recording settings {rec}, game list entry {sorted(traces[0])}")
+    for path, body in (("/keep", {"file": "../../brain/bot.py", "keep": True}), ("/settings", {"games": 3})):
+        try:                                             # (only the Observer's own page may change these)
+            urllib.request.urlopen(urllib.request.Request(u + path, json.dumps(body).encode(), method="POST"), timeout=30)
+            fails.append(f"{path} changed without the page's header")
+        except urllib.error.HTTPError:
+            pass
+    try:
+        req = urllib.request.Request(u + "/keep", json.dumps({"file": "../../brain/bot.py", "keep": True}).encode(),
+                                     headers={"X-Observer": "1"}, method="POST")
+        urllib.request.urlopen(req, timeout=30)
+        fails.append("kept a file that is not a recorded match")
+    except urllib.error.HTTPError:
+        pass
     try:
         get(u + "/base?map=" + urllib.parse.quote("../../tools"))
         fails.append("served a map outside maps/")

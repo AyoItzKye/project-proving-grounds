@@ -19,6 +19,7 @@ ROOT = os.path.join(HERE, "..")
 sys.path.insert(0, ROOT)
 sys.path.insert(0, HERE)
 import botctl  # noqa: E402
+import recording  # noqa: E402
 from brain.live import Live, LiveH2, LiveH3, LiveReach, LiveODST, LiveH4F  # noqa: E402
 from brain.names import make_names  # noqa: E402
 from brain import looks  # noqa: E402
@@ -29,7 +30,6 @@ H4F_DLL = {"h2a": "groundhog.dll", "h4": "halo4.dll"}
 GAME_ID = {1: "ce", 2: "h2", 3: "h3", 4: "reach", 5: "odst", 6: "h2a", 7: "h4"}     # botcore's game ids
 GAME_DLL = (("haloreach.dll", "reach"), ("halo3odst.dll", "odst"), ("groundhog.dll", "h2a"), ("halo4.dll", "h4"),
             ("halo3.dll", "h3"), ("halo2.dll", "h2"))
-MATCHES_KEPT = 10       # match recordings kept
 
 
 CARNAGE = os.path.join(os.environ.get("USERPROFILE", ""), "AppData", "LocalLow", "MCC", "Temporary",
@@ -53,19 +53,14 @@ def keep_carnage(traces):
     return dest
 
 
-def match_trace(map_name, logs=os.path.join(ROOT, "logs"), keep=MATCHES_KEPT):
+def match_trace(map_name, logs=os.path.join(ROOT, "logs"), games=None, after=None):
     """This match's recording for the Observer: logs/trace_<map>_<date>-<time>.jsonl, one per match
-    (one file per map lost a match whenever the next was on the same map). The oldest go so that with
-    this one there are `keep`; traces named any other way are never touched."""
+    (one file per map lost a match whenever the next was on the same map). The oldest unsaved matches go, each with its
+    paired files, so that with this one there are `games` (the Observer's Recording settings, tools/recording.py);
+    saved matches and traces named any other way are never touched."""
     old = sorted(glob.glob(os.path.join(logs, "trace_*_????????-??????.jsonl")), key=os.path.getmtime)
     keep_carnage(old)
-    for path in old[:max(0, len(old) - (keep - 1))]:
-        try:
-            os.remove(path)
-            if os.path.exists(path[:-len(".jsonl")] + ".carnage.xml"):
-                os.remove(path[:-len(".jsonl")] + ".carnage.xml")
-        except OSError:
-            pass                # open in the Observer this second: it goes with the next match
+    recording.rotate(logs, games, after)
     return os.path.join(logs, f"trace_{map_name}_{time.strftime('%Y%m%d-%H%M%S')}.jsonl")
 
 
@@ -205,6 +200,9 @@ def main():
         teams = struct.unpack("<I", live.g.read(live.g.base + VARIANT + 0x34, 4))[0] != 0
     print("teams" if teams else "free for all")
     machine = 1 + max([0] + [p["index"] for p in players])
+    if o.game == "reach":     # a respawn pick left by the last match (a bot dead at its end) moves this match's first
+        for i in range(botctl.MAX_PLAYERS):   # spawn to the old map's spot (live: Boneyard bots sent to Spire's zones,
+            botctl.spawn_at(m, i, float("nan"), float("nan"), float("nan"), 0.0)   # out of bounds): called off
     # this install's 15 bots first (brain/looks.py: their names and looks are kept from match to match), then
     # made-up gamertags for any more
     taken = {p["name"].lower() for p in players}
@@ -273,7 +271,7 @@ def main():
         return
     # (Scaling difficulty reads each match's trace back with its post-game report, brain/scaling.py: always kept then)
     scaled = "scaling" in o.tier.split(",") + [b["tier"] for b in roster or []]   # (a bot on Scaling: either team)
-    trace = match_trace(map_name) if (os.path.exists(os.path.join(ROOT, "logs", "trace_on")) or scaled) else None
+    trace = match_trace(map_name, after=recording.since()) if (os.path.exists(os.path.join(ROOT, "logs", "trace_on")) or scaled) else None
     subprocess.run([sys.executable, "-u", "-I", os.path.join(HERE, "live_bots.py"), str(o.minutes * 60),
                     "--tier", o.tier, "--personality", "rusher,flanker,camper,objector,spammer,grudger,sniper",
                     "--map", map_name, "--game", o.game, "--quiet"] + ([] if teams else ["--ffa"]) +
@@ -282,6 +280,7 @@ def main():
                     (o.roster and botctl.setting(o.roster, "collector", "0") == "1") else []) +   # Data collector (tools/collector.py)
                    (["--ride-only", o.ride_only] if getattr(o, "ride_only", None) else []) +   # test override: one kind
                    (["--aim-loose", o.aim_loose] if getattr(o, "aim_loose", None) else []) +   # test override: A/B
+                   (["--forge-invasion"] if getattr(o, "forge_invasion", None) else []) +   # test override: no setup
                    (["--trace", trace] if trace else []))   # the Observer's recordings
     if trace and o.game == "reach" and os.path.exists(trace):   # the post-game report: the bots' names and teams
         subprocess.run([sys.executable, "-I", os.path.join(HERE, "carnage_names.py"), trace, "--wait", "20"])

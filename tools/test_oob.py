@@ -8,6 +8,12 @@
 3. the soft wall on Halo 3's Sidewinder: a walk across a spot goes round it (no route point within its radius); a goal
    inside it moves out; the roam spots never fall in it; the vehicles' ground leaves it out; a pilot's probe stops at
    it at its height and not 20 u over it
+4. the maps' own kill zones (brain/oob.py KNOWN, tools/killzones.py): box (rotated too), sector prism, cylinder,
+   sphere and soft kill surface containment, a pad, a safe zone's outside; base map and layout files, a conditioned
+   volume left out; a death in one (and a fall onto one) counted at once as known, no learned spot; on Sidewinder a
+   kill box is walked round, a goal in it moves out, vehicles and pilots keep off it, a soft safe sphere puts the
+   floors outside it out of bounds; the real files: Lockout's kill_pit (H2), Island's kill_soft / safe_zone_soft
+   (Reach), Sandbox's soft kill ceiling (H3 BSP), and no spawn point of five maps in a kill zone
 
 usage: python -I test_oob.py      -> "out of bounds OK (...)"
 """
@@ -38,7 +44,7 @@ def life(o, t0, deaths, others=(), hp=1.0, sh=1.0, fall=0.0, riding=False, sees=
 
 def main():
     fails = []
-    O.ROOT = tempfile.mkdtemp()
+    REAL, O.ROOT = O.ROOT, tempfile.mkdtemp()
     o = O.Oob("test_map", clock=lambda: 0.0)
     far = (300.0, 300.0, 0.0)
     # 1. the detector
@@ -130,6 +136,87 @@ def main():
     T.set_oob([], version=2)
     if T.out_of_bounds(mid) or walk(a, b)[-1:] == []:
         fails.append("3. cleared spots still out of bounds")
+    # 4. the maps' own kill zones (killzones.json): containment, the files, the detector, the terrain, real data
+    import numpy as np
+    box = dict(kind="hard", shape="box", center=[0, 0, 0], size=[4, 2, 2], label="b")
+    rot = dict(box, rotation=dict(forward=[0.70711, 0.70711, 0], up=[0, 0, 1]))
+    prism = dict(kind="soft", shape="box", center=[0, 0, 0], size=[10, 10, 2], points=[[0, 0], [4, 0], [0, 4]], label="p")
+    cyl = dict(kind="soft", shape="cylinder", center=[0, 0, 0], size=[3, 3, 2], label="c")
+    ball = dict(kind="soft_safe", shape="sphere", center=[0, 0, 0], size=[5, 5, 5], label="s")
+    tri = dict(kind="soft", shape="plane", center=[1, 1, 5], size=[4, 4, 0], triangles=[[[0, 0, 5], [4, 0, 5], [0, 4, 5]]],
+               label="t")
+    want = [(box, (1.9, 0.9, 0.9), True), (box, (2.1, 0, 0), False), (box, (0, 1.1, 0), False), (box, (0, 0, 1.1), False),
+            (rot, (1.3, 1.3, 0), True), (rot, (1.9, 0, 0), False), (prism, (1, 1, 0), True), (prism, (3, 3, 0), False),
+            (prism, (1, 1, 1.5), False), (cyl, (2.1, 2.1, 0), True), (cyl, (2.2, 2.2, 0), False),
+            (cyl, (0, 0, 1.2), False), (ball, (0, 0, 4.9), True), (ball, (3, 3, 3), False),
+            (tri, (1, 1, 5.4), True), (tri, (1, 1, 5.6), False), (tri, (3, 3, 5), False)]
+    for v, p, inside in want:
+        if bool(O.contains(v, p)[0]) != inside:
+            fails.append(f"4. containment: {v['shape']}{' rotated' if 'rotation' in v else ''}"
+                         f"{' prism' if 'points' in v else ''} at {p}: want {'in' if inside else 'out'}")
+    if not O.contains(box, (2.9, 0, 0), pad=1.0)[0] or O.contains(box, (3.1, 0, 0), pad=1.0)[0]:
+        fails.append("4. containment's pad: a box grown 1 u")
+    if O.where([ball], (0, 0, 1)) is not None or O.where([ball], (0, 0, 6)) is None or \
+            O.where([ball], (0, 0, 4.5), pad=1.0) is None:
+        fails.append("4. a safe zone: inside safe, outside (or within the pad of its rim) out of bounds")
+    for m, vs in (("base", [box, dict(cyl, condition="game type: x")]), ("base/variants/v1", [dict(ball, source="mvar")])):
+        os.makedirs(os.path.join(O.ROOT, m), exist_ok=True)
+        with open(os.path.join(O.ROOT, m, "killzones.json"), "w") as f:
+            f.write('{"volumes": %s}' % str(vs).replace("'", '"'))
+    got = [v["label"] for v in O.volumes("base/variants/v1")]
+    if got != ["b", "s"] or [v["label"] for v in O.volumes("base")] != ["b"]:
+        fails.append(f"4. volumes(): a layout's {got} (want the base map's box and its own sphere, the conditioned cylinder"
+                     " left out)")
+    k = O.Oob("base")
+    got = life(k, 0.0, [(1, 0, (0.5, 0.0, 0.0))], others=[(2, 1, (3.0, 0.0, 0.0))], sees=lambda a, b: True)
+    fallen = life(k, 10.0, [(1, 0, (0.0, 0.0, 6.0))], others=[(2, 1, far)], fall=5.0)
+    if got != [(0.5, 0.0, 0.0, True)] or fallen != [(0.0, 0.0, 6.0, True)] or len(k.known) != 2 or k.spots:
+        fails.append(f"4. deaths in a known kill zone: {got}, a fall onto it {fallen}, {len(k.known)} known, "
+                     f"{len(k.spots)} spots (want both counted at once as known, no learned spot)")
+    zone = dict(kind="hard", shape="box", center=[mid.x, mid.y, mid.z + 1.0], size=[4.0, 4.0, 3.0], label="kill")
+    T.set_oob([], version=3, volumes=[zone])
+    after = walk(a, b)
+    inside = [q for q in after if O.contains(zone, (q.x, q.y, q.z + 0.3))[0]]
+    if inside or not after or (after[-1] - b).flat() > 1.5 or not T.out_of_bounds(mid):
+        fails.append(f"4. a kill box on Sidewinder: {len(inside)} walk points in it, ended "
+                     f"{(after[-1] - b).flat() if after else -1:.1f} u from the goal, centre out: {T.out_of_bounds(mid)}")
+    goal_in = walk(a, mid)
+    if goal_in and O.contains(zone, (goal_in[-1].x, goal_in[-1].y, goal_in[-1].z + 0.3))[0]:
+        fails.append(f"4. a goal in the kill box: the walk ended inside it at {goal_in[-1]} (box {zone['center']})")
+    T.__dict__.pop("graph_v", None)
+    T.vnav(a, b)
+    if T.vroomy[T._node(mid)]:
+        fails.append("4. the vehicles' ground still has the kill box")
+    d_low, d_high = probe(low, T.oob_avoid()), probe(low + Vec(0, 0, 20.0), T.oob_avoid())
+    if not d_low < free_low - 1.0 or d_high != free_high:
+        fails.append(f"4. a pilot's probe at the kill box: {d_low:.1f} u at its height ({free_low:.1f} free), "
+                     f"{d_high:.1f} 20 u over it ({free_high:.1f} free)")
+    T.set_oob([], version=4, volumes=[dict(kind="soft_safe", shape="sphere", center=[a.x, a.y, a.z], size=[3, 3, 3],
+                                           label="safe")])
+    if T.out_of_bounds(a) or not T.out_of_bounds(b):
+        fails.append("4. a soft safe sphere round a: a in, b out of bounds (want a in bounds, b out)")
+    T.set_oob([], version=5, volumes=[])
+    if T.out_of_bounds(mid) or T.out_of_bounds(b) or T.oob_avoid():
+        fails.append("4. cleared volumes still out of bounds")
+    if not any(f["kind"] == "kill_edge" for f in O.features("base")) or \
+            not any(f["kind"] == "zone" and f["name"].startswith("kill zone") for f in O.features("base")):
+        fails.append("4. the LiDAR view's features: no kill zone or rim dots")
+    O.ROOT = REAL                                     # the real files: the kits' data
+    lock = O.volumes("h2_lockout")
+    if not any(v["label"] == "kill_pit" and v["kind"] == "hard" for v in lock):
+        fails.append("4. h2_lockout's kill_pit (H2 scenario kill trigger) missing from killzones.json")
+    isl = {v["label"]: v for v in O.volumes("reach_35_island")}
+    if isl.get("kill_soft", {}).get("kind") != "soft" or isl.get("safe_zone_soft", {}).get("kind") != "soft_safe":
+        fails.append(f"4. reach_35_island: kill_soft / safe_zone_soft kinds {sorted((k, v['kind']) for k, v in isl.items())}")
+    if not any(v["source"] == "bsp" and v["shape"] == "plane" for v in O.volumes("h3_sandbox")):
+        fails.append("4. h3_sandbox: no BSP soft kill ceiling")
+    import json
+    for m in ("h2_lockout", "reach_35_island", "h4_ca_redoubt", "h2a_ca_relic", "h3_guardian"):
+        vs = O.volumes(m)
+        sp = np.asarray([q["pos"] for q in json.load(open(os.path.join(REAL, m, "objects.json")))["spawns"]], float)
+        bad = sum(int(O.contains(v, sp + [0, 0, 0.3]).sum()) for v in vs if v["kind"] in O.KILLS)
+        if not vs or bad:
+            fails.append(f"4. {m}: {len(vs)} volumes, {bad} of its spawn points in a kill zone (want some, none)")
     if fails:
         print("\n".join(fails))
         sys.exit(1)

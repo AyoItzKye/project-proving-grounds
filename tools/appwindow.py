@@ -17,7 +17,8 @@ ROOT = os.path.normpath(os.path.join(HERE, ".."))
 WINDOW = os.path.join(ROOT, "native", "bin", "ppg_window.exe")
 ICON = os.path.join(ROOT, "installer", "icon.ico")
 TITLES = {"8793": "Project Proving Grounds", "8799": "Observer - Project Proving Grounds",
-          "8797": "LiDAR - Project Proving Grounds", "8796": "Paint the nav - Project Proving Grounds"}
+          "8797": "LiDAR Viewer - Project Proving Grounds", "8798": "LiDAR Simulator - Project Proving Grounds",
+          "8796": "Paint the nav - Project Proving Grounds"}
 
 
 def command(url, size=(1400, 900), title=None):
@@ -31,7 +32,13 @@ def command(url, size=(1400, 900), title=None):
 
 
 def open_window(url, size=(1400, 900), title=None):
-    """Opens url in the app window (the default browser without it). Returns at once."""
+    """Opens url in the app window (the default browser without it). Returns at once. Under Wine (Linux, Steam Deck)
+    there is no WebView2: the Linux launcher script and the launcher's page open the pages in the system's browser."""
+    sys.path.insert(0, ROOT)
+    from brain import paths
+    if paths.wine():
+        print(f"open {url} in your browser", flush=True)
+        return
     cmd = command(url, size, title)
     if cmd:
         subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

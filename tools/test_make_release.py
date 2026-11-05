@@ -58,6 +58,20 @@ def main():
         found, _ = R.scan_text(text, terms)
         if found:
             fails.append(f"2. false alarm on {text!r}: {found}")
+    # 3. an import of a left-out module is caught, even inside a function (a release with lidar.py but no
+    # map_features.py crashed LiDAR runs); offline-only imports are allowed
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        for d in ("brain", "tools"):
+            os.makedirs(os.path.join(tmp, d))
+        open(os.path.join(tmp, "tools", "lidar.py"), "w").write("def f():\n    import map_features as F\n")
+        open(os.path.join(tmp, "tools", "test_x.py"), "w").write("import mcc_nav\n")
+        got = R.missing_imports(tmp)
+        if got != [("tools/lidar.py", 2, "map_features")]:
+            fails.append(f"3. left-out import not caught: {got}")
+        open(os.path.join(tmp, "tools", "map_features.py"), "w").write("def g():\n    import reach_export\n")
+        if R.missing_imports(tmp):
+            fails.append(f"3. false alarm: {R.missing_imports(tmp)}")
     if fails:
         print("FAIL")
         for f in fails:

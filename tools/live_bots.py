@@ -31,7 +31,7 @@ from brain.profiles import make_profile  # noqa: E402
 from brain import scaling  # noqa: E402
 from brain.live import Live, LiveH2, LiveH3, LiveReach, LiveODST, LiveH4F, WEAPON_ALIAS  # noqa: E402
 from brain.invasion import layout as invasion_layout, Watch, clear_barriers, honor_spawn, honor_spawns, \
-    ally_spot as invasion_ally_spot, mate_clear as invasion_mate_clear  # noqa: E402
+    ally_spot as invasion_ally_spot, mate_clear as invasion_mate_clear, SPAWN_CLEAR  # noqa: E402
 from brain.modes import Watch as ModeWatch, OBJECT_MODES, mode_of, stands_by_spawn  # noqa: E402
 import botctl  # noqa: E402
 
@@ -483,6 +483,40 @@ def spawn_check(send, bots, snap, now, state, spawns, watch, rng, T, trace=None)
     watch.placed = {index for index, st in state.items() if st.get("pick")}
 
 
+def zone_spawn_check(send, bots, snap, zone_of, state, rng, T, now, trace=None):
+    """Invasion on a map with no Invasion setup of its own (a Forge map variant): a dead bot respawns in the zone the
+    game gives it (zone_of(index): LiveReach.respawn_zone, the script's zone of its side and phase), within 2 u of the
+    zone's centre on floor and clear of everyone; sent once a death and again when its zone moves (a new phase)."""
+    taken = [st["at"] for st in state.values() if st.get("at")]
+    for index in bots:
+        me = snap.player(index)
+        if not me:
+            continue
+        st = state.setdefault(index, {})
+        if me.alive:
+            st.clear()
+            continue
+        z = zone_of(index)
+        if z is None or st.get("zone") == z[:3]:
+            continue
+        c = Vec(z[0], z[1], z[2])
+        spot = c
+        for k in range(16):
+            r, a = (0.0, 0.0) if k == 0 else (rng.uniform(0.5, 2.0), rng.uniform(0.0, 2 * math.pi))
+            p = Vec(c.x + r * math.cos(a), c.y + r * math.sin(a), c.z)
+            if (T.ground_ok(p.x, p.y, p.z + 0.4, drop=1.0) and T.los(c, p)
+                    and all((q.pos - p).flat() >= SPAWN_CLEAR for q in snap.players if q.alive)
+                    and all((q - p).flat() >= SPAWN_CLEAR for q in taken if q is not st.get("at"))):
+                spot = p
+                break
+        send(index, spot.x, spot.y, spot.z, z[3])
+        if trace:
+            trace.write(json.dumps(dict(t=round(now, 3), id=index, spawn="zone", side=None, phase=None,
+                                        at=[round(spot.x, 2), round(spot.y, 2), round(spot.z, 2)])) + chr(10))
+        taken = [q for q in taken if q is not st.get("at")] + [spot]
+        st.update(zone=z[:3], at=spot)
+
+
 def named(text, snap, director):
     """A commander's line with bot ids as the bots' names and people as "a player" (the report the model
     reads has no names, guide 10 section 6.6)."""
@@ -621,6 +655,8 @@ def main():
     ap.add_argument("--collect", choices=("on", "off"), default="off",
                     help="the Data collector: record the people to logs/collect_<map>_<stamp>.jsonl (tools/collector.py)")
     ap.add_argument("--ride-only", help="test: the only empty vehicles bots see, kinds by name (comma list, e.g. falcon)")
+    ap.add_argument("--forge-invasion", action="store_true", help="test: the map's own Invasion setup left out, as on "
+                    "a Forge map variant's Invasion (respawns in the game's zones only)")
     ap.add_argument("--aim-loose", choices=("on", "off"), help="test: the looser trigger below Legendary on or off "
                     "for this match (brain/profiles.py LOOSE_AIM, the default)")
     o = ap.parse_args()
@@ -653,8 +689,22 @@ def main():
         try:                                  # of its own, its pieces read live and named by tag id (brain/forge.py,
             from brain.forge import live_pieces   # brain/variants.py)
             from brain.variants import base_area, base_placed, identify
-            name = identify(MAP["name"], live_pieces(live), base_placed(MAP["objects"]), game=o.game,
+            pieces = live_pieces(live)
+            name = identify(MAP["name"], pieces, base_placed(MAP["objects"]), game=o.game,
                             area=base_area(MAP["objects"]))
+            if name != MAP["name"] and o.game == "reach":
+                try:                                # its own .mvar file (brain/mvar.py): Forge labels, Invasion phases,
+                    from brain import mvar          # kill boundaries, which the game's memory does not give
+                    v, share = mvar.find(MAP["name"], pieces)
+                    if v is not None:
+                        nf, ns, nk = mvar.write(name, v, share)
+                        print(f"map variant file {os.path.basename(v['path'])} ({v['title']!r}, {share:.0%} of its "
+                              f"pieces live): {nf} labelled objects, {ns} spawns, {nk} kill / safe zones", flush=True)
+                    else:
+                        print(f"map variant {name}: no .mvar file on this PC places its pieces (best {share:.0%}): "
+                              f"objectives from the live objects only", flush=True)
+                except Exception as e:
+                    print("map variant file not read:", e, flush=True)
             if name != MAP["name"]:                 # its nav from its own pieces and shields (variant.json), its window
                 import variant_strategy             # its own callouts and power positions, not the canvas's (the player,
                 # "the bots [were not] using the building structures"); a built-in map's variant keeps the base's
@@ -689,7 +739,9 @@ def main():
     paused = [0.0]               # seconds the game sat paused, off the brain's clock (the loop below)
     still = [None, 0, None]      # botcore's last tick count, loop passes it held, when the pause began
     last_print = 0.0
-    trace = open(o.trace, "w") if o.trace else None
+    import recording                         # the longest recording (the Observer's Recording settings): its last
+    rec_s = recording.settings()["minutes"] * 60.0   # minutes kept, trimmed on disk as it is written
+    trace = recording.RollingFile(o.trace, rec_s) if o.trace else None
     if trace and SCALE is not None:          # the match ran on Scaling: brain/scaling.py counts it after (and its settings)
         trace.write(json.dumps(dict(t=0.0, scaling=round(SCALE, 5))) + chr(10))
     last_wp = {}
@@ -731,7 +783,7 @@ def main():
         stamp = same.group(1) if same else time.strftime("%Y%m%d-%H%M%S")
         try:
             collector = Collector(os.path.join(ROOT, "logs", f"collect_{o.map}_{stamp}.jsonl"), o.map, o.game,
-                                  lambda: (still[2] if still[2] is not None else time.time()) - t0 - paused[0])
+                                  lambda: (still[2] if still[2] is not None else time.time()) - t0 - paused[0], seconds=rec_s)
             print("data collector on:", collector.path, flush=True)
         except Exception as e:                       # never stops the bots
             print(f"data collector could not start: {type(e).__name__}: {e}", flush=True)
@@ -742,17 +794,37 @@ def main():
     from brain.oob import Oob                    # out of bounds, learned in every game (brain/oob.py)
     oob = Oob(MAP["name"])
     oob_saved = [oob.version, 0.0]
-    if oob.spots:
-        T.set_oob(oob.spots, oob.version)
-        print(f"out of bounds: {len(oob.spots)} spots known here", flush=True)
+    if oob.spots or oob.volumes:                 # (and the map's own kill zones: maps/<map>/killzones.json)
+        T.set_oob(oob.spots, oob.version, oob.volumes)
+        print(f"out of bounds: {len(oob.spots)} spots, {len(oob.volumes)} kill / safe zones known here", flush=True)
     fails = 0
     seen_errors = set()
     last_items = 0.0
     last_think = None                  # the time of the last pass the bots thought on (think_dt)
     names_due = None if o.game == "reach" else float("inf")   # Reach: logs/reach_names.txt once, 20 s after bots join (after any refresh)
     # Reach Invasion (brain/invasion.py): the map's setup from its scenario; the watcher runs while the variant is it
-    inv_layout = invasion_layout(MAP["objects"]) if o.game == "reach" and not FIREFIGHT else None
-    inv_watch, inv_check = [None], [-9.0]
+    inv_styles = None                             # a map variant read from its file: its game variant's phases
+    if o.game == "reach" and not FIREFIGHT and MAP["objects"].get("mvar"):     # (brain/mvar.py: its file by its title)
+        try:
+            from brain import mvar
+            gv = mvar.find_game_variant(live.variant_name())
+            inv_styles = mvar.phase_styles(gv) or None
+            if gv:
+                opts = ", ".join(f"{x['name']} = {x['value']}" for x in gv["options"])
+                print(f"game variant file {os.path.basename(gv['path'])} ({gv['title']!r}): {opts}", flush=True)
+        except Exception as e:
+            print("game variant file not read:", e, flush=True)
+    inv_layout = invasion_layout(MAP["objects"], styles=inv_styles) if (o.game == "reach" and not FIREFIGHT
+                                                                        and not o.forge_invasion) else None
+    inv_watch, inv_check, inv_unread = [None], [-9.0], [False]
+    zone_check, zone_state = [-9.0], {}           # Invasion with no setup of its own: the game's zones (zone_spawn_check)
+    # a map variant's pieces that come and go (brain/forge.py PieceWatch): walls while they stand
+    piece_watch, piece_check = None, [-9.0, 0]
+    if MAP.get("variant") and not FIREFIGHT:
+        from brain.forge import PieceWatch, live_pieces
+        from brain.variants import pieces_of, info as variant_info, save as variant_save
+        piece_watch = PieceWatch(pieces_of(MAP["variant"]), MAP["variant"].get("dynamic", ()),
+                                 MAP["variant"].get("game") or o.game)
     inv_spawns, spawn_state = honor_spawns(MAP.get("base") or MAP["name"]) if inv_layout else None, {}
     mode_watch, mode_check = [None], [-9.0]      # Territories, Assault, Stockpile, Headhunter, Infection (brain/modes.py)
     bug_check, grow_check = [-9.0, None], [-9.0]     # bug_check[1]: the last tick's mode once read (see below)
@@ -788,6 +860,8 @@ def main():
                             print(f"{now:6.1f}s bug report {stamp}: recording attached", flush=True)
                     except Exception as e:
                         print(f"{now:6.1f}s bug report attach failed: {type(e).__name__}: {e}", flush=True)
+                if trace is not None:             # the recording's oldest minutes off (tools/recording.py)
+                    trace.tick(now)
                 if still[2] is not None:          # paused: nothing moves, nothing to do
                     time.sleep(1 / HZ)
                     continue
@@ -817,19 +891,42 @@ def main():
                     except Exception as e:      # never stops the bots: off for the rest of the match
                         print(f"{now:6.1f}s stations stopped: {type(e).__name__}: {e}", flush=True)
                         stations = None
-                if inv_layout and now - inv_check[0] > 5.0:     # Reach Invasion on this map: is the variant it?
+                # Reach Invasion: is the variant it? Read on every map: a Forge map variant's Invasion runs on maps whose
+                # scenario has none (Tempest), and was read as Slayer with no word of it
+                if o.game == "reach" and not FIREFIGHT and now - inv_check[0] > 5.0:
                     inv_check[0] = now
                     try:
-                        on = live.invasion()
+                        # (on a map with no setup of its own also by Invasion's engine icon, 9: live, both built-in
+                        # variants; a custom variant's name may not say it)
+                        on = live.invasion() or (not inv_layout and live.engine_icon() == 9
+                                                 and "SLAYER" not in live.variant_name().upper())
                     except Exception:
                         on = False
-                    if on and inv_watch[0] is None:
+                    if on and not inv_layout and not inv_unread[0]:
+                        # its objectives and gates are the map variant's labelled Forge objects, whose labels are not
+                        # read from the game yet (tools/forge_label_probe.py): played as Slayer, respawns in the zones
+                        # the game gives each bot (zone_spawn_check)
+                        inv_unread[0] = True
+                        print(f"{now:6.1f}s Invasion on {MAP['name']}: its objectives are a Forge map variant's (labels "
+                              f"not read yet): bots play it as Slayer and respawn in the game's zones", flush=True)
+                        if trace:
+                            trace.write(json.dumps(dict(t=round(now, 3), invasion_unread=MAP["name"])) + chr(10))
+                    if on and inv_layout and inv_watch[0] is None:
                         inv_watch[0] = Watch(inv_layout, T)
                         print(f"Invasion: attackers team {inv_layout['attackers']}, {len(inv_layout['barriers'])} "
                               f"barriers on the nav", flush=True)
                     elif not on and inv_watch[0] is not None:
                         clear_barriers(T, inv_layout)
                         inv_watch[0] = None
+                # (also on a map variant whose file gave the setup, brain/mvar.py, but no honor spawns are named)
+                if (inv_unread[0] or (inv_watch[0] is not None and not inv_spawns)) and now - zone_check[0] > 0.5:
+                    zone_check[0] = now
+                    try:
+                        zone_spawn_check(lambda i, *a: botctl.spawn_at(m, i, *a), bots, snap, live.respawn_zone,
+                                         zone_state, rng, T, now, trace)
+                    except Exception as e:           # (never the whole tick: bots then spawn where the game puts them)
+                        inv_unread[0], zone_check[0] = False, float("inf")
+                        print(f"{now:6.1f}s zone spawns off ({type(e).__name__}: {e})", flush=True)
                 if inv_watch[0] is not None:
                     inv_watch[0].update(live, snap, now, getattr(live, "raw", None))
                     if inv_spawns:
@@ -851,6 +948,23 @@ def main():
                         mode_watch[0] = None
                 if mode_watch[0] is not None and inv_watch[0] is None:
                     mode_watch[0].update(live, snap, now, getattr(live, "raw", None))
+                if piece_watch is not None and now - piece_check[0] > 2.0:
+                    piece_check[0] = now
+                    try:
+                        gone = piece_watch.update(live_pieces(live), T)
+                        if gone:                 # filed: the next match's nav leaves them out (brain/maps.py)
+                            data = variant_info(MAP["name"]) or {}
+                            data["dynamic"] = sorted(set(data.get("dynamic", ())) | gone)
+                            variant_save(MAP["name"], data)
+                            print(f"{now:6.1f}s map variant: {len(gone)} pieces went (dynamic from the next match)",
+                                  flush=True)
+                        if len(piece_watch.walls) != piece_check[1]:
+                            piece_check[1] = len(piece_watch.walls)
+                            print(f"{now:6.1f}s map variant: {piece_check[1]} pieces stood up after the nav was built "
+                                  f"(walls while they stand)", flush=True)
+                    except Exception as e:       # never stops the bots: off for the rest of the match
+                        print(f"{now:6.1f}s piece watch stopped: {type(e).__name__}: {e}", flush=True)
+                        piece_watch = None
                 bug_check[1] = snap.mode
                 crouching = botctl.owner_crouch(m)  # player 0 = the player (None: not decoded for this game)
                 steering = botctl.owner_jumping(m)
@@ -1081,7 +1195,7 @@ def main():
             print("out of bounds not saved:", e, flush=True)
         if trace is not None:
             try:                                         # the whole match into its bug reports
-                trace.flush()
+                trace.close()                            # (a trim under way finished first)
                 bug_reports.finish(o.trace, None)
             except Exception as e:
                 print("bug report recordings:", e, flush=True)

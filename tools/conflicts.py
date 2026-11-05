@@ -150,6 +150,26 @@ def stop_inside(folder, keep=()):
     return n
 
 
+def process_path(name):
+    """The program file of the first running process with this file name, or None."""
+    import ctypes
+    import ctypes.wintypes as wt
+    k = ctypes.windll.kernel32
+    k.OpenProcess.restype = wt.HANDLE
+    for pid, n in processes():
+        if n.lower() != name.lower():
+            continue
+        h = k.OpenProcess(0x1000, False, pid)                    # QUERY_LIMITED_INFORMATION
+        if h:
+            try:
+                buf, size = ctypes.create_unicode_buffer(1024), wt.DWORD(1024)
+                if k.QueryFullProcessImageNameW(h, 0, buf, ctypes.byref(size)):
+                    return buf.value
+            finally:
+                k.CloseHandle(h)
+    return None
+
+
 def mcc_running():
     return process_running("MCC-Win64-Shipping.exe")
 

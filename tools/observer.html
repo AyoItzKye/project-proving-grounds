@@ -71,8 +71,8 @@
   #scrub { position: relative; height: 36px; }
   #ticks { position: absolute; inset: 0 0 18px 0; width: 100%; height: 18px; }
   #time { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; margin: 0; }
-  #help { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: none; align-items: center; justify-content: center; }
-  #help .card { background: #0f1822; border: 1px solid var(--line); border-radius: var(--r); padding: var(--s4); max-width: 560px; }
+  #help, #recset { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: none; align-items: center; justify-content: center; }
+  #help .card, #recset .card { background: #0f1822; border: 1px solid var(--line); border-radius: var(--r); padding: var(--s4); max-width: 560px; }
   #help kbd { background: #1d2a38; border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; font-size: var(--f-s); }
   .empty { color: var(--dim); }
   .ytab { width: 100%; border-collapse: collapse; font-size: var(--f-s); font-variant-numeric: tabular-nums; margin: var(--s1) 0 var(--s2); }
@@ -96,6 +96,8 @@
     <button id="reload" title="Look for new traces">Refresh list</button>
     <span class="pair"><button id="exportbtn" title="Save this game as one file to share: every player marked person or bot, everything the bots did and decided, and the post-game report. Gamertags become Player 1, Player 2 (tick Keep names to keep them); Xbox ids are always left out.">Export game</button>
     <label class="sub"><input type="checkbox" id="exportnames"> Keep names</label></span>
+    <button id="keepbtn" aria-pressed="false" hidden title="Kept games are never removed. Games you do not keep make room for new ones.">Keep game</button>
+    <button id="recbtn" title="How many games are kept and how long each recording can be">Recording settings</button>
     <span class="pair"><button id="importbtn" title="Open a game someone exported (a .zip from Export game): it is added to the game list as Imported">Import game</button>
     <input type="file" id="importfile" accept=".zip,application/zip" hidden></span>
     <span class="pair"><label for="mappick" class="sub">Map</label>
@@ -150,6 +152,16 @@
   <p>In the panel, lit chips are what was true when the bot decided; dim chips were false. The list shows everyone's
   attention, stillness, squad and what each bot is weighing.</p>
   <button id="helpclose">Close</button></div></div>
+<div id="recset" role="dialog" aria-modal="true" aria-labelledby="rectitle"><div class="card">
+  <h2 id="rectitle" style="margin-top:0">Recording settings</h2>
+  <p><label for="recgames">Games kept</label> <input id="recgames" type="number" min="2" max="50" step="1" style="width:5em"></p>
+  <p class="sub">When a new game starts, the oldest game you did not keep is removed. Kept games, exported games and
+  games with bug reports always stay.</p>
+  <p><label for="recminutes">Longest recording (minutes)</label> <input id="recminutes" type="number" min="1" max="600" step="1" style="width:5em"></p>
+  <p class="sub">A longer game keeps its last minutes, so the end of the game and any bug report are always there.
+  Changes count from the next game.</p>
+  <p><button id="recsave">Save</button> <button id="recclose">Close</button> <span id="recsaid" role="status"></span></p>
+</div></div>
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);
@@ -257,7 +269,7 @@ async function loadList(keep) {
   for (const d of list) {
     const o = document.createElement("option");
     o.value = d.file; o.dataset.info = JSON.stringify(d);
-    o.textContent = `${d.live ? "● LIVE  " : ""}${d.label}  (${d.map || "map?"}, ${(d.bytes / 1e6).toFixed(1)} MB)`;
+    o.textContent = `${d.live ? "● LIVE  " : ""}${d.label}  (${d.map || "map?"}, ${(d.bytes / 1e6).toFixed(1)} MB${d.kept ? ", kept" : ""})`;
     pick.appendChild(o);
   }
   if (keep && [...pick.options].some((o) => o.value === was)) pick.value = was;
@@ -275,6 +287,7 @@ async function loadTrace(file) {
   S = freshGame(file, info); selected = null; base = null; img = null;
   $("banner").style.display = "none";
   $("livebadge").hidden = !info.live;
+  showKeep(info);
   follow = info.live; $("follow").setAttribute("aria-pressed", follow);
   $("status").textContent = "Loading…";
   await pull(true);
@@ -297,6 +310,9 @@ async function pull(first) {
     catch (e) { $("status").textContent = "Lost the observer server (retrying)…"; return; }
     if (!r.ok) { $("status").textContent = `Could not read this trace (${r.status}).`; return; }
     const text = await r.text();
+    if (!first && +r.headers.get("X-Size") < S.offset) {   // the recording dropped its oldest minutes: read it again
+      const at = now, f = follow; await loadTrace(S.file); if (!f) { now = Math.max(S.tStart, at); setFollow(false); } return;
+    }
     S.offset = +r.headers.get("X-Next-Offset"); S.size = +r.headers.get("X-Size");
     if (text) ingest(text);
     $("status").textContent = S.offset < S.size ? `Loading ${(S.offset / 1e6).toFixed(1)} / ${(S.size / 1e6).toFixed(1)} MB…`
@@ -764,6 +780,42 @@ $("exportbtn").onclick = async () => {
   }
   btn.disabled = false;
 };
+// Keep game: a kept game is never removed to make room for new ones (tools/recording.py)
+function showKeep(info) {
+  const b = $("keepbtn");
+  b.hidden = info.kept === null || info.kept === undefined;
+  b.setAttribute("aria-pressed", !!info.kept); b.textContent = info.kept ? "Kept" : "Keep game";
+}
+async function post(path, body) {
+  const r = await fetch(path, { method: "POST", headers: { "X-Observer": "1", "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const d = await r.json();
+  if (!r.ok) throw new Error(d.error || r.statusText);
+  return d;
+}
+$("keepbtn").onclick = async () => {
+  if (!S || !S.file) return;
+  const opt = $("tracepick").selectedOptions[0], info = JSON.parse(opt.dataset.info);
+  try {
+    info.kept = (await post("/keep", { file: S.file, keep: !info.kept })).kept;
+    opt.dataset.info = JSON.stringify(info); showKeep(info);
+    opt.textContent = opt.textContent.replace(/, kept\)$/, ")").replace(/\)$/, info.kept ? ", kept)" : ")");
+    $("status").textContent = info.kept ? "This game is kept." : "This game is no longer kept.";
+  } catch (e) { $("status").textContent = `Could not change this game: ${e.message}`; }
+};
+// Recording settings: games kept and the longest recording (saved in the user folder)
+$("recbtn").onclick = async () => {
+  $("recsaid").textContent = "";
+  try { const d = await (await fetch("/settings")).json(); $("recgames").value = d.games; $("recminutes").value = d.minutes; }
+  catch (e) { $("recsaid").textContent = "Could not read the settings."; }
+  $("recset").style.display = "flex"; $("recgames").focus();
+};
+$("recsave").onclick = async () => {
+  try {
+    const d = await post("/settings", { games: +$("recgames").value || 5, minutes: +$("recminutes").value || 15 });
+    $("recgames").value = d.games; $("recminutes").value = d.minutes; $("recsaid").textContent = "Saved.";
+  } catch (e) { $("recsaid").textContent = `Not saved: ${e.message}`; }
+};
+$("recclose").onclick = () => { $("recset").style.display = "none"; $("recbtn").focus(); };
 // Import game: the server unpacks a shared export into logs\imported and the list shows it as Imported
 $("importbtn").onclick = () => $("importfile").click();
 $("importfile").onchange = async (e) => {
@@ -823,6 +875,7 @@ cv.addEventListener("wheel", (e) => {
 document.addEventListener("keydown", (e) => {
   if (e.target.tagName === "SELECT" || e.target.tagName === "INPUT" && e.target.type !== "range") return;
   if ($("help").style.display === "flex") { if (e.key === "Escape") $("helpclose").click(); return; }
+  if ($("recset").style.display === "flex") { if (e.key === "Escape") $("recclose").click(); return; }
   const k = e.key;
   if (k === " ") { e.preventDefault(); $("play").click(); }
   else if (k === "ArrowLeft") { e.preventDefault(); seek(now - (e.shiftKey ? 5 : 0.5)); }

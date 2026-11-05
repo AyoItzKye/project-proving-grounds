@@ -106,16 +106,42 @@ def attach_new(t0, now, snap, map_name, trace, trace_path, bots, critic_path=Non
 
 
 def catch_up(src, dst):
-    """dst made the same as src, a recording that only grows: just what was added since is written (a whole copy at every
-    report wrote 13 GB for 28 reports of a 457 MB recording, Forge, and the brain stalled through each). A dst longer
-    than src (another recording) is copied whole."""
+    """dst brought up to src: just what was added since is written (a whole copy at every report wrote 13 GB for 28
+    reports of a 457 MB recording, Forge, and the brain stalled through each). src may have dropped its oldest minutes
+    since (the recording limit, tools/recording.py): then what follows dst's last line in src, or src's rows after its
+    time when that line is gone too. The copy only grows, so each report's moment stays in it. A dst with no line src
+    has, nor a time, is copied whole."""
+    import recording
     have = os.path.getsize(dst) if os.path.exists(dst) else 0
-    if have > os.path.getsize(src):
-        shutil.copyfile(src, dst)
-        return
-    with open(src, "rb") as f, open(dst, "ab") as g:
-        f.seek(have)
-        shutil.copyfileobj(f, g, 1 << 20)
+    size = os.path.getsize(src)
+    with open(src, "rb") as f:
+        at = 0 if not have else None
+        if have:
+            with open(dst, "rb") as d:
+                d.seek(max(0, have - (1 << 20)))
+                tail = d.read()
+            last = tail[tail.rfind(b"\n", 0, len(tail) - 1) + 1:]      # its last line, as written
+            if have <= size:
+                f.seek(have - len(last))
+                if f.read(len(last)) == last:
+                    at = have                              # (src only grew)
+            pos = size
+            while at is None and pos > 0:                  # src trimmed: dst's last line in it, from the end
+                lo = max(0, pos - (8 << 20))
+                f.seek(lo)
+                i = f.read(pos - lo + len(last)).rfind(last)
+                if i >= 0:
+                    at = lo + i + len(last)
+                pos = lo
+            if at is None:
+                t = recording.line_t(last)
+                if t is None:
+                    shutil.copyfile(src, dst)
+                    return
+                at = recording.first_at(f, 0, size, t + 1e-6)
+        with open(dst, "ab") as g:
+            f.seek(at)
+            shutil.copyfileobj(f, g, 1 << 20)
 
 
 def _critique(folder, critic_path):

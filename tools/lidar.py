@@ -609,6 +609,9 @@ class Recorder:
                        deaths=(old.get("deaths", []) + deaths)[-3000:],
                        jumps=(old.get("jumps", []) + jumps)[-2000:],
                        links=links, weapons=weapons, cover=cover)
+            objectives = s.objectives.saved() if getattr(s, "objectives", None) is not None else old.get("objectives")
+            if objectives:                           # every gametype objective place, reached or not (Objectives)
+                out["objectives"] = objectives
             os.makedirs(os.path.dirname(s.path), exist_ok=True)
             tmp = s.path + ".tmp"
             with open(tmp, "w") as f:
@@ -826,6 +829,145 @@ def load_features(map_name, stations=None, oob=None):
     if feats or pairs:
         d = dict(d, features=own + feats, teleporters=list(d.get("teleporters", [])) + pairs)
     return d
+
+
+OBJ_MERGE = 2.5          # objective places this close are one place to visit (lidar_director.SPOT_DONE_R)
+OBJ_REACH_R, OBJ_REACH_Z = 2.5, 2.0   # anyone this close (flat, and up or down) has been at an objective
+OBJ_NAV_Z = 2.5          # the nav's floor at an objective this far up or down from it: not on the nav there
+
+
+def objective_points(map_name, stations=None):
+    """Every gametype objective place of a map, all modes at once: [{pos, roles, names, src}], places within OBJ_MERGE
+    merged. The map's own come from its scenario as the editing kits export it (objects.json netgame flags and Forge
+    labels: flag stands and returns, hills, oddball and bomb spawns, plant points, territories, havens, drop points,
+    race checkpoints, Invasion zones ...; roles by tools/map_features.py), which the game itself only spawns for the mode
+    being played. Plus objective objects read live (brain/stations.py; a Forge layout's own). A Forge canvas variant
+    (no layout of the base map's own, brain/variants.py base_area) has only the live ones."""
+    import map_features as F
+    from brain import stations as S
+    from brain.variants import base_area, base_of
+    base = base_of(map_name)
+    objs = load(os.path.join(ROOT, "maps", base, "objects.json"))
+    found = []
+    if base == map_name or base_area(objs):
+        for f in F.from_objects(objs)[0] if objs else []:
+            if f["kind"] == "objective":
+                found.append((f["role"], f["name"], f["pos"], "map"))
+    mv = load(os.path.join(ROOT, "maps", map_name, "mvar_objects.json")) if base != map_name else None
+    for f in F.from_objects(mv)[0] if mv else []:     # the variant's own file (brain/mvar.py): every mode's labelled
+        if f["kind"] == "objective":                   # objectives, spawned or not by the game type being played
+            found.append((f["role"], f["name"], f["pos"], "mvar"))
+    for o in (stations.objects if stations is not None else S.load(map_name)["objects"]):
+        if o.get("kind") == "objective":
+            found.append((F.role_of(o["what"]) or "objective", o["what"], o["pos"], "live"))
+    out = []
+    for role, name, pos, src in found:
+        if not all(math.isfinite(v) for v in pos):
+            continue
+        p = next((q for q in out if math.dist(q["pos"], pos) < OBJ_MERGE), None)
+        if p is None:
+            out.append(dict(pos=[round(float(v), 2) for v in pos], roles=[role], names=[name], src=src))
+        else:
+            p["roles"] += [role] if role not in p["roles"] else []
+            p["names"] += [name] if name not in p["names"] else []
+            p["src"] = p["src"] if p["src"] == src else "map+live"
+    return out
+
+
+class Objectives:
+    """Every gametype objective place (objective_points) as goals in a LiDAR run (a match or the simulator): one LiDAR
+    bot walks to each (the director's spots, label = its role), and the floor round it gets painted; reached once
+    anyone (bot or person) stood within OBJ_REACH_R. Saved in lidar.json "objectives" (lidar_sim.json for the
+    simulator) with the nav's verdict (on: the nav has floor there; reach: walkable from the spawns), merged over runs:
+    reached once stays reached, and places already reached are not sent again."""
+
+    def __init__(s, map_name, T, stored=(), stations=None):
+        s.map, s.T, s.spots = map_name, T, {}
+        old = {tuple(o["pos"]): o for o in stored or ()}
+        s.points = objective_points(map_name, stations)
+        for p in s.points:
+            o = old.get(tuple(p["pos"]))
+            p["reached"] = bool(o and o.get("reached"))
+            p["given_up"] = bool(o and o.get("given_up")) and not p["reached"]
+            p.update(s.nav_of(p["pos"]))
+        s.kept = [o for k, o in old.items() if not any(tuple(p["pos"]) == k for p in s.points)]   # (another layout's)
+
+    def nav_of(s, pos):
+        """{floor, on, reach}: the nav's floor under the objective, whether it is there, walkable from the spawns."""
+        T = s.T
+        if T is None or not T.inside(pos[0], pos[1]):
+            return dict(floor=None, on=False, reach=False)
+        from brain.core import Vec
+        l, j, i = T._node(Vec(*pos))
+        c = T._center(l, j, i)
+        on = bool(T.lwalk[l, j, i]) and math.isfinite(c.z) and abs(c.z - pos[2]) < OBJ_NAV_Z
+        reach = getattr(T, "reach", None)
+        return dict(floor=[round(c.x, 2), round(c.y, 2), round(c.z, 2)] if math.isfinite(c.z) else None, on=on,
+                    reach=bool(on and (reach is None or reach[l, j, i])))
+
+    @staticmethod
+    def goal(p):
+        """Where a place is reached: the nav's floor there, else the objective itself (a stand on something the nav
+        lacks, or over a drop: only someone up there reaches it)."""
+        return p["floor"] if p["on"] else p["pos"]
+
+    def seed(s, director):
+        """Each place not yet reached as a spot for one bot (goal)."""
+        s.spots = {}
+        if director is None:
+            return 0
+        for k, p in enumerate(s.points):
+            if not p["reached"]:
+                s.spots[k] = director.add_spot(s.goal(p), bots=1, label=p["roles"][0])
+        return len(s.spots)
+
+    def add_live(s, stations, director):
+        """Objective objects the running game has spawned (stations, brain/stations.py) that no place covers yet: new
+        places, each a spot for one bot now (a Forge layout's first run). The new places."""
+        import map_features as F
+        new = []
+        for o in stations.objects:
+            if o.get("kind") != "objective" or not all(math.isfinite(v) for v in o["pos"]):
+                continue
+            if any(math.dist(p["pos"], o["pos"]) < OBJ_MERGE for p in s.points):
+                continue
+            p = dict(pos=[round(float(v), 2) for v in o["pos"]], roles=[F.role_of(o["what"]) or "objective"],
+                     names=[o["what"]], src="live", reached=False, given_up=False)
+            p.update(s.nav_of(p["pos"]))
+            s.points.append(p)
+            if director is not None:
+                s.spots[len(s.points) - 1] = director.add_spot(s.goal(p), bots=1, label=p["roles"][0])
+            new.append(p)
+        return new
+
+    def update(s, positions, now):
+        """positions: where every living player (bots and people) is now; marks places reached (and their spots).
+        Twice a second at most (now: the run's clock)."""
+        if now - getattr(s, "last_t", -9.0) < 0.5:
+            return
+        s.last_t = now
+        for k, p in enumerate(s.points):
+            if p["reached"]:
+                continue
+            x, y, z = s.goal(p)
+            if any(math.hypot(q[0] - x, q[1] - y) < OBJ_REACH_R and abs(q[2] - z) < OBJ_REACH_Z for q in positions):
+                p["reached"], p["given_up"] = True, False
+                if k in s.spots:
+                    s.spots[k]["done"] = True
+            elif k in s.spots and s.spots[k]["done"]:   # (a bot the director sent got there)
+                p["reached"], p["given_up"] = True, False
+            elif k in s.spots and s.spots[k]["given_up"]:
+                p["given_up"] = True
+
+    def saved(s):
+        for p in s.points:                            # (the nav learns during a run: new jumps reach more)
+            p.update(s.nav_of(p["pos"]))
+        return [dict(p) for p in s.points] + s.kept
+
+    def line(s):
+        n, r = len(s.points), sum(p["reached"] for p in s.points)
+        off = sum(not p["reach"] for p in s.points)
+        return f"objectives: {r} of {n} places reached, {off} not reachable on the nav from the spawns"
 
 
 def load_glass(map_name):
@@ -2237,6 +2379,16 @@ def report(rec, data, T=None):
              f"Runs {data['runs']}, {data['bot_minutes']} bot-minutes, {data.get('human_minutes', 0)} minutes of people. "
              f"{len(floor)} floor cells ({len(cells2d) * CELL * CELL:.0f} square units), "
              f"{sum(1 for w in walk if w[3] == KIND_HUMAN)} of them walked by people.", ""]
+    objs = data.get("objectives") or []
+    if objs:                                         # every gametype objective place (Objectives)
+        bad = [p for p in objs if not p.get("reached") or not p.get("reach")]
+        lines += [f"Gametype objective places: {len(objs)}, {sum(1 for p in objs if p.get('reached'))} reached by "
+                  f"someone, {sum(1 for p in objs if not p.get('reach'))} not reachable on the nav from the spawns.", ""]
+        lines += [f"- {'/'.join(p['roles'])} at ({p['pos'][0]:.1f}, {p['pos'][1]:.1f}, {p['pos'][2]:.1f}): "
+                  f"{'reached' if p.get('reached') else 'no way found' if p.get('given_up') else 'not reached yet'}, "
+                  f"{'on the nav' if p.get('reach') else 'nav floor there but not reached from the spawns' if p.get('on') else 'no nav floor there'}"
+                  for p in bad[:40]]
+        lines.append("")
     if T is not None and floor:
         miss = [(x * CELL, y * CELL, z * ZSTEP, n) for x, y, z, k, n in floor
                 if not T.ground_ok(x * CELL, y * CELL, z * ZSTEP, drop=0.6)]
@@ -2386,12 +2538,15 @@ def main(o):
     if o.game in ("h3", "reach", "h4", "h2a"):
         from brain.stations import Stations, scan as station_scan
         stations = hub.stations = Stations(o.map)
+    if T is not None:                                # every gametype objective place: one bot to each (Objectives)
+        rec.objectives = Objectives(o.map, T, rec.stored.get("objectives"), stations)
+        print(f"{rec.objectives.seed(rec.director)} objective places to visit; {rec.objectives.line()}", flush=True)
     from brain.core import Vec
     from brain.oob import Oob                    # out of bounds, learned here too (brain/oob.py): a soft wall for bots
     oob = hub.oob = Oob(o.map)
     oob_seen = [oob.version, 0.0]
-    if oob.spots:
-        T.set_oob(oob.spots, oob.version)
+    if oob.spots or oob.volumes:                 # (and the map's own kill zones: maps/<map>/killzones.json)
+        T.set_oob(oob.spots, oob.version, oob.volumes)
     import bug_reports
     import types
     run_stamp = time.strftime("%Y%m%d-%H%M%S")
@@ -2441,6 +2596,8 @@ def main(o):
                         print(f"{now:6.1f}s nav window growing to {w}", flush=True)
                 if map_swap(gm):                     # (T is the same object, grown; the director's samples were not)
                     rec.director = LidarDirector(T, rec, spawn_points(gm))
+                    if getattr(rec, "objectives", None) is not None:
+                        rec.objectives.seed(rec.director)
                     print(f"{now:6.1f}s nav grown: window {gm['window']}", flush=True)
             gone = [i for i in mine.values() if alive.get(i) and not is_up(ps.get(i))]
             reset = len(gone) >= 3 and len(gone) >= len(mine) / 2   # most bots gone in one tick: a new round
@@ -2479,6 +2636,9 @@ def main(o):
                         st_check[0] = now
                         stations.update(station_scan(live, o.game), {p.get("vehicle_top", p["vehicle"]) for p in players if p.get("vehicle", -1) != -1},
                                         [tuple(p["pos"]) for p in players if is_up(p)])
+                        if getattr(rec, "objectives", None) is not None:   # objectives the game spawned: visit them too
+                            for p in rec.objectives.add_live(stations, rec.director):
+                                print(f"{now:6.1f}s objective seen in the game: {'/'.join(p['names'])} at {p['pos']}", flush=True)
                     if now - st_check[1] > 30.0:
                         st_check[1] = now
                         stations.save()
@@ -2570,9 +2730,16 @@ def main(o):
             notices.check()
             if getattr(rec, "director", None) is not None:
                 rec.director.plan(now, {i: tuple(ps[i]["pos"]) for i in bot_ids if alive.get(i) and ps.get(i) and ps[i]["pos"]})
+                for i in rec.director.new_spot_bots:     # (sent to a spot or an objective: drop the old goal, go now)
+                    if i in bots and bots[i].trial is None:
+                        bots[i].target = None
+                rec.director.new_spot_bots.clear()
+                if getattr(rec, "objectives", None) is not None:
+                    rec.objectives.update(rec.players_pos, now)   # (people count too)
                 line = rec.director.line(now)
                 if line:
-                    print(f"{now:6.1f}s {line}", flush=True)
+                    print(f"{now:6.1f}s {line}" + (f"; {rec.objectives.line()}" if getattr(rec, "objectives", None)
+                                                    is not None else ""), flush=True)
             if T is not None and now >= next_sync:     # new usable jumps / routes: into the nav now
                 next_sync = now + 2.0
                 sig = [id(l) for l in usable_links(rec.links)]

@@ -1,5 +1,6 @@
 """Offline LiDAR simulator: LiDAR bots on every map's level data at high speed, watched in the
-LiDAR 3D view (http://127.0.0.1:8797/, "LiDAR Simulator.bat").
+LiDAR 3D view on its own address (http://127.0.0.1:8798/, "LiDAR Simulator.bat"; the LiDAR Viewer and a LiDAR match's
+live view keep 8797, so a simulator left open never stops a match's live view from starting).
 
 The walking bots are the real LiDAR Roombas (tools/lidar.py: nearest unpainted floor by the nav,
 called jumps, bump walls, the nav learning as the map fills); jumpphys moves them: walking by the
@@ -21,7 +22,7 @@ Writes maps/<map>/lidar_sim.json (paint, airspace, deaths), merges called jumps 
 maps/<map>/lidar.json, and a line per map to logs/lidar_sim.md.
 
 usage: python -I lidar_sim.py [maps... | --all] [--game ce] [--minutes 6] [--walkers 16] [--aircraft 8]
-                              [--speed 0] [--max-real 240] [--open] [--port 8797] [--hold 0]
+                              [--speed 0] [--max-real 240] [--open] [--port 8798] [--hold 0]
   maps      names to run in turn (none: wait for a pick in the view); --all: every map with level data
   --speed   simulated seconds per real second (0: as fast as it runs)
   --max-real  real seconds at most per map (a huge campaign map would take hours)
@@ -48,6 +49,7 @@ import lidar  # noqa: E402
 from lidar import BTN_JUMP, KIND_AIRSPACE, KIND_BOT, Hub, Recorder, Roomba, load, map_title, on_events, r2  # noqa: E402
 
 HZ = 20
+PORT = 8798                      # (not lidar.PORT, the LiDAR Viewer's and a LiDAR match's)
 AIR_SPEED = 6.0                  # aircraft, units/s (ASSUMED: about a Banshee)
 AIR_SENSE = 2                    # voxels around an aircraft it paints (a 5x5x5 block)
 AIR_NEAR = 3.0                   # airspace: columns within this of walked floor
@@ -320,6 +322,8 @@ def run_map(name, o, switch, k, n, log, ctl=None):
     if not getattr(o, "no_director", False):         # the LiDAR director (tools/lidar_director.py)
         from lidar_director import LidarDirector
         rec.director = LidarDirector(T, rec, [Vec(*p) for p in spawns])
+        rec.objectives = lidar.Objectives(name, T)   # every gametype objective place, visited afresh each run
+        rec.objectives.seed(rec.director)
     ceiling, why = ceiling_of(name, T)
     air = Airspace(T, ceiling)
     crafts = [Craft(c, (sp[0], sp[1], sp[2] + 2.5)) for c, sp in enumerate(rng.sample(spawns * o.aircraft, o.aircraft))]
@@ -354,6 +358,7 @@ def run_map(name, o, switch, k, n, log, ctl=None):
                 if i < len(walkers) and walkers[i][0].trial is None:
                     walkers[i][0].target = None
             rec.director.new_spot_bots.clear()
+            rec.objectives.update(rec.players_pos, t)
         for rb, b in walkers:
             if not b.alive:
                 if t - b.dead_t >= 2.0:              # respawn
@@ -541,7 +546,7 @@ def main():
     ap.add_argument("--aircraft", type=int, default=8)
     ap.add_argument("--speed", type=float, default=0.0)
     ap.add_argument("--max-real", type=float, default=240.0, help="real seconds at most per map (huge maps)")
-    ap.add_argument("--port", type=int, default=lidar.PORT)
+    ap.add_argument("--port", type=int, default=PORT)
     ap.add_argument("--open", action="store_true")
     ap.add_argument("--hold", type=float, default=0.0)
     ap.add_argument("--no-director", action="store_true", help="bots pick their own goals (no LiDAR director): A/B runs")
@@ -560,8 +565,8 @@ def main():
     if o.open:
         import appwindow
         appwindow.open_window(f"http://127.0.0.1:{o.port}/")
-    if srv is None:                                   # another simulator or a LiDAR match holds the view: two would
-        print("Another LiDAR simulator or LiDAR match is already running: its window shows it. Not starting a second "
+    if srv is None:                                   # another simulator holds its address: two would
+        print("Another LiDAR simulator is already running: its window shows it. Not starting a second "
               "one (both would save the same maps).", flush=True)
         return
     os.makedirs(os.path.join(ROOT, "logs"), exist_ok=True)

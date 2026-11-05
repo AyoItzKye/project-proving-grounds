@@ -127,6 +127,7 @@ static uint32_t h3_near_vehicle(uint8_t* tls, uint8_t* unit, bool turret) {
         float q[3] = { r[0], r[1], r[2] };
         uint8_t* top = turret ? h3_object(tls, parent) : o;
         if (!top || ((const float*)(top + 0x68))[2] < 0.5f) continue;   // on its side or roof: no ride
+        if ((o[0x110] & 4) || (top[0x110] & 4)) continue;   // destroyed (damage flags bit 2, ghidra/h3_object_get_health.c)
         if (turret) {
             // a gun's place is the vehicle's plus its offset along the vehicle's axes (left = up x forward)
             const float* b = (const float*)(top + 0x50), * f = (const float*)(top + 0x5C), * u = (const float*)(top + 0x68);

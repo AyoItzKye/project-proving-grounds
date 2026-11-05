@@ -161,11 +161,22 @@ class Live:
     # a vehicle's body as each game keeps it on the object, the field its players' health is read from (a vehicle is a
     # unit): (offset, True when the float is damage taken, 1.0 = gone, not health left)
     VEH_VITAL = (0x9C, False)
+    # the game's own "destroyed" bit: object damage flags byte at DEAD_AT, bit 2 (CE's _object_dead_bit). DERIVED from each
+    # DLL's object_get_health script function (backups/mcc-2025.08.16, the Ghidra build), which answers 0 when it is set:
+    # Halo 2 +0x10A, Halo 3 +0x110, ODST +0x104, Reach +0x138, Halo 4 / H2A +0x16C. None (CE): its MP vehicles cannot
+    # die, the body field below decides. Not yet read live on a wreck
+    DEAD_AT = None
+    # where object_get_health reads health in Reach / H4 / H2A: a block placed per object, its size (int16) at
+    # HEALTH_BLOCK, its offset (uint16) next, the health float +0x10 into it; None: the fixed VEH_VITAL field. (Reach's
+    # +0x128 read before climbs back to full on a wreck: Forge World 20261102, a destroyed Scorpion a full ride for 48 s)
+    HEALTH_BLOCK = None
 
     def vehicle_dead(s, handle):
-        """A wreck: a vehicle whose body is gone. Dead only once it was read alive this match: a game whose field is not
-        this one (CE's vehicles cannot die and may read 0) keeps every vehicle usable. INFERRED from the players' own
-        health fields; not checked live on a vehicle (each one's in the trace: vehicle_left)."""
+        """A wreck: the game's destroyed bit (DEAD_AT) where decoded. Else (CE) a vehicle whose body field read 0 after it
+        was read alive this match, so a field that reads 0 from the start keeps every vehicle usable."""
+        if s.DEAD_AT is not None:
+            o = s.object(handle)
+            return bool(o) and bool(s.g.read(o + s.DEAD_AT, 1)[0] & 4)
         left = s.vehicle_left(handle)
         if left is None:
             return False
@@ -177,10 +188,13 @@ class Live:
         return handle in seen
 
     def vehicle_left(s, handle):
-        """The health left in a vehicle's body field (VEH_VITAL), None without its object."""
+        """The health left in a vehicle's body (HEALTH_BLOCK, else the VEH_VITAL field), None without its object."""
         o = s.object(handle)
         if not o:
             return None
+        if s.HEALTH_BLOCK is not None:
+            size, at = struct.unpack("<hH", s.g.read(o + s.HEALTH_BLOCK, 4))
+            return struct.unpack("<f", s.g.read(o + at + 0x10, 4))[0] if size >= 0x18 else None
         off, dmg = s.VEH_VITAL
         v = struct.unpack("<f", s.g.read(o + off, 4))[0]
         return 1.0 - v if dmg else v
@@ -335,7 +349,8 @@ class LiveH2(Live):
     +0xF0 shield (of 70), +0x226 primary weapon index, +0x22C 4 weapon handles. Tag names: [halo2+0x15E4B68] int32 offsets by
     tag index into the names buffer at [halo2+0x15E4B78]."""
     UNIT_ZOOM = 0x255      # the unit's desired zoom byte (found live with tools/zoom_probe.py --scan)
-    VEH_VITAL = (0xEC, False)   # (Live.vehicle_dead: the unit health field players() reads)
+    VEH_VITAL = (0xEC, False)   # (Live.vehicle_left: the unit health field players() reads)
+    DEAD_AT = 0x10A             # (Live.vehicle_dead; ghidra/h2_object_get_health.c)
     # a gun's reserve and magazine (int16), found live: the magazine fell 60 -> 14 in 3 s of SMG fire in all 7 bots'
     # guns (+0x230), the reserve paid each refill (+0x22E: 120 -> 60 in 7 of 7); Halo 3 overrides
     AMMO_AT, MAG_AT = 0x22E, 0x230
@@ -570,7 +585,8 @@ class LiveH3(LiveH2):
     header at halo3+0x20A9058 ('daeh'), +0xE0 scenario path. Halo 3 keeps no tag names in
     memory: weapons are named by matching loose weapons to the map's placements (learn_names)."""
     UNIT_ZOOM = 0x299      # the unit's desired zoom byte (ghidra/h3_input.c line 28)
-    VEH_VITAL = (0xF4, False)   # (Live.vehicle_dead: the unit health field players() reads)
+    VEH_VITAL = (0xF4, False)   # (Live.vehicle_left: the unit health field players() reads)
+    DEAD_AT = 0x110             # (Live.vehicle_dead; ghidra/h3_object_get_health.c)
     AMMO_AT, MAG_AT = 0x236, 0x23A   # a gun's reserve and magazine (int16): found live (tools/ammo_scan.py h3)
     PARENT_AT = 0x10
     # the player's Motion Tracker Mode as the game resolved his traits (byte in the player datum: 1 off, 2 allies
@@ -1011,7 +1027,7 @@ class LiveReach(LiveH3):
     Object +0 tag, +0xC next sibling, +0x10 first child, +0x14 parent, +0x44 position (feet),
     +0x50 forward; unit +0x350 4 weapon handles, +0x374 armor ability."""
     UNIT_ZOOM = None      # the unit's desired zoom byte (not decoded)
-    VEH_VITAL = (0x128, True)   # (Live.vehicle_dead: the body damage players() reads at +0x124 / +0x128)
+    DEAD_AT, HEALTH_BLOCK = 0x138, 0x184   # (Live.vehicle_dead / vehicle_left; ghidra/hr_object_get_health.c)
     MAG_NAMES = {}        # (Halo 3's magazine sizes are not this game's)
     AMMO_AT = None        # rounds not decoded for this game (LiveH2.rounds reads unknown)
     # loose guns by this game's parent field (+0x14, the vehicle a seated unit rides and the holder of a flag here);
@@ -1318,6 +1334,23 @@ class LiveReach(LiveH3):
         name = s.variant_name().upper()
         return "INVASION" in name and "SLAYER" not in name
 
+    # player +0x414: the object the game respawns the player at. Invasion's script gives every player its team's zone
+    # of the phase (live Spire, all 8 players: an inv_res_p1 hill beacon of their side in phase 1, inv_res_p2 in phase 2)
+    RESPAWN_ZONE_AT = 0x414
+
+    def respawn_zone(s, index):
+        """(x, y, z, yaw) of the respawn zone object the game gives player `index` (RESPAWN_ZONE_AT), or None."""
+        base, mx, size = s._array(s.PLAYERS_AT)
+        if not 0 <= index < mx:
+            return None
+        a = s.object(struct.unpack("<I", s.g.read(base + index * size + s.RESPAWN_ZONE_AT, 4))[0])
+        head = s.g.read(a, 0x5C) if a else None
+        if not head:
+            return None
+        x, y, z = struct.unpack_from("<3f", head, s.POS_AT)
+        fx, fy = struct.unpack_from("<2f", head, 0x50)
+        return x, y, z, math.atan2(fy, fx)
+
     def core(s, players, stand, key="core"):
         """Invasion's core: the weapon object first seen on its stand (a Vec), found as flags are (flags_by_stand),
         once phase 3 puts it there. [{pos, carrier}] (empty before phase 3). key: another object's own tags (Breakpoint's
@@ -1437,7 +1470,8 @@ class LiveODST(LiveH3):
     +0x50 position, +0x5C forward, +0x198 aim, +0xE8 health / +0xEC shield (fractions), +0x274
     weapon set / +0x276 primary index, +0x27C weapon handles. Cache header 'daeh' at +0x20EF068."""
     UNIT_ZOOM = None      # the unit's desired zoom byte (not decoded)
-    VEH_VITAL = (0xE8, False)   # (Live.vehicle_dead: the unit health field players() reads)
+    VEH_VITAL = (0xE8, False)   # (Live.vehicle_left: the unit health field players() reads)
+    DEAD_AT = 0x104             # (Live.vehicle_dead; ghidra/odst_object_get_health.c)
     MAG_NAMES = {}        # (Halo 3's magazine sizes are not this game's)
     AMMO_AT = None        # rounds not decoded for this game (LiveH2.rounds reads unknown)
     ground_weapons = Live.ground_weapons   # unchanged (CE's offsets) until this game's are checked live
@@ -1558,7 +1592,8 @@ class LiveH4F(LiveReach):
     before health, 0..1)."""
     PATHS = {"halo4.dll": 0x2A30288, "groundhog.dll": 0x1457018}     # the running map's path ('levels\multi\<map>\<map>')
     TRACKER_AT = 0x758         # (LiveH3.tracker; both games: Unchanged 3, Off 1 seen live)
-    VEH_VITAL = (0x15C, True)   # (Live.vehicle_dead: the body damage players() reads at +0x158 / +0x15C)
+    # (Live.vehicle_dead / vehicle_left: halo4.dll 0x180683124 and groundhog.dll 0x180683e80, object_get_health)
+    DEAD_AT, HEALTH_BLOCK = 0x16C, 0x1D0
 
     # objects for LiveH3.flags / balls / objective_items (Adrift): TLS +0x18, entry +4 type (2 weapon), object +8 tag,
     # +0x24 parent (a held gun's: the unit; a map gun's: the weapon pad it rests on), +0x40 position, absolute

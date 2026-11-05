@@ -87,9 +87,11 @@ def main():
             fails.append(f"{tier}: only {len(rolls)} of 40 fights started")
         if all(rolls) != want_all:
             fails.append(f"{tier}: strafed {sum(rolls)} of {len(rolls)} fights (want {'all' if want_all else 'some, not all'})")
-    # 3. closing in: an AR at 3.5 u, a BR on a man with no shield at 6 u; a BR on a full shield holds its range
+    # 3. closing in: an AR at 3.5 u, a BR on a man with no shield at 6 u; a Normal BR on a full shield holds its range,
+    #    a Legendary one walks in on an even trade (intent to kill: Bot.press_on, tools/test_press.py)
     for tier, w, d, sh, lo, hi in (("average", "assault_rifle", 3.5, 1.0, 0.5, 9), ("top", "assault_rifle", 3.5, 1.0, 0.5, 9),
-                                   ("top", "battle_rifle", 6.0, 0.0, 0.5, 9), ("top", "battle_rifle", 6.0, 1.0, -9, 0.3),
+                                   ("top", "battle_rifle", 6.0, 0.0, 0.5, 9), ("average", "battle_rifle", 6.0, 1.0, -9, 0.3),
+                                   ("top", "battle_rifle", 6.0, 1.0, 0.5, 9),
                                    ("novice", "assault_rifle", 3.5, 1.0, -9, 0.3)):
         f = mean([x[0] for x in fight(mk(tier), w, d, 1.0, foe_shield=sh)])
         info.append(f"{tier} {w} {d} u shield {sh}: forward {f:.2f}")

@@ -1,4 +1,4 @@
-# Known bugs (0.2.0)
+# Known bugs (0.2.1)
 
 What I already know is broken or buggy in this version, so you don't have to report it (but if you find something worse, or a way to make it happen every time, a [bug report](https://github.com/AyoItzKye/project-proving-grounds/issues/new?template=bug_report.yml) still helps).
 
@@ -9,7 +9,6 @@ For everything that works, game by game, see the [bot status sheet](BOT_STATUS.p
 - **The bots only work in offline custom games with Easy Anti-Cheat off.** Started with anti-cheat on, there is no BOTS tile. This is on purpose.
 - **An MCC update can break the mod** until a new version is out: the BOTS tile goes missing or bots don't join. Check the Releases page for a newer version.
 - **Windows Security can delete the injector** if the exclusion was not added during install. The launcher says so when you press Play; the README's Troubleshooting section shows the fix.
-- **Observer, LiDAR Viewer and Paint the nav only open once.** Close one of their windows and clicking it again in the launcher says it opens in a moment, but nothing opens, even after closing and reopening the launcher (the LiDAR Simulator is not affected). The tool is still running in the background without its window. Until the fix: open it in your web browser instead (Observer `http://127.0.0.1:8799/`, LiDAR Viewer `http://127.0.0.1:8797/`, Paint the nav `http://127.0.0.1:8796/`), or restart your PC and it opens from the launcher again. Fixed in the next version.
 - **Bots don't crouch-aim at a crouching player on a controller** in Halo: CE, Halo 2, Halo 3 and Reach: the mod can only tell you're crouching from the keyboard's crouch key there. Halo 2 Anniversary and Halo 4 read it from the game.
 - **Bots don't pick up weapons off the map in Halo 2 Anniversary and Halo 4** yet. They keep their starting guns.
 - **Spectate (no body)** is not available in Halo 2 Anniversary yet.
@@ -19,7 +18,7 @@ For everything that works, game by game, see the [bot status sheet](BOT_STATUS.p
 
 - **Allied bots won't get into a vehicle with you**, only with other bots: they don't hop in as your gunner or passenger, or take you as theirs.
 - **In CTF, a bot driver will pick up your flag carrier but won't drive back to your base** to score.
-- **Bots get into destroyed vehicles**: the mod can't read a vehicle's health yet, so a bot can't tell a wrecked one from a working one.
+- **Destroyed vehicles in Halo 2 and ODST**: bots skip wrecks in Halo 2 Anniversary, Halo 3, Reach and Halo 4; in Halo 2 Classic and ODST this is not checked in a real match yet, so a bot may still try to get into a wreck.
 - **Flying vehicles need reworking**: how bots fly and fight in the air is being redone.
 - **Bots lack urgency on offense**: when the objective means attacking (taking the flag, planting the bomb, pushing in Invasion), they're too slow and cautious about it.
 - **Theater mode only works with bots in Halo: Reach.** Films of bot matches in every other game (Halo: CE, Halo 2, Halo 2 Anniversary, Halo 3, ODST and Halo 4) load, then stop with "an error occurred" as they start.
@@ -140,4 +139,4 @@ For everything that works, game by game, see the [bot status sheet](BOT_STATUS.p
 - **Warthog**: Bots get in, drive, gun and get out, but drivers stall about half the time.
 - **Ghost**: Bots drive it, but stall a lot, rarely fire and can't boost yet.
 
-*Last updated November 2, 2026.*
+*Last updated November 3, 2026.*

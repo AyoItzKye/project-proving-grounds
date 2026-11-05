@@ -69,9 +69,16 @@ def main():
             if len(w) == 5 and w[3] == 1]
     x, y, z, _, n = max(walk, key=lambda w: w[4])
     busy, empty = power_positions.traffic(c, [(x * 0.25, y * 0.25, z * 0.1), (999.0, 999.0, 0.0)])
-    if busy < 1.0 + n ** 0.5 or empty != 1.0 or power_positions.traffic(M, [(0.0, 0.0, 0.0)]) is not None:
-        fails.append(f"traffic: {busy:.0f} on Construct's most walked floor ({n} samples), {empty} off it, Blood Gulch "
-                     f"(no people's walk) {power_positions.traffic(M, [(0.0, 0.0, 0.0)])} (want 1 + sqrt, 1, None)")
+    # (a map nobody walked, found in the data: Blood Gulch was one until bot matches with people filed their walk)
+    def walked(nm):
+        f = os.path.join(HERE, "..", "maps", nm, "lidar.json")
+        return os.path.exists(f) and any(len(w) == 5 and w[3] == 1 for w in json.load(open(f)).get("walk", []))
+    quiet = next(nm for nm in sorted(os.listdir(os.path.join(HERE, "..", "maps")))
+                 if os.path.exists(os.path.join(HERE, "..", "maps", nm, "heightmap.npz")) and not walked(nm))
+    none = power_positions.traffic(dict(name=quiet), [(0.0, 0.0, 0.0)])
+    if busy < 1.0 + math.sqrt(n) - 1e-9 or empty != 1.0 or none is not None:
+        fails.append(f"traffic: {busy:.0f} on Construct's most walked floor ({n} samples), {empty} off it, {quiet} "
+                     f"(no people's walk) {none} (want 1 + sqrt, 1, None)")
     # 2. MAP-10: the director hands its bots the hot zone (Easy plays for itself: none); one at its post with nobody
     #    known watches it (20 re-picks), not a random open line; 20 s on the hot zone is gone
     bots = {i: Bot(i, 0, make_profile(t, "camper", random.Random(i)), M, random.Random(i))

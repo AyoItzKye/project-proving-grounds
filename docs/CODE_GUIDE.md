@@ -30,8 +30,9 @@ has three layers:
 | `tools/` | the launcher and setup, the live brain loop, the shared-memory link to botcore, the tools and their pages, the setup's art builders |
 | `maps/` | what the bots know about each map: callouts, objects, positions, level heights; on your PC also its LiDAR scan and what the bots learned there |
 | `logs/` | made on your PC: the brain's log, match recordings, bug reports, exports |
+| `user/` | made on your PC: your own settings (the MCC folder you chose in the launcher, `user/mcc_folder.txt`) |
 | `python/` | the bundled Python the installer ships (installs only) |
-| `installer/` | the installer script and icon |
+| `installer/` | the Windows installer script and icon; `installer/linux/` holds the Linux and Steam Deck scripts |
 | `docs/` | this guide and the bot status sheet |
 
 ## Contents
@@ -126,7 +127,7 @@ with no window, the working directory at the project root and stdout and stderr 
 
 **Settings (`botcore.ini`).** `load_settings()` sets defaults (bots on, 4 v 4, Mixed difficulty, LiDAR off with 16 players), then parses `key=value` lines: `enabled`, `red`, `blue` (capped at 8), `difficulty` (0-5: Easy, Normal, Heroic, Legendary, Mixed, Scaling), `lidar`, `lidar_players` (2-16), `prejoin` (Halo 2 Anniversary first-tick hold, see `h4f.cpp`), `collector` (the brain records the player for the Observer), `sounds` (panel volume 0-100) and `scale_games` (1-20 games averaged by Scaling). Roster lines (`roster=1`, `teams=N`, `bot=team,tier,style,name`) are handed to `roster_parse_line()` in `bots_panel.cpp`. Two migrations run once: a file with no roster gets a roster built from the old team sizes (keeping one spot for the human on the bigger side), and a roster saved with the global difficulty on Scaling but no bot marked Scaling gets every bot set to Scaling. `save_settings()` recomputes `red_players` and `blue_players` from the roster (for older readers such as `botctl.settings()`) and rewrites the whole file. The overlay calls it whenever the panel reports a change.
 
-Other globals defined here and used elsewhere: `g_shm`, `g_roster` (the panel's roster), `g_prejoin`, `g_collector`, `g_scale_games`, `g_sounds`, `g_playback` (set by game hooks while a Theater film plays), `film_dir()` (creates and returns `<project>\logs\films`) and `bug_reports_dir()` (`<project>\logs\bug_reports`).
+Other globals defined here and used elsewhere: `g_shm`, `g_roster` (the panel's roster), `g_prejoin`, `g_collector`, `g_scale_games`, `g_sounds`, `g_playback` (set by game hooks while a Theater film plays), `film_dir()` (creates and returns `%LOCALAPPDATA%\ProjectProvingGrounds\films`, shared by every copy of the mod), `film_old_dir()` (`<project>\logs\films`, read only) and `bug_reports_dir()` (`<project>\logs\bug_reports`).
 
 **Halo: CE hooks.** All CE addresses (relative to `halo1.dll`, found by reverse engineering, listed in the file) target MCC build 1.3528. `hook()` removes any previous hooks (MCC reloaded the DLL), clears the bot slots, and installs three detours:
 
@@ -164,7 +165,7 @@ Halo 3 (`halo3.dll`). Halo 3 keeps its engine globals in thread-local storage, s
 - For Use: the "held long" value, a weapon pickup target from `h3_pickup_target()`, and a boarding request from `h3_board()`.
 - Applies the decoded button table.
 
-`h3_pickup_target()` finds the nearest loose weapon within 1.5 units, including weapons attached to something that is not a biped or vehicle. A CTF flag hangs on a stand, so its world position is the stand's plus its offset; on Sandtrap the stands ride on Elephants, so the offset is rotated into the vehicle's axes (forward at object +0x5C, up at +0x68, left as their cross product). `h3_near_vehicle()` finds the nearest upright vehicle within 3 units (or, with the turret bit, the nearest gun riding on a vehicle, placed by the same axis transform), and `h3_board()` writes interaction type 4 with the requested seat and vehicle so the game's Use handler seats the unit.
+`h3_pickup_target()` finds the nearest loose weapon within 1.5 units, including weapons attached to something that is not a biped or vehicle. A CTF flag hangs on a stand, so its world position is the stand's plus its offset; on Sandtrap the stands ride on Elephants, so the offset is rotated into the vehicle's axes (forward at object +0x5C, up at +0x68, left as their cross product). `h3_near_vehicle()` finds the nearest upright vehicle within 3 units (or, with the turret bit, the nearest gun riding on a vehicle, placed by the same axis transform), passing over a destroyed one: a vehicle, or the vehicle a gun rides on, whose damage flags byte at object +0x110 has bit 2 set (the game's own "destroyed" bit, the one its `object_get_health` script function answers 0 for). `h3_board()` writes interaction type 4 with the requested seat and vehicle so the game's Use handler seats the unit.
 
 `h3_add_bot()` copies player 0's configuration from the game globals, sets "valid", and by default an unknown machine identifier so no local user is mapped (arg bit 17 would put the bot on the host's machine and split the screen; bit 16 makes it machine-less and its team loses). Controller and user are set to none, the player identifier is replaced everywhere with `hb_replace_id`, team, both name copies, service tag and look are written, the bot is noted for the report and `player_new_at_index` is called. After creation the "present" flag is set and the host's machine identifier is copied into the player, because the server only applies damage from a player's shots when his machine is the host's.
 
@@ -182,7 +183,7 @@ Halo: Reach (`haloreach.dll`) is the most complete port. The structure is Halo 3
 **The Reach action writer.** It copies the unit's weapon set at the offset the unit control checks (and clears the secondary when it equals the new primary, which the game would reject), clears the three interaction slots (the template carries the human's pickup prompt and melee target), zeroes the aim-assist weights (they pulled the bot's shots toward the human's target), sets the validity int and the unit's life counter, and writes jump and fire flags, yaw, pitch, throttles, trigger and the vertical input (`hb_vertical`, needed for a Falcon pilot to leave the ground). Use is assembled from three cases:
 
 - On foot, no seat requested: `hr_loose_weapon()` gathers loose weapons within reach (type 2 objects whose pickup test field is clear, attached only to acceptable parents; one riding a marker is placed at the marker) and `hb_pick_loose()` chooses between them by view direction; the chosen weapon goes into interaction slot 0 as type 2 with the Use press bits.
-- On foot with a seat requested: `hr_near_vehicle()` finds the nearest vehicle within 3 units across and 2 up or down (top level, or a turret riding on one with the turret bit), written as interaction type 5 with the seat.
+- On foot with a seat requested: `hr_near_vehicle()` finds the nearest vehicle within 3 units across and 2 up or down (top level, or a turret riding on one with the turret bit), written as interaction type 5 with the seat. A destroyed vehicle (bit 2 of the damage flags byte at object +0x138), or a turret on one, is passed over.
 - In a seat with no seat requested: the Use press bits get the bot out (holding alone did not).
 
 **Armor from the Armory.** When the pending look is `4 | HB_LOOK_ROLL`, `hr_add_bot()` calls `hr_roll_armor()`, which uses the game's own Armory functions (item count per slot, the n-th item's id, the item record with its variant count, and "equip this item on an appearance block") to pick a random legal item and variant per slot in the mask with an xorshift generator seeded from the brain. Slots in the "none" mask get the catalog's first item. Slot 12 (the Firefight voice, not armor) is always skipped because equipping it faulted. Then the (offset, value) triples are laid over the configuration for colours. The first roll in a session also calls `hr_log_catalog()`, which writes the whole catalog and, for every item variant, the bytes it writes into a scratch appearance block to `botcore.log`; `tools/armory_tables.py` turns that log into the tables the 3D preview uses. Without a roll request the plain `hb_apply_look` path is used.
@@ -203,7 +204,7 @@ Theater support for bots, used by Reach. A film replays a match from its start b
 
 `film.h` declares `film_frame` (the bot slot table and 16 actions for one tick), `film_tick()`, `film_end()`, `film_spawn()`, and `film_hash()` (64-bit FNV-1a, used to build the film key from the match's game options).
 
-Recordings live in `<project>\logs\films\<key>.hbf`; the newest 30 are kept (`prune`). Records are `u32 tick, u16 type, u16 length` followed by the bytes, with four types: `R_CMD` (a command with all the shared memory it reads: name, look, clan), `R_BOTS` (a `film_frame`, written only when it differs from the last one), `R_BUTTONS` (the decoded button table, when its sequence changes) and `R_SPAWN` (a spawn move).
+Recordings live in `%LOCALAPPDATA%\ProjectProvingGrounds\films\<key>.hbf`, one folder for every copy of the mod (a film is also looked up in the copy's old `<project>\logs\films`); the newest 30 are kept (`prune`). Records are `u32 tick, u16 type, u16 length` followed by the bytes, with four types: `R_CMD` (a command with all the shared memory it reads: name, look, clan), `R_BOTS` (a `film_frame`, written only when it differs from the last one), `R_BUTTONS` (the decoded button table, when its sequence changes) and `R_SPAWN` (a spawn move).
 
 `film_tick(key, tick, playback, cmd_bit)`:
 
@@ -225,7 +226,7 @@ Halo 2 Anniversary (`groundhog.dll`, game 6, command bit 28) and Halo 4 (`halo4.
 - Halo 4: `f_sprint()` drives sprint. Sprint is an ability whose press toggles it, and the body only sprints while a separate bit is held, so the function presses only when the game's sprint state differs from the brain's wish and holds the sprint bit while it is wanted.
 - Halo 2 Anniversary: `f_interaction()` gives the bot its own interaction slots. With Use held on foot and no seat requested, it offers the nearest loose weapon within 1 unit as interaction type 13, at most once every 45 ticks. For 45 ticks after an offer, `f_update` suppresses Use and the weapon request so the held Use does not immediately drop a just-taken flag.
 
-**Boarding and exits.** The bots' Use did nothing at vehicles in these games, so botcore calls the game's own scripting internals. `f_board()` (at most every 15 ticks while Use is held with a seat requested) finds the nearest upright top-level vehicle within 3 units (`f_near_vehicle`), lists its seats and its guns' seats with the function behind the `vehicle_load_magic` script command, logs each vehicle type's seats once, picks a seat by role from the seat definition's flags (driver, gunner with the turret bit, or a passenger seat; boarding and hijack spots skipped), checks it is empty and that the unit may take it, and enters it through the unit's own virtual function. `f_exit()` calls the function behind the `unit_exit_vehicle` script command for a seated bot holding Use with no seat requested.
+**Boarding and exits.** The bots' Use did nothing at vehicles in these games, so botcore calls the game's own scripting internals. `f_board()` (at most every 15 ticks while Use is held with a seat requested) finds the nearest upright top-level vehicle within 3 units that is not destroyed (`f_near_vehicle`: bit 2 of the damage flags byte at object +0x16C in both games), lists its seats and its guns' seats with the function behind the `vehicle_load_magic` script command, logs each vehicle type's seats once, picks a seat by role from the seat definition's flags (driver, gunner with the turret bit, or a passenger seat; boarding and hijack spots skipped), checks it is empty and that the unit may take it, and enters it through the unit's own virtual function. `f_exit()` calls the function behind the `unit_exit_vehicle` script command for a seated bot holding Use with no seat requested.
 
 **Armor rolls.** `f_roll_armor()` mirrors Reach's: random visible item and variant per slot in the mask, the first item for slots in the "none" mask, applied by `f_apply_variant()` to both copies of the configuration's appearance block by writing the variant's region permutations and, for Halo 4, its special value, as the game's own equip does. `f_log_catalog()` logs the full catalog once per session. `f_add_bot()` then applies the armor effect byte and the (offset, value) triples to both copies.
 
@@ -414,7 +415,7 @@ The largest module by far (about 5,300 lines). It contains three classes, `Perce
 - `WEAPON_RANGE`: per weapon, the `(lo, hi)` band it wins at. Past `hi` the bot closes in, under `lo` it backs off (and switches if it can). Covers CE, Halo 2, 3, Reach and 4 weapon names.
 - `BAND_EDGES` (4, 10, 20 u: Short, Medium, Long, Extreme), `BAND_WEIGHT` (how often each band is fought), `BANDS` (each gun's proficiency 0..1 per band) and `BANDS_GAME` (per-game overrides, e.g. Reach's and Halo 4's magnum). `band(d)`, `proficiency(w, d, game)` and `loadout_value(guns, rank, game)` turn these into a value for a set of guns (each band's best gun weighted, power weapons counted at half in their bands plus a bonus for rank above 3.5). `loadout_value` drives pickups and swaps.
 - `WEAPON_RANK` and `RANK_GAME`: how much a player wants each gun in hand, per game (`Bot.rank`).
-- Ballistics and fire: `PROJECTILE_SPEED` (lead time; hitscan-like guns default to 360 u/s), `SPLASH` (aimed at the feet), `PRECISION` (head-shot guns), `AUTO`, `BEAM`, `FIRE_GAP` (paced cadence floor), `FIRE_FAST` (Short band spam cadence), `BLAST` (own-blast radius of explosives), `CHARGE` (held-charge weapons, "release" or "auto" kind and hold time), `LUNGE`/`LUNGE_GAME`/`LUNGE_GAP` (sword and hammer reach and press rhythm), `SHOTGUN_SLACK`, `OUT_OF_REACH`, `CQ` (close-quarters guns), `SCOPED`, `ZOOM_FROM`, `ZOOM_FAR`, `SNIPERS`, `LOCK_GAMES` (rocket lock-on), `ANTI_VEHICLE`, `VEHICLE_KILLERS`, `EMP_GUNS`/`EMP_GAMES`. `reach(w, game)` is how far a gun's shots do anything (lunge reach, shotgun band plus slack, else the top of its band).
+- Ballistics and fire: `PROJECTILE_SPEED` (lead time; hitscan-like guns default to 360 u/s), `SPLASH` (aimed at the feet), `PRECISION` (head-shot guns), `AUTO`, `BEAM`, `FIRE_GAP` (paced cadence floor), `FIRE_FAST` (Short band spam cadence), `BLAST` (own-blast radius of explosives), `CHARGE` (held-charge weapons, "release" or "auto" kind and hold time), `PL_LOCK_S` (2.2 s: how long the plasma launcher's reticle stays on a vehicle before the bombs are let go), `LUNGE`/`LUNGE_GAME`/`LUNGE_GAP` (sword and hammer reach and press rhythm), `SHOTGUN_SLACK`, `OUT_OF_REACH`, `CQ` (close-quarters guns), `SCOPED`, `ZOOM_FROM`, `ZOOM_FAR`, `SNIPERS`, `LOCK_GAMES` (rocket lock-on), `ANTI_VEHICLE`, `VEHICLE_KILLERS`, `EMP_GUNS`/`EMP_GAMES`. `reach(w, game)` is how far a gun's shots do anything (lunge reach, shotgun band plus slack, else the top of its band).
 - `HEAD_AIM`: per tier, the share of targets a precision gun aims at the head (Easy 0.20, Normal 0.5, Heroic 0.9, Legendary 0.97).
 - Fight timing: `COMMIT_S`/`COMMIT_WEAK_S` (how long a fight survives losing sight of the target, longer when his shield is down), `TARGET_HOLD` (1 s before a new target in view may take over), `HUNT_KEEP`, `TREMOR`, `MELEE_R` (1.25 u), `CLOSE` and `SHORT_BAND`, `STRAFE_JUMP`, `STRAFE_PAUSE`, `HOP_RATE`, `IDLE_JUMP`, `JUMP_SHOT`, `PLANT` (share of fights where it plants its feet for long shots), `OBJ_NADE` and `NADE_RATE` (grenade rates), `NADE_CLEAR`/`NADE_FUSE` (keep clear of its own grenade).
 - Role and objective distances: `DEFEND_R`, `ESCORT_R`, `DEFEND_HOLD`, `CLOSE_FIGHT_R`, `POWER_NEAR`, `REGROUP_MATE`, `HUNT_R`, `ESCORT_TRAIL`, `RUN_DETOUR`, `PRESS_COVER_R`, `STAGE_*` (a CTF runner waiting for company and a clear base), `GRAB_R`/`GRAB_SCORE`/`GRAB_NEEDS_COMPANY`/`GRAB_MATE_R`, `SCREEN_R`, `STALE_S`. Several booleans (`STAGE_NEED_CLEAR`, `KING_TAKE_IN`, `ONE_FLAG_PRESS`) switch between the current play and an older one for A/B comparisons.
@@ -485,7 +486,7 @@ Related methods:
 3. Movement: forward or back by the weapon's band; `push_in` closes on him with a close-range gun or when his shield is down; `keep_off` keeps out of a sword or hammer's reach; a CTF defender never leaves its post area; after losing sight a tactical bot chases by the nav toward where he went (a sniper holds its lane instead); a sword or hammer runs him down by the nav.
 4. Strafing: `under_fire` (hit within 0.8 s) or, for Heroic and up, being in his sights triggers jukes by the `juke` trait: irregular side steps, occasional crouch-jukes and short pauses (`STRAFE_PAUSE`); otherwise ordinary strafe flips every 0.45-1 s. Strafe jumps by `STRAFE_JUMP`. Reach uses partial stick. Planting stops strafing for long shots.
 5. Trigger: `seen_now` (seen in the last 0.25 s) and `seen_fire` (plus the looser trigger's follow-through from `profiles.LOOSE`, or Scaling's own), both requiring `line_clear`. `on` is `Aim.on_target` with slack up close, or the end of a flick under the loose trigger, with a point-blank rule within 1.6 u. `kit.can_shoot` vetoes shots into an armor lock, through a dome or at a known decoy. Dry guns melee. Explosives never fire inside their own blast or onto a teammate, except a timed "trade" when cornered with nothing else. Swords and hammers fire only within reach with him in front. Shotguns hold fire past reach; other guns hold fire far past reach except a short deterrent burst while being shot. Rockets in lock-on games (and the missile pod) hold the reticle 0.9 s on a vehicle first.
-6. Fire cadence: charge weapons via `charge_fire` (release or auto kind; the plasma pistol's overcharge sets up the noob combo); automatics spray up close (and at any range for beams and Easy), burst at range; one-shot weapons press every `fire_gap(w, d)` (spam close, paced at Medium, slower at Long, one pace for Easy), with occasional jump shots. `zoom_level` sets the scope (rifles past Short band, snipers from 6 u and second zoom past 20 u, never right after a hit; Easy only zooms sniper-type guns).
+6. Fire cadence: charge weapons via `charge_fire` (release or auto kind; the plasma pistol's overcharge sets up the noob combo; against a man in a vehicle the plasma launcher is let go only after its reticle has stayed on him for `PL_LOCK_S`, so every bomb locks, and the clock restarts whenever the reticle comes off); automatics spray up close (and at any range for beams and Easy), burst at range; one-shot weapons press every `fire_gap(w, d)` (spam close, paced at Medium, slower at Long, one pace for Easy), with occasional jump shots. `zoom_level` sets the scope (rifles past Short band, snipers from 6 u and second zoom past 20 u, never right after a hit; Easy only zooms sniper-type guns).
 7. Grenades: a flush grenade where he went behind cover (once per loss of sight, 4-16 u), the fight opener, the Grenadier's sticky at a vehicle, a steady pressure rate (`NADE_RATE`), and `kit.grenade_spot` counters (beside an armor lock, into a heal field, at a hardlight user's feet). Grenades respect `grenade_ready_at` cooldowns and never land by teammates.
 8. Melee within `MELEE_R` on the same floor, one press per swing; Easy is slow to swing and avoids melee trades on a lower shield. A crouch at the kill by the crouchy trait.
 9. `fx` records the fight's facts for the trace (`d`, `on`, `hold`, `unseen`, `chase`, `strafe`, `splash_hold`, `dry`, `charge`, `zoom`).
@@ -521,7 +522,7 @@ Positioning helpers used by `decide` and `fight`: `cover_from` (the nearest LiDA
 
 #### Vehicles
 
-On foot, vehicle use is a goal: `decide` may choose `("vehicle", handle)` for long trips or by order, `board_check` adds `("board", handle)` for hijacks (Halo 2 on, Normal and up), and `vehicle_mission` sends bots after enemy vehicles with launchers. Helpers: `seat_point` (driver's door front left, gun at the back, Falcon side doors), `dud_check`/`duds` (a vehicle bots stand beside without getting in for `DUD_S` is skipped by everyone for `DUD_FOR`), `vehicle_stalled`, `veh_banned`, `enemy_vehicle`, `anti_vehicle_gun`, `explosive_source`.
+On foot, vehicle use is a goal: `decide` may choose `("vehicle", handle)` for long trips or by order, `board_check` adds `("board", handle)` for hijacks (Halo 2 on, Normal and up), and `vehicle_mission` sends bots after enemy vehicles with launchers. `board_check` takes the nearest enemy-driven ground vehicle (`BOARDABLE`) within `BOARD_TRY_R` (6 u) that is not running at the bot nose first faster than `BOARD_SPEED` (3 u/s) nor passing at twice that; a tank going at most half that speed whose driver looks more than `BOARD_BLIND` (90 degrees) away from the bot is stalked from `BOARD_STALK_R` (11 u). The board goal walks to the driver's seat point, or for a tank to a point `BOARD_FRONT` (2 u) ahead of its nose, and taps Use there. Once aboard an enemy's vehicle the bot stands still and melees, one press every `BOARD_MELEE_EVERY` (0.55 s), and after a second plants one grenade, except in Reach, where melee alone is used. Helpers: `seat_point` (driver's door front left, gun at the back, Falcon side doors), `dud_check`/`duds` (a vehicle bots stand beside without getting in for `DUD_S` is skipped by everyone for `DUD_FOR`), `vehicle_stalled`, `veh_banned`, `enemy_vehicle`, `anti_vehicle_gun`, `explosive_source`.
 
 In a vehicle, `drive(now, dt, me, snap, act, nav)` takes over the whole tick. Its seat is inferred when it gets in from the riders already inside and the seat it asked for. A gunner or passenger aims and fires (`crew_target` and `vehicle_pick` choose the target with `vehicles.target_score`; the turret's own gun and mount height feed `Aim.step`), looks around when idle (`rider_look`), cools Reach's chaingun (`chaingun_heat`), and gets out once nobody drives. A driver: waits for called crew (`crew_coming`); evades the worst threat in view (`evade`: EMP guns close by, vehicle killers aimed at it, a tank barrel on it, enemy Banshees for transports, armor lock, boarders), after a reaction time and by its juke trait; in Halo 2 and 3 retreats toward teammates when its shield is down; runs its director job (`vjob`: ferry, getaway, pickup, taxi, escort, hunt, anti-vehicle, patrol); fights by the vehicle's `vehicles.STRATEGY` role (strafe, charge, artillery with a tank driver's camera height and mortar lob from `vehicles.driver_view`, circle so its gunner works, air attack runs via `air_pass`), rams light targets (`ram_ok`, with a heading error by tier from `RAM_ERR`), boosts into close men (`ram_boost`) and along open legs (`travel_boost`), cycles Reach's Banshee fuel rod (`fuel_rod`) and sends Reach's Banshee boost as the vertical input (`boost`). Pilots hold height over the floor, take off by kind (`vehicles.TAKE_OFF`) and are protected by `air_guard` (a short look-ahead probe at the craft's height that climbs or turns away from obstacles, a stall detector that backs off and remembers blocked spots, and floor clearance rules) with `air_open` and `air_terrain`. Getting out happens at the destination, when wedged after two reverse attempts (tanks doing a job try another way instead), or for a pilot only close to the ground; the exit press is held long enough for each game. Easy only drives trips and shoots what it meets in front of it.
 
@@ -828,7 +829,7 @@ Reach, H2A and Halo 4 store shield damage and body damage taken (1.0 = gone). `_
 
 #### Vehicles
 
-`vehicle_left(handle)` reads the body field named by `VEH_VITAL`; `vehicle_dead(handle)` calls a vehicle a wreck only if it was read alive earlier in the match, so a game whose field does not behave this way keeps every vehicle usable. The code marks this as inferred from the players' own health fields. Halo 4 also has `ORIENT_AT` (where a vehicle's forward and up vectors are) used by the loop's `vehicle_fwd`.
+`vehicle_dead(handle)` reads the game's own "destroyed" bit: bit 2 of the object's damage flags byte at `DEAD_AT` (Halo 2 +0x10A, Halo 3 +0x110, ODST +0x104, Reach +0x138, Halo 4 and H2A +0x16C). The offsets come from each DLL's `object_get_health` script function, which answers 0 when the bit is set (the decompiled functions are in `ghidra/`, a developer folder that does not ship); the code notes they are not yet read live on a wreck. Halo: CE has no `DEAD_AT` (its multiplayer vehicles cannot die): there a vehicle is a wreck only when its body field reads 0 after it was read alive earlier in the match, so a field that reads 0 from the start keeps every vehicle usable. `vehicle_left(handle)` is the health left in the body: in Reach, Halo 4 and H2A from the block `object_get_health` reads (`HEALTH_BLOCK`: the block's size as an int16 there, its offset as a uint16 next, the health float 0x10 into the block), elsewhere from the fixed field `VEH_VITAL`. Halo 4 also has `ORIENT_AT` (where a vehicle's forward and up vectors are) used by the loop's `vehicle_fwd`.
 
 #### Motion tracker
 
@@ -989,7 +990,7 @@ Lookup helpers: `_cell(p)`; `_layer(j, i, z, reach_from, tan)` (the layer neares
 
 #### Barriers and shields
 
-Objects that come and go (Invasion gates, Forge shields) are not baked into the grid. `set_barrier(key, a, b, z0, z1, through, on)` registers a vertical rectangle seen from above as segment a-b from z0 to z1. `_refresh_barriers()` removes the previous penalty and adds `BARRIER_COST` (100000) to every reversed-graph edge that crosses an active barrier at standing height (`_crossing` computes and caches each graph's edge endpoints); a one-way shield (`through`, a unit vector) only penalises crossings the wrong way. `crosses_barrier(a, b)` is the simulator's collision test. `set_glass(key, pos, axes, lo, hi)` registers a box that blocks sight lines (`_through_glass`, a slab test in the box's axes).
+Objects that come and go (Invasion gates, Forge shields) are not baked into the grid. `set_barrier(key, a, b, z0, z1, through, on)` registers a vertical rectangle seen from above as segment a-b from z0 to z1; `set_barriers(items)` does the same for many keys at once (`{key: (a, b, z0, z1, through, on)}`) with a single refresh, and only when something changed (used for the Forge pieces that come and go, `brain/forge.py PieceWatch`). `_refresh_barriers()` removes the previous penalty and adds `BARRIER_COST` (100000) to every reversed-graph edge that crosses an active barrier at standing height (`_crossing` computes and caches each graph's edge endpoints); a one-way shield (`through`, a unit vector) only penalises crossings the wrong way. `crosses_barrier(a, b)` is the simulator's collision test. `set_glass(key, pos, axes, lo, hi)` registers a box that blocks sight lines (`_through_glass`, a slab test in the box's axes).
 
 #### Out of bounds
 
@@ -1026,7 +1027,7 @@ For a variant, callouts and positions come from the variant's folder when it has
 
 1. Approved floor from `moves_review.json` plus the paint `walk` layer.
 2. Paint layers and painted jumps from `paint.json`, and drops onto something that breaks the fall from `drops.json` (both treated as people's one-way links).
-3. Static placed objects for Reach, H4 and H2A maps (`brain/placed.static_boxes`), or for a variant its own pieces and shields (`brain/forge.nav_pieces` over `variants.pieces_of`).
+3. Static placed objects for Reach, H4 and H2A maps (`brain/placed.static_boxes`), or for a variant its own pieces and shields (`brain/forge.nav_pieces` over `variants.pieces_of`), leaving out the pieces its `variant.json` lists as `dynamic` (seen to come and go in an earlier match, `forge.PieceWatch`; matched by `forge.piece_key`), which are walls only while they stand.
 4. `Terrain(...)` with `slit_rule` for Reach (`SLIT_GAMES`) and `stair_rule` for Halo 4 and H2A, then teleporters.
 5. CE jump links (`build_jumps`) only on CE maps; Halo 2 and later rely on people's links.
 6. LiDAR data from `lidar.json`: crouch cells, cover spots, the map's median jump apex (with at least 20 measured jumps), and the links that pass `usable_links()`; `anchor_launches()` then moves the take-off of every recorded ride up a man cannon or lift (`features.json` "launcher"/"lift") to the pad's trigger.
@@ -1069,7 +1070,7 @@ Reach Invasion: Elites attack, Spartans defend, in three phases (two territory p
 
 Keeps a catalogue of every gameplay object on a map or Forge layout, for LiDAR's view and the bots' map knowledge.
 
-- `scan(live, game)` reads the whole object table (Halo 3, Reach, H2A and Halo 4, the games whose map files give tag names, via `tools/reach_tag_names.py`) and classifies each object by its tag path (`classify`): ability or equipment to pick up (`ABILITY` maps tag names to the brain's kinds), teleporter (sender, receiver or two-way), launcher (man cannon), lift, powerup, health, ammo, grenade, weapon, vehicle, objective, spawn, kill, safe, trait and spawn zones (`ZONES`), and controls. Building pieces are not stations. A vehicle is renamed by what rides on it (`brain/vehicles.variant`, for example a Warthog variant by its turret).
+- `scan(live, game)` reads the whole object table (Halo 3, Reach, H2A and Halo 4, the games whose map files give tag names, via `tools/reach_tag_names.py`) and classifies each object by its tag path (`classify`): ability or equipment to pick up (`ABILITY` maps tag names to the brain's kinds), teleporter (sender, receiver or two-way), launcher (man cannon), lift, powerup, health, ammo, grenade, weapon, vehicle, objective, spawn, kill, safe, trait and spawn zones (`ZONES`), and controls. Objectives (flag stands, spawns and returns, oddball, bomb spawns and goals, hills and hill beacons, territories, capture plates, skulls) are matched before spawns, because Halo 3 names its flag and bomb stands `ctf_flag_spawn_point` and `assault_bomb_spawn_point`. Building pieces are not stations. A vehicle is renamed by what rides on it (`brain/vehicles.variant`, for example a Warthog variant by its turret).
 - `Stations(map_name)` loads and updates `stations.json`: each object keeps the spot where it lay before anyone took it (held or carried things are not moved; a vehicle keeps where it stood before anyone rode it); an unattended object that moved more than `MOVED_R` follows (moved in Forge). `watch(players)` learns teleporter pairs from a jump of more than 6 u from beside a sender to beside a receiver. `mark(text, pos, stamp)` records a bug report with the stations nearest the reporter. `save()` drops objects not seen during a run of at least 60 s and writes the file atomically.
 - `features(map)` exports the stations for the LiDAR view; `describe(map)` prints a summary (`python -I -m brain.stations <map>`).
 
@@ -1090,6 +1091,7 @@ Reads placed objects from the running game and turns them into navigation geomet
 - `block(name, pos, axes, ...)` makes one nav piece: with collision faces known (`maps/_shapes/<game>_faces.json`) it carries them so `Terrain.add_faces` inserts floors, ramps and walls by angle; otherwise its box from `maps/_shapes/<game>.json`. Energy and hologram-only pieces and boxes too small to bump into are dropped.
 - Shields: `shield_groups()` reads `maps/_shapes/reach_shields.json` (hand-sorted groups `two_way`, `one_way` with a through direction, `no_pass`). `shields(pieces)` gives each shield's segment, height and box; `apply_shields(T, found)` blocks sight through every shield (`set_glass`) and adds one-way and thin no-pass shields as barriers; `shield_blocks(found)` turns thick no-pass shields into solid boxes.
 - `nav_pieces(pieces, game)` returns `(blocks, shields)` for `brain/maps.py`.
+- Pieces that come and go. The nav is built once, from the pieces read at the match start, with each piece stamped in for good, but a game type can delete and restore its own walls during a match (Invasion opens its phase gates this way and puts them back for the next round). `PieceWatch(built, dynamic, game)`, made by `tools/live_bots.py` on a map variant, is given each new read of the live pieces (`update(pieces, T)`, every 2 s). A solid piece standing that the nav was not built with becomes a wall: `outline()` turns its box into four sides seen from above with their height, and they go onto the nav as barriers (`Terrain.set_barriers`, keys `fp:<piece>:<side>`) while it stands; a piece under 0.5 u tall is floor and is skipped. A piece missing for `GONE_READS` (2) reads in a row counts as gone and its barriers are switched off. A piece the nav was built with that goes missing is returned as newly dynamic; the loop adds it to the variant's `variant.json` `dynamic` list, and from the next match the nav is built without it, so it is then a wall only while it stands. A stamped-in piece that goes during the current match stays a wall until the match ends, since the nav cannot take a stamp out. `piece_key(name, pos)` names a piece by its tag name and its place rounded to half a unit.
 
 ### `brain/placed.py`
 
@@ -1120,7 +1122,9 @@ Each bot's MCC emblem, drawn by MCC in every scoreboard and the post-game report
 
 ### `brain/paths.py`
 
-Finds installed software without assuming drive letters: Steam's folder from its registry key, every library from `steamapps/libraryfolders.vdf` (`steam_commons`), an app by its install folder name preferring the library whose `appmanifest_*.acf` actually lists it (`app`, `installed_in`), MCC (`mcc`), the official mod kits (`kit`, `KITS`), which MCC games are installed (`games`, `GAME_MAPS`), the map tools `bsp2obj.exe` and `model2obj.exe` (`map_tool`), and the newest Visual Studio C++ `vcvars64.bat` (`vcvars`, through `vswhere`). Each answer can be overridden with an environment variable (`HB_STEAM_COMMON`, `HB_MCC`, `HB_KIT_<NAME>`, `HB_VCVARS`, `HB_MAP_TOOLS`); `need()` stops a tool with a clear message. `python -I brain/paths.py` prints what it finds.
+Finds installed software without assuming drive letters: Steam's folders from its registry keys (the user's and the machine's, then the default install folder), every library listed in `steamapps/libraryfolders.vdf` or `config/libraryfolders.vdf` (`steam_commons`; `library_paths` reads both the file's `"path"` entries in any case and its older numbered entries, and undoes VDF escapes), an app by its install folder name preferring the library whose `appmanifest_*.acf` actually lists it (`app`, `installed_in`), MCC (`mcc`), the official mod kits (`kit`, `KITS`), which MCC games are installed (`games`, `GAME_MAPS`), the map tools `bsp2obj.exe` and `model2obj.exe` (`map_tool`), and the newest Visual Studio C++ `vcvars64.bat` (`vcvars`, through `vswhere`). Each answer can be overridden with an environment variable (`HB_STEAM_COMMON`, `HB_MCC`, `HB_KIT_<NAME>`, `HB_VCVARS`, `HB_MAP_TOOLS`); `need()` stops a tool with a clear message. `python -I brain/paths.py` runs a small self-check and prints what it finds.
+
+Which MCC folder the mod uses (`mcc()`), in order: `HB_MCC`; else the folder the player chose in the launcher (`chosen()`, the one line of `user/mcc_folder.txt`; if that folder no longer exists the answer is None, not another copy); else the first of `installs()`. `installs()` lists every MCC folder in the Steam libraries: the copies Steam has installed first (`steam_mcc()`: the folder named by `appmanifest_976730.acf` in that library), then other usable folders of MCC's name (a copy left behind or set aside), then ones that are not usable. `check(path)` says why a folder cannot be used (missing, no `MCC\Binaries\Win64\MCC-Win64-Shipping.exe`, no games installed) or None. `find_root(path)` turns the folder the player picked into MCC's own folder: the folder itself, one up to three levels above it (`MCC\Binaries\Win64` or `MCC` picked), or MCC's folder inside it (a `common`, `steamapps\common` or Steam library folder picked). `choose(path)` saves the root to `user/mcc_folder.txt` after `check` passes and answers (ok, the folder saved or why not); `choose(None)` deletes the file (back to automatic). `user/` is not part of the release, and the installer's update and the setup's Repair leave it alone. `is_steam_copy(path)` tells whether a folder is one Steam starts, and `wine()` whether the mod runs under Wine or Proton (the Linux scripts set `PPG_LINUX`; otherwise Wine's `ntdll` has `wine_get_version`).
 
 ### Map data (maps/)
 
@@ -1164,13 +1168,13 @@ The last column follows the release packaging rules in `tools/make_release.py`: 
 
 The user-facing entry point is the launcher. The Start Menu shortcut runs `tools/launcher.py` under `pythonw.exe`; the launcher immediately restarts itself under the console `python.exe` with a hidden console (`CREATE_NO_WINDOW`) so that no child program it starts can flash a console window. It binds a small HTTP server to `127.0.0.1:8793`, serves `tools/launcher.html`, and opens that page in the project's own app window (`native/bin/ppg_window.exe`, a WebView2 host started by `tools/appwindow.py`). The page polls `/status` every 3 seconds and shows whether MCC was found and which of its games are installed, how many first-time setup parts are ready, other mods in the MCC folder that can clash, and how many maps have a LiDAR scan. Play, the setup buttons and the tool buttons are "tasks": the launcher starts the matching script as its own process with the same Python (`python -u -I <script>`), redirects its output to `logs/launcher/<task>.txt`, and the page streams that file back through `/log/<task>`. The server stops on its own about 20 seconds after the page stops sending `/ping`, unless a task that does not keep running on its own (Play or setup) is still working.
 
-On a fresh install the user runs the first-time setup (`tools/setup.py`), which builds everything that comes from the user's own copy of MCC: the install's 15 bot profiles, the match-recording switch (`logs/trace_on`), map pictures, game logos, the 3D bot models and emblem art, armor effect sprites and each bot's rolled looks. Each step prints one `STEP <n>/<total> <name>: ...` line that the page parses to draw its checklist; Repair runs the same script with `--force`. Pressing Play runs `tools/launch.py`: it makes sure the bot profiles exist, starts MCC through Steam (`steam://rungameid/976730`) if it is not running, waits up to 180 seconds for `MCC-Win64-Shipping.exe`, refuses to continue if Easy Anti-Cheat is running, waits 15 more seconds for the renderer, then injects the newest `native/bin/botcore*.dll` with `native/bin/inject.exe` (restored first by `botctl.injector()` if Windows Defender deleted it). If the user ticked "Start without those mods", the launcher first moves clashing DLLs aside with `conflicts.turn_off()` and starts a detached `conflicts.py --restore-after-mcc` that puts them back once MCC has started and closed again.
+On a fresh install the user runs the first-time setup (`tools/setup.py`), which builds everything that comes from the user's own copy of MCC: the install's 15 bot profiles, the match-recording switch (`logs/trace_on`), map pictures, game logos, the 3D bot models and emblem art, armor effect sprites and each bot's rolled looks. Each step prints one `STEP <n>/<total> <name>: ...` line that the page parses to draw its checklist; Repair runs the same script with `--force`. The launcher's Game folder row lets the user choose which MCC folder the mod uses (Windows' folder picker or a pasted path, saved in `user/mcc_folder.txt` by `brain/paths.py`), or go back to the copy found automatically. Pressing Play runs `tools/launch.py`: it makes sure the bot profiles exist, starts MCC if it is not running (Steam's own copy through Steam, `steam://rungameid/976730`; a copy Steam does not start, directly), waits up to 180 seconds for `MCC-Win64-Shipping.exe`, refuses to continue if Easy Anti-Cheat is running, waits 15 more seconds for the renderer, then injects the newest `native/bin/botcore*.dll` with `native/bin/inject.exe` (restored first by `botctl.injector()` if Windows Defender deleted it). If the user ticked "Start without those mods", the launcher first moves clashing DLLs aside with `conflicts.turn_off()` and starts a detached `conflicts.py --restore-after-mcc` that puts them back once MCC has started and closed again.
 
 From then on botcore.dll, inside the game, is in charge. It creates the shared memory block that Python talks to (`tools/botctl.py`), draws the BOTS panel in the custom-game lobby, and watches the menu state. When the menus give way to a game and botcore sees a game tick from one of the supported engines (Halo CE, Halo 2, Halo 3, Reach, ODST, Halo 2 Anniversary, Halo 4), it starts `tools/play.py` with the panel's settings: `--red`, `--blue`, `--tier`, `--minutes 600 --wait 120`, `--lidar <n>` and `--roster <native/bin/botcore.ini>`, with stdout and stderr written to `logs/brain.txt`. It terminates that process when the game returns to the menus or a Theater film starts. `play.py` works out which game is running, reads the map name and the game variant (team game or free for all), adds the panel's bots through botcore (`botctl.add_bot`, with names, teams, looks, clan tags and emblems), and then runs one of three brains as a child process: `tools/live_bots.py` for normal matches, `tools/lidar.py` for LiDAR mode, or `tools/escort_bots.py` for ODST Firefight on a map without map data.
 
-`live_bots.py` is the live brain loop and runs at 30 Hz. Each pass reads botcore's status block and takes a **snapshot** of the game through the `brain.live` reader classes (players, positions, aim, shields, health, weapons, ammunition, vehicles and their riders, flags, hills, balls, loose weapons, score). It stops its own clock while the game is paused (botcore's tick count stands still), files any new F9 bug reports into the match folder, runs the learners (out of bounds, stations, Invasion and objective-mode watchers, people's jumps and floors for LiDAR, rides for vehicle and air meshes, a Forge variant's growing nav window), feeds the Data collector if it is on, and then lets the team **directors** and every living **bot** think (`Bot.think` returns an action: forward, strafe, yaw, pitch, buttons). The action is packed into botcore's button bit layout and written to the bot's shared-memory slot with `botctl.act`; botcore applies it on the game thread on the next tick. When recording is on, the loop writes the match **trace** (`logs/trace_<map>_<date>-<time>.jsonl`): a `meta` line per bot, a `bot` line per bot per tick, a `think` line whenever a bot decides, `call` lines for callouts, `loadout` and `spawn` lines, and a `world` line with everyone four times a second. Once a minute it saves what the nav learned and the LiDAR and ride data; at the end it saves everything again, prunes the wedge cells, closes the collector and leaves every bot standing still.
+`live_bots.py` is the live brain loop and runs at 30 Hz. Each pass reads botcore's status block and takes a **snapshot** of the game through the `brain.live` reader classes (players, positions, aim, shields, health, weapons, ammunition, vehicles and their riders, flags, hills, balls, loose weapons, score). It stops its own clock while the game is paused (botcore's tick count stands still), files any new F9 bug reports into the match folder, runs the learners (out of bounds, stations, Invasion and objective-mode watchers, people's jumps and floors for LiDAR, rides for vehicle and air meshes, a Forge variant's growing nav window and the pieces that come and go on it), feeds the Data collector if it is on, and then lets the team **directors** and every living **bot** think (`Bot.think` returns an action: forward, strafe, yaw, pitch, buttons). The action is packed into botcore's button bit layout and written to the bot's shared-memory slot with `botctl.act`; botcore applies it on the game thread on the next tick. When recording is on, the loop writes the match **trace** (`logs/trace_<map>_<date>-<time>.jsonl`): a `meta` line per bot, a `bot` line per bot per tick, a `think` line whenever a bot decides, `call` lines for callouts, `loadout` and `spawn` lines, and a `world` line with everyone four times a second. Once a minute it saves what the nav learned and the LiDAR and ride data; at the end it saves everything again, prunes the wedge cells, closes the collector and leaves every bot standing still.
 
-The tools read what the match left behind. The Observer (`tools/observer.py`, port 8799) lists every trace in `logs/` (and in `logs/evidence`, `logs/qc_keep`, `logs/bug_reports/*/`, `logs/imported/*/`, simulator `sim_*.jsonl`), replays them on a top-down map picture built from `maps/<map>/heightmap.npz`, the nav and `lidar.json`, follows a live match while its trace is still growing, computes the person's statistics from the Data collector file (`tools/player_stats.py`) and exports or imports a match as a zip (`tools/match_export.py`). The LiDAR view (`tools/lidar.py`, port 8797) shows `maps/<map>/lidar.json` and `lidar_sim.json` in 3D, live during a LiDAR match or from storage, and the offline LiDAR Simulator (`tools/lidar_sim.py`) serves the same page and controls. The nav painter (`tools/paint.py`, port 8796) edits `maps/<map>/paint.json` over roofless views made by `tools/roofless.py`.
+The tools read what the match left behind. The Observer (`tools/observer.py`, port 8799) lists every trace in `logs/` (and in `logs/evidence`, `logs/qc_keep`, `logs/bug_reports/*/`, `logs/imported/*/`, simulator `sim_*.jsonl`), replays them on a top-down map picture built from `maps/<map>/heightmap.npz`, the nav and `lidar.json`, follows a live match while its trace is still growing, computes the person's statistics from the Data collector file (`tools/player_stats.py`) and exports or imports a match as a zip (`tools/match_export.py`). The LiDAR view (`tools/lidar.py`, port 8797) shows `maps/<map>/lidar.json` and `lidar_sim.json` in 3D, live during a LiDAR match or from storage, and the offline LiDAR Simulator (`tools/lidar_sim.py`, port 8798) serves the same page with its Simulator panel. The nav painter (`tools/paint.py`, port 8796) edits `maps/<map>/paint.json` over roofless views made by `tools/roofless.py`.
 
 Local ports (all bound to 127.0.0.1 only):
 
@@ -1178,8 +1182,11 @@ Local ports (all bound to 127.0.0.1 only):
 |---|---|---|
 | 8793 | Launcher (`tools/launcher.py`) | the Start Menu shortcut |
 | 8799 | Observer (`tools/observer.py serve`) | launcher task `observer`, or by hand |
-| 8797 | LiDAR 3D view (`tools/lidar.py`, `tools/lidar_sim.py`) | a LiDAR match, launcher tasks `lidar_view` / `lidar_sim` |
+| 8797 | LiDAR Viewer: live LiDAR match or stored scans (`tools/lidar.py`) | a LiDAR match, launcher task `lidar_view` |
+| 8798 | LiDAR Simulator (`tools/lidar_sim.py`, same page with its panel) | launcher task `lidar_sim` |
 | 8796 | Nav painter (`tools/paint.py`) | launcher task `paint` |
+
+None of these servers reuses an address (`allow_reuse_address` is off): on Windows, address reuse let a second copy serve the same port as the first. A second copy therefore fails to bind, opens a window on the copy already running and exits (a LiDAR match first asks a stored view on 8797 to give up the port, see `tools/lidar.py`), and the launcher opens a tool's window again when its task is still running, so a tool whose window was closed comes back.
 
 Files under `logs/` that this part of the code writes:
 
@@ -1203,18 +1210,20 @@ Files under `logs/` that this part of the code writes:
 | `logs/exports/match_<map>_<stamp>[_names].zip` | match_export.py | shareable match export |
 | `logs/imported/<map>_<stamp>[_n]/` | match_export.py `import_game` | an imported export, listed by the Observer |
 | `logs/verify/objective_<trace>.txt` | objective_report.py `--save` | objective-play report |
+| `logs/forge_label_probe_<tag>.json` | forge_label_probe.py | a developer probe's dump of a Forge variant's objects and Invasion label texts |
+| `logs/launcher/linux.txt`, `logs/linux_setup.txt`, `logs/linux_play.txt` | `installer/linux` scripts | Linux and Steam Deck only: the launcher's output, the install's setup run, Play through Steam's launch option |
 
 `play.py` also reads, but never writes, `logs/test_override.json`: when that developer file exists its keys replace the command-line options (used for scripted test matches so the user's `botcore.ini` is never touched).
 
-Files under `maps/<map>/` that this part writes: `lidar.json` (lidar.py, live_bots.py via `HumanWatch`, lidar_sim.py link merge), `lidar_sim.json` (lidar_sim.py), `rides.json` (`RideWatch`), `shots.json` (`ShotRec`), `wedges.json` (wedges.py), `positions.json` (power_positions.py), `roofless/level_<k>.png` and `roofless.json` (roofless.py), `paint.json` (paint.py), `callouts.json` and `positions.json` inside a Forge variant's folder (variant_strategy.py). Learned sight lines and walk blocks (`los_learned.json`, `nav_learned.json`), `oob.json` and `stations.json` are written through `brain/maps.py`, `brain/oob.py` and `brain/stations.py`, called from the loops described here.
+Files under `maps/<map>/` that this part writes: `lidar.json` (lidar.py, live_bots.py via `HumanWatch`, lidar_sim.py link merge), `lidar_sim.json` (lidar_sim.py), `rides.json` (`RideWatch`), `shots.json` (`ShotRec`), `wedges.json` (wedges.py), `positions.json` (power_positions.py), `roofless/level_<k>.png` and `roofless.json` (roofless.py), `paint.json` (paint.py), `callouts.json` and `positions.json` inside a Forge variant's folder (variant_strategy.py), and that folder's `variant.json` `dynamic` list (live_bots.py, from `brain/forge.py PieceWatch`). Learned sight lines and walk blocks (`los_learned.json`, `nav_learned.json`), `oob.json` and `stations.json` are written through `brain/maps.py`, `brain/oob.py` and `brain/stations.py`, called from the loops described here.
 
 | File | Role |
 |---|---|
-| `launcher.py` | Launcher server on 8793: status, tasks, logs, Repair, Uninstall |
-| `launcher.html` | The launcher page: Play, first-time setup checklist, tool buttons, uninstall dialog |
+| `launcher.py` | Launcher server on 8793: status, MCC folder choice, tasks, logs, Repair, Uninstall |
+| `launcher.html` | The launcher page: Play, Game folder, first-time setup checklist, tool buttons, uninstall dialog |
 | `appwindow.py` | Opens a project page in `native/bin/ppg_window.exe` (or the default browser) |
 | `setup.py` | First-time setup: eight numbered steps built from the user's MCC copy |
-| `launch.py` | Play: start MCC through Steam, check anti-cheat, inject botcore.dll |
+| `launch.py` | Play: start MCC (through Steam, or a copy of the user's own directly), check anti-cheat, inject botcore.dll |
 | `conflicts.py` | Find clashing proxy DLLs and ASI plugins; move them aside and back; process helpers |
 | `play.py` | Started by botcore per match: detect game and map, add the bots, run the right brain |
 | `live_bots.py` | The live brain loop: snapshot, directors and bots think, actions out, trace |
@@ -1222,6 +1231,7 @@ Files under `maps/<map>/` that this part writes: `lidar.json` (lidar.py, live_bo
 | `memread.py` | Read-only process memory access to MCC (`Game` class), data array scanner |
 | `tls.py` | Thread-local storage blocks of a game DLL (engine globals of Halo 3 and later) |
 | `device_probe.py` | Developer probe for map devices (doors, switches, gates) on H2A and Halo 4 |
+| `forge_label_probe.py` | Developer probe: where Reach keeps a Forge variant object's label, for Invasion on Forge maps |
 | `crouch_key.py` | Is the person's MCC crouch key held right now (MCC in front only) |
 | `escort_bots.py` | Map-free Firefight teammates for ODST: follow the person, shoot the Covenant |
 | `carnage_names.py` | Write bots' names, service tags and teams into MCC's carnage report (Reach) |
@@ -1249,7 +1259,7 @@ Files under `maps/<map>/` that this part writes: `lidar.json` (lidar.py, live_bo
 
 ### `tools/launcher.py`
 
-**Purpose.** The window the Start Menu shortcut opens. It reports readiness, starts Play, runs the first-time setup and Repair, opens the tools, opens the install folder and the README, and runs the uninstaller. It is a plain `http.server.ThreadingHTTPServer` with one handler class; the page does the presentation.
+**Purpose.** The window the Start Menu shortcut opens. It reports readiness, lets the user choose the MCC folder, starts Play, runs the first-time setup and Repair, opens the tools, opens the install folder and the README, and runs the uninstaller. It is a `http.server.ThreadingHTTPServer` subclass (`Server`, with address reuse off) with one handler class; the page does the presentation.
 
 **Usage.** `python -I launcher.py [--port 8793] [--no-window] [--setup]`. `--setup` appends `?setup=1` to the page URL; the page then starts the setup automatically if MCC is found and any part is missing. `--no-window` serves without opening a window.
 
@@ -1257,26 +1267,26 @@ Files under `maps/<map>/` that this part writes: `lidar.json` (lidar.py, live_bo
 1. Under `pythonw.exe` it relaunches itself under `python.exe` with `CREATE_NO_WINDOW` and exits. The constant `PY` is always the console interpreter next to the running one, so every task inherits the hidden console instead of opening its own (relevant for console programs such as `inject.exe` and the model converter run by setup).
 2. `conflicts.restore()` puts back any DLLs a clean launch moved aside, in case the PC was turned off before MCC closed.
 3. `appwindow.remove_old_edge_profile()` deletes the Edge profile folder that version 0.1.0 used.
-4. It tries to bind the port. If binding fails, another launcher already runs: it only opens a window on the existing server and returns.
+4. It tries to bind the port without address reuse (with reuse, Windows let a second launcher serve the same port, and the new window talked to the old launcher). If binding fails, another launcher already runs: it only opens a window on the existing server and returns.
 5. It starts the `watch_idle` thread and opens the app window at 1040 x 700.
 
-**Tasks.** `TASKS` maps a task name to (script and arguments, keeps running on its own):
+**Tasks.** `TASKS` maps a task name to (script and arguments, keeps running on its own, the port of its window):
 
-| Task | Command | Keeps running |
-|---|---|---|
-| `play` | `launch.py` | no |
-| `setup` | `setup.py` | no |
-| `setup_force` | `setup.py --force` (Repair) | no |
-| `observer` | `observer.py serve --open` | yes |
-| `lidar_sim` | `lidar_sim.py --open` | yes |
-| `lidar_view` | `lidar.py --view --open` | yes |
-| `paint` | `paint.py --open` | yes |
+| Task | Command | Keeps running | Port |
+|---|---|---|---|
+| `play` | `launch.py` | no | |
+| `setup` | `setup.py` | no | |
+| `setup_force` | `setup.py --force` (Repair) | no | |
+| `observer` | `observer.py serve --open` | yes | 8799 |
+| `lidar_sim` | `lidar_sim.py --open` | yes | 8798 |
+| `lidar_view` | `lidar.py --view --open` | yes | 8797 |
+| `paint` | `paint.py --open` | yes | 8796 |
 
-`start(task, clean)` refuses unknown names, answers "already running" if the task's `Popen` is still alive, and otherwise starts `PY -u -I tools/<script> ...` with `cwd=ROOT`, output to `logs/launcher/<task>.txt` (truncated each start). For `play` with `clean=True` it calls `conflicts.turn_off()` first and, if anything was moved, starts `conflicts.py --restore-after-mcc` as a separate hidden process.
+`start(task, clean)` refuses unknown names. If the task's `Popen` is still alive it answers "already running", and for a tool with a port it first opens that tool's window again (a tool keeps serving after its window is closed). Otherwise it starts `PY -u -I tools/<script> ...` with `cwd=ROOT`, output to `logs/launcher/<task>.txt` (truncated each start). For `play` with `clean=True` it calls `conflicts.turn_off()` first and, if anything was moved, starts `conflicts.py --restore-after-mcc` as a separate hidden process.
 
 **Idle stop.** The page posts `/ping` every 5 seconds. `watch_idle` checks every 2 seconds; when no "non-persistent" task (Play, setup) is running and no ping came for `IDLE_STOP` (20 s), it shuts the server down. Tools that keep running (Observer, LiDAR, painter) do not hold the launcher open.
 
-**Status (`status()`).** Returns JSON with: `version` (the `VERSION` file, else `dev`), `mcc` (path from `brain.paths.mcc()`), `mcc_running`, `installed` (an `unins*.exe` exists in the install root), `missing_games` (names from `paths.GAME_NAMES` for games not found by `paths.games()`), `setup` (the step list from `setup.status()` without the game row), `map_tools` (whether `paths.map_tool("model2obj")` exists), `lidar` (`mapped`: map folders with `lidar.json`, `total`: map folders not starting with `_`), `workshop` (subscribed Workshop items), `conflicts` (each clashing file relative to the MCC folder with a reason), and `running` (each started task, alive or not).
+**Status (`status()`).** Returns JSON with: `version` (the `VERSION` file, else `dev`), `mcc` (path from `brain.paths.mcc()`), `mcc_running`, `installed` (an `unins*.exe` exists in the install root), `mcc_choice` (the folder chosen in the launcher, `paths.chosen()`, or null), `mcc_env` (whether `HB_MCC` is set), `mcc_steam` (whether the MCC in use is the copy Steam starts), `mcc_found` (every MCC folder in the Steam libraries, `paths.installs()`), `wine` (running under Wine or Proton), `missing_games` (names from `paths.GAME_NAMES` for games not found by `paths.games()`), `setup` (the step list from `setup.status()` without the game row), `map_tools` (whether `paths.map_tool("model2obj")` exists), `lidar` (`mapped`: map folders with `lidar.json`, `total`: map folders not starting with `_`), `workshop` (subscribed Workshop items), `conflicts` (each clashing file relative to the MCC folder with a reason), and `running` (each started task, alive or not).
 
 **HTTP endpoints.**
 
@@ -1286,12 +1296,15 @@ Files under `maps/<map>/` that this part writes: `lidar.json` (lidar.py, live_bo
 | `GET /status` | the status JSON above |
 | `GET /log/<task>?from=<n>` | `{lines, next, running, code}`: log lines from line `n`, the next line number, whether the task is alive, its exit code once done; only known task names are accepted (the name becomes part of a path) |
 | `POST /ping` | keeps the server alive |
-| `POST /run/<task>` | starts a task; body `{"clean": true}` for a clean Play |
+| `POST /run/<task>` | starts a task; body `{"clean": true}` for a clean Play; answers `{ok, message, port}` with the task's window port |
+| `POST /mcc` | the MCC folder choice (below): `{"browse": true}`, `{"path": ...}` or `{"auto": true}`; answers `{ok, message}` |
 | `POST /folder` | opens the install folder in Explorer |
 | `POST /docs` | opens `README.md` with its default program |
 | `POST /uninstall` | see below |
 
 Every POST must carry the header `X-Launcher: 1`; a plain HTML form from another site cannot set it, so cross-site requests get 403.
+
+**MCC folder choice.** `choose_mcc(body)` handles `/mcc`. `{"auto": true}` calls `paths.choose(None)` (back to automatic). `{"browse": true}` opens Windows' own folder picker first (`pick_folder(start)`: the `IFileOpenDialog` COM object called through ctypes by vtable slot, folders only, file system paths only, titled "Choose the Halo: The Master Chief Collection folder", starting in the current MCC folder and owned by the launcher's window, found by its title); cancelling answers not OK with an empty message. `{"path": ...}` takes a pasted path, with surrounding quotes removed; under Wine a Linux path starting with `/` becomes `Z:\...` (Wine's drive Z: is the Linux root). The folder then goes through `paths.choose`, which finds MCC's own folder near it and checks it, and the answer is the saved folder or the reason it was refused.
 
 **Uninstall.** `uninstaller()` finds the Inno Setup uninstaller (`unins*.exe`, the installer is `installer/ProjectProvingGrounds.iss`) in the install root (None in a developer copy). `/uninstall` refuses with a message when there is no uninstaller ("delete its folder") or when MCC is running (botcore is loaded into it). Otherwise it answers OK and, on a thread, waits 0.8 s, calls `conflicts.stop_inside(ROOT, keep={own pid})` to terminate every process whose executable lies inside the install folder (the mod's Python, app windows, the injector), starts the uninstaller detached (`DETACHED_PROCESS`, working directory the install's parent) and shuts the server down. The uninstaller itself asks before removing anything.
 
@@ -1301,9 +1314,9 @@ Every POST must carry the header `X-Launcher: 1`; a plain HTML form from another
 
 The launcher's single page, plain HTML, CSS and JavaScript with no external resources.
 
-- **Play section.** Rows for Game, Setup and Other mods. Game shows "Found" (with "running" and the missing games) or "Not found". Setup shows "Ready" or "k of n parts ready". Other mods lists clashing files and reveals the checkbox "Start without those mods this time" (checked by default). The Play button posts `/run/play` with `clean` set from that checkbox, warns if setup is unfinished, and then follows `logs/launcher/play.txt` in a log box.
+- **Play section.** Rows for Game, Game folder, Setup and Other mods. Game shows "Found" (with "running" and the missing games), that the chosen folder is gone, or "Not found". Game folder shows the MCC folder in use and how it was set (by `HB_MCC`, chosen by the user, or found automatically; for a copy Steam does not start, that Play starts it directly and Steam must be running), lists the copies in the Steam libraries when there are several, and has "Choose folder ..." (the folder picker, hidden under Wine), a paste field with Use, and "Use automatic" (shown only while a folder is chosen); each posts `/mcc` and shows the answer, suggesting Repair after a change. Setup shows "Ready" or "k of n parts ready". Other mods lists clashing files and reveals the checkbox "Start without those mods this time" (checked by default). The Play button posts `/run/play` with `clean` set from that checkbox, warns if setup is unfinished, and then follows `logs/launcher/play.txt` in a log box. Under Wine it instead opens `steam://rungameid/976730`, since on Linux Steam's launch option loads the bots (see `installer/linux/`).
 - **First-time setup section.** A step list built from `status.setup`; each line shows an icon (`OK`, `-`, `...`, `!`) and a note. While a setup task runs, `follow()` polls `/log/<task>` every 700 ms and parses `STEP n/t name: text` lines into `stepNote` so working, failed and skipped steps show live. "Run setup" posts `setup`; "Repair" posts `setup_force`. When every part is ready the list and Run button hide and "All parts are ready." shows.
-- **Tools section.** Buttons with `data-task` for `observer`, `lidar_sim`, `lidar_view`, `paint`; each posts `/run/<task>`. The LiDAR Simulator row shows "Mapped so far: k of n maps."
+- **Tools section.** Buttons with `data-task` for `observer`, `lidar_sim`, `lidar_view`, `paint`; each posts `/run/<task>`. The LiDAR Simulator row shows "Mapped so far: k of n maps." Under Wine there is no app window, so the page opens a blank browser tab before posting, waits up to 30 s for the tool's port (from the `/run` answer) to answer, and then points the tab at it.
 - **Footer.** Open the install folder, Read the guide, Uninstall (shown only when `installed`), and a non-affiliation note.
 - **Uninstall dialog.** An `alertdialog` with Uninstall and Cancel (Escape cancels); confirming posts `/uninstall` and shows the server's message.
 - **Timers.** `refresh()` every 3 s (a failed fetch shows "The launcher stopped" in the banner), `/ping` every 5 s. Busy buttons get `aria-busy`.
@@ -1312,8 +1325,8 @@ The launcher's single page, plain HTML, CSS and JavaScript with no external reso
 
 Opens a project page in its own window. `WINDOW` is `native/bin/ppg_window.exe`, a small Windows program built from `native/ppg_window.cpp` that hosts the WebView2 control of Windows 10 and 11: no browser profile, no sign-in, no extensions, no address bar; links to other sites open in the default browser.
 
-- `command(url, size, title)` builds `[ppg_window.exe, --url, url, --title, title, --width, w, --height, h, (--icon installer/icon.ico)]`. The title comes from `TITLES` by port: 8793 "Project Proving Grounds", 8799 "Observer - ...", 8797 "LiDAR - ...", 8796 "Paint the nav - ...". Returns None when the executable is missing.
-- `open_window(url, size, title)` starts that command and returns at once, or falls back to `webbrowser.open(url)` in a developer copy without the built window.
+- `command(url, size, title)` builds `[ppg_window.exe, --url, url, --title, title, --width, w, --height, h, (--icon installer/icon.ico)]`. The title comes from `TITLES` by port: 8793 "Project Proving Grounds", 8799 "Observer - ...", 8797 "LiDAR Viewer - ...", 8798 "LiDAR Simulator - ...", 8796 "Paint the nav - ...". Returns None when the executable is missing.
+- `open_window(url, size, title)` starts that command and returns at once, or falls back to `webbrowser.open(url)` in a developer copy without the built window. Under Wine (`brain.paths.wine()`, Linux and Steam Deck) there is no WebView2: it only prints the address, and the Linux launcher script and the launcher's page open the pages in the system's browser.
 - `remove_old_edge_profile()` deletes `%LOCALAPPDATA%\ProjectProvingGrounds\window` (best effort).
 - CLI: `python -I appwindow.py <url> [width height]`.
 
@@ -1325,7 +1338,7 @@ Used by the launcher, the Observer, the LiDAR view, the simulator and the painte
 
 **Usage.** `python -I setup.py` (build what is missing), `--force` (rebuild every step: the launcher's Repair), `--status` (one line per step, nothing built).
 
-**Steps.** Step 1 is the game check (`game_line`): it reports where MCC is and which games are not installed, or fails if MCC is missing (environment variable `HB_MCC` can point to it) or has no games. The other steps live in the `STEPS` tuple as (name, done test, builder, needs the game, reason it does not apply):
+**Steps.** Step 1 is the game check (`game_line`): it reports where MCC is (`brain.paths.mcc()`) and which games are not installed, or fails if MCC is missing (with a note to choose its folder in the launcher's Game folder row, or that the chosen folder is no longer there) or has no games. The other steps live in the `STEPS` tuple as (name, done test, builder, needs the game, reason it does not apply):
 
 | # | Name | Done when | Builder |
 |---|---|---|---|
@@ -1341,15 +1354,22 @@ Used by the launcher, the Observer, the LiDAR view, the simulator and the painte
 
 ### `tools/launch.py`
 
-**Purpose.** The Play task. The module docstring still mentions only Halo CE and a `.bat` file; the code supports all six multiplayer games and is run by the launcher.
+**Purpose.** The Play task, run by the launcher's Play button: start MCC with anti-cheat off and load botcore, so the BOTS tile shows in the custom game lobbies of all six multiplayer games.
+
+**Usage.** `python -I launch.py [--exe <MCC-Win64-Shipping.exe> [-- <arguments>]]`. `--exe` is how Steam's launch option on Linux runs it (see `installer/linux/ppg-run.sh`).
 
 **Flow (`main`).**
 1. `brain.looks.profiles()`: makes sure the install's 15 bots exist (botcore reads `bot_profiles.ini` at injection).
-2. If `MCC-Win64-Shipping.exe` is not running, opens `steam://rungameid/976730` and prints that the anti-cheat-off option must be chosen.
-3. Polls for the process once a second for up to 180 s (`conflicts.process_running`, a Toolhelp snapshot).
+2. Starting MCC, by case:
+   - With `--exe` (Linux, inside MCC's own Proton session): starts that program itself with the arguments after `--`.
+   - Under Wine without `--exe`: prints that on Linux and Steam Deck MCC is started from Steam with the anti-cheat off option, where the launch option loads the bots, and stops.
+   - MCC not running and the MCC in use (`brain.paths.mcc()`) is not the copy Steam starts (`paths.is_steam_copy`): `start_copy` starts that copy's program directly. Steam must be running (`steam.exe`), else it says so and exits with code 1. It first writes `steam_appid.txt` (976730) into MCC's folder and the program's folder where missing, so the copy starts as itself with anti-cheat off instead of handing over to Steam's copy.
+   - MCC not running otherwise: opens `steam://rungameid/976730` and prints that the anti-cheat off option must be chosen.
+   - MCC already running while a folder is chosen: if the running program (`conflicts.process_path`) is not inside the chosen folder, it warns that the bots load into the running copy and that playing the other copy needs MCC closed first.
+3. Polls for the process once a second for up to 180 s (`conflicts.process_running`, a Toolhelp snapshot); a program it started itself that exits meanwhile ends the task with its exit code.
 4. Exits with a message if `EasyAntiCheat.exe` or `EasyAntiCheat_EOS.exe` runs.
 5. Sleeps 15 s, picks the newest `native/bin/botcore*.dll` by modification time, gets `inject.exe` through `botctl.injector()` and runs `inject.exe <dll>`, printing its output.
-6. Prints where the BOTS tile is (next to START, or the B key) in Custom Multiplayer.
+6. Prints where the BOTS tile is (next to START, or the B key) in Custom Multiplayer. With `--exe` it then waits for the game to close and exits with its code (Steam counts the game as running while this process runs).
 
 ### `tools/conflicts.py`
 
@@ -1359,7 +1379,7 @@ Used by the launcher, the Observer, the LiDAR view, the simulator and the painte
 
 **Clean launch.** `turn_off()` renames each clashing file to `<file>.ppg-off` and returns the list. `restore()` renames every `*.ppg-off` back when the original name is free. `restore_after_mcc()` waits up to 180 s for MCC to start, then polls every 5 s until it closes, then restores.
 
-**Process helpers.** `processes()` lists `(pid, exe name)` through `CreateToolhelp32Snapshot` with ctypes (no child process, so no console flash). `process_running(name)` and `mcc_running()` build on it. `stop_inside(folder, keep)` opens each process with `QUERY_LIMITED_INFORMATION | TERMINATE`, reads its image path with `QueryFullProcessImageNameW`, and terminates those inside the folder except the pids in `keep`.
+**Process helpers.** `processes()` lists `(pid, exe name)` through `CreateToolhelp32Snapshot` with ctypes (no child process, so no console flash). `process_running(name)` and `mcc_running()` build on it, and `process_path(name)` gives the program file of the first running process of that name (used by `launch.py` to tell which MCC copy runs). `stop_inside(folder, keep)` opens each process with `QUERY_LIMITED_INFORMATION | TERMINATE`, reads its image path with `QueryFullProcessImageNameW`, and terminates those inside the folder except the pids in `keep`.
 
 **CLI.** No argument prints the report; `--off`, `--restore`, `--restore-after-mcc`.
 
@@ -1414,7 +1434,7 @@ Tier and personality lists are dealt out to new bots in order (cycling); a bot o
 5. **Loadouts.** A `Palette` is made where the reader has `LOADOUT` (Reach, Halo 4, H2A).
 6. **Button map.** `decoded_buttons(game)` reads `maps/_inputs/<game>.json` (written by `tools/decode_buttons.py`) into `[(game, button, offset, mask, press_only)]` and `botctl.set_button_map` writes it into shared memory. Only decoded buttons reach the game; nothing is guessed.
 7. **Map objects for names.** H2 and later get `live.set_map(MAP["objects"])`: Halo 3 and Reach name loose weapons by the map placement they lie on.
-8. **Watchers and learners.** `lidar.HumanWatch` (people's floor, deaths, jumps into the map's LiDAR data), `lidar.RideWatch` (everyone's drives and flights into `rides.json`), `crouch_key.crouch_held(live.g.pid)` (falls back to "never crouched" if it fails), `collector.Collector` when `--collect on` (file `logs/collect_<map>_<stamp>.jsonl`, stamp taken from the trace name so the pair can be matched), `brain.stations.Stations` (H3, Reach, H4, H2A), `brain.oob.Oob` (out of bounds spots; known spots go into the terrain with `T.set_oob`), Reach Invasion layout and honor-system spawns (`brain.invasion`), and the objective-mode watcher (`brain.modes`).
+8. **Watchers and learners.** `lidar.HumanWatch` (people's floor, deaths, jumps into the map's LiDAR data), `lidar.RideWatch` (everyone's drives and flights into `rides.json`), `crouch_key.crouch_held(live.g.pid)` (falls back to "never crouched" if it fails), `collector.Collector` when `--collect on` (file `logs/collect_<map>_<stamp>.jsonl`, stamp taken from the trace name so the pair can be matched), `brain.stations.Stations` (H3, Reach, H4, H2A), `brain.oob.Oob` (out of bounds spots; known spots go into the terrain with `T.set_oob`), Reach Invasion layout and honor-system spawns (`brain.invasion`), the objective-mode watcher (`brain.modes`), and on a map variant (not Firefight) a `brain.forge.PieceWatch` over the pieces the nav was built with and the variant's known `dynamic` pieces.
 
 #### The snapshot (`snapshot`)
 
@@ -1443,8 +1463,8 @@ The loop runs until `seconds` have passed. Each pass, inside a `try`:
 7. If paused: sleep one tick and continue.
 8. **Out of bounds.** `oob.watch` gets every player's id, team, place, alive, health, shield and ride health (`ride_health`); deaths nobody caused become soft walls for the nav (`T.set_oob`), saved at most every 30 s.
 9. **Stations** (H3, Reach, H4, H2A): `stations.watch` every tick (teleports taken), `stations.update(station_scan(...))` every 2 s, `save` every 30 s; any failure turns stations off for the match.
-10. **Invasion** (Reach): every 5 s `live.invasion()` decides whether the variant is Invasion; a `brain.invasion.Watch` is made or dropped (dropping clears its barriers from the nav). While it runs, `spawn_check` picks each dead bot's respawn point by the honor system and sends it with `botctl.spawn_at` (botcore moves the next unit there). Picks are made only when the sides are known and half the players are alive; a pick next to a teammate is refreshed every half second; a pick at a spawn kept for a vehicle gives the bot that vehicle as an errand for 30 s; a pick no longer valid is called off by sending NaN; new picks are written to the trace as `spawn` lines.
-11. **Other objective modes** (Reach, H3, H4, H2A, H2, not Firefight): every 5 s `brain.modes.mode_of` reads the game type; Territories, Assault, Stockpile, Headhunter and Infection get a `brain.modes.Watch` that updates the snapshot each tick.
+10. **Invasion** (Reach, not Firefight): every 5 s, on every map, `live.invasion()` decides whether the variant is Invasion. On a map whose scenario has an Invasion setup a `brain.invasion.Watch` is made or dropped (dropping clears its barriers from the nav). On a map without one (a Forge map variant's Invasion, such as one on Tempest, whose objectives are the variant's labelled objects, not read yet; see `tools/forge_label_probe.py`) the loop prints once that the bots play it as Slayer and writes an `invasion_unread` line to the trace. While it runs, `spawn_check` picks each dead bot's respawn point by the honor system and sends it with `botctl.spawn_at` (botcore moves the next unit there). Picks are made only when the sides are known and half the players are alive; a pick next to a teammate is refreshed every half second; a pick at a spawn kept for a vehicle gives the bot that vehicle as an errand for 30 s; a pick no longer valid is called off by sending NaN; new picks are written to the trace as `spawn` lines.
+11. **Other objective modes** (Reach, H3, H4, H2A, H2, not Firefight): every 5 s `brain.modes.mode_of` reads the game type; Territories, Assault, Stockpile, Headhunter and Infection get a `brain.modes.Watch` that updates the snapshot each tick. Then, on a map variant, every 2 s the `PieceWatch` gets a fresh `brain.forge.live_pieces(live)` read: pieces that stood up after the nav was built become walls while they stand, and pieces of the nav that went are added to the variant's `variant.json` `dynamic` list (`brain.variants.save`) so the next match's nav leaves them out. Changes are printed; any failure turns the watch off for the match.
 12. **People and rides.** `HumanWatch.update` with every person's place, alive, crouch (player 0 only), jump pressed (player 0 only, `botctl.owner_jumping`) and riding; `RideWatch.update` with the vehicles and players. When a background ride save finished with new data, the new ride layers are added to the terrain on the main thread (`T.add_rides`).
 13. **Nav window.** On a Forge variant with a nav window, `brain.maps.grow` widens the window as players near its edge (checked every second) and `brain.maps.swap` installs the grown nav when it is ready.
 14. **Crosshairs.** For the collector and the trace, each person's crosshair target and seat (`brain.tracefmt.crosshair`, `seat_of`).
@@ -1540,6 +1560,20 @@ A developer probe for map devices on Halo 2 Anniversary and Halo 4 (switches, do
 - `shoot <x> <y> <z> [--from x y] [--seconds 8] [--map NAME] [dll]`: bot slot 0 walks to `--from` by the nav, aims at the point from eye height and fires in bursts, then prints what moved.
 
 Default DLL `groundhog.dll`, default map `h2a_ca_zanzibar`. Uses `LiveH4F`, `botctl` and `brain.maps`.
+
+### `tools/forge_label_probe.py`
+
+A developer probe for Invasion on a Halo: Reach Forge map variant. The mod knows Invasion's objectives, respawn zones and gates only from a built-in map's scenario (`brain/invasion.py layout`); on a Forge map they are the variant's own objects, identified by Forge labels the mod does not read yet, so `live_bots.py` plays such a match as Slayer. This probe gathers what is needed to find where Reach keeps those labels. It only reads MCC's memory: it never writes it and sends no input.
+
+Run it on the host's PC in a Forge variant's Invasion match after the round has started: `python -I tools\forge_label_probe.py [tag]` (the tag defaults to the date and time). It writes `logs/forge_label_probe_<tag>.json` with:
+
+- `map` and `variant`: the map name, the game variant's name, its engine icon (game globals +0x1524) and its teams flag.
+- `objects`: every live object (handle, type, tag id, tag name from `brain/forge._tag_names`, position, address and its first 0x300 bytes in hex).
+- `strings`: every `inv_` text, ASCII or UTF-16 in any case, in the game globals and anywhere in writable memory (up to 400).
+- `pos_hits`: for up to 24 marker-like objects (`MARKERS`: respawn zones and points, hill beacons, capture plates, flag stands, the core and bomb and similar), every other place in writable memory that holds the object's exact position (up to 40 each, the objects themselves skipped), with 0x80 bytes either side; the variant's record of the object (label, team, shape) should be one of them.
+- `arrays`: the engine's named data arrays (`memread.data_arrays`).
+
+It prints a short summary as it goes. Uses `LiveReach`, `brain.forge` and `memread`.
 
 ### `tools/crouch_key.py`
 
@@ -1682,7 +1716,7 @@ A trace argument can be a path or a name relative to `logs/`.
 | `GET /export?file=&names=0\|1` | the match zip as an attachment (`match_export.export`) |
 | `POST /import` | an exported zip in the body (up to 1 GB), requires header `X-Observer: 1`; answers `{file}` of the imported trace or `{error}` |
 
-The server binds `127.0.0.1` and, with `--open`, opens the page in the app window.
+The server binds `127.0.0.1` without address reuse and, with `--open`, opens the page in the app window. If the port is taken an Observer already runs (its window was closed): it opens a window on that one with `--open`, prints "Observer already running" and returns.
 
 #### Connections
 
@@ -1756,7 +1790,7 @@ python -I lidar.py --selftest
 
 - **Grid.** Recorded cells are 0.25 units in x and y (`CELL`) and 0.1 in height (`ZSTEP`). Exploration ("been there") uses a 1-unit grid (`COVER`).
 - **Cell kinds.** `KIND_BOT` 0, `KIND_HUMAN` 1, `KIND_AIR` 2 (air paths), `KIND_CROUCH` 3, `KIND_SPREAD` 4 (floor painted around a player), `KIND_WALL` 5, `KIND_AIRSPACE` 6 (simulator aircraft), `KIND_RAMP` 7 (floor on a placed piece's walkable slope).
-- **`maps/<map>/lidar.json`** (merged over runs, written atomically): `cell`, `zstep`, `runs`, `bot_minutes`, `human_minutes`, `walk` (`[ix, iy, iz, kind, samples]`), `deaths` (last 3000), `jumps` (measured apex heights, last 2000), `links`, `weapons` (`{name, pos, seen, picked}`), `cover` (cover spots in front of walls). A link is `{take_off, land, runup, apex, air_s, path, found_by, human, bot_ok, bot_fail, t}` with optional `back` (taken the other way), `called`, `ride`, crouch or recorded-route flags, and simulator counters `sim_ok` / `sim_fail`.
+- **`maps/<map>/lidar.json`** (merged over runs, written atomically): `cell`, `zstep`, `runs`, `bot_minutes`, `human_minutes`, `walk` (`[ix, iy, iz, kind, samples]`), `deaths` (last 3000), `jumps` (measured apex heights, last 2000), `links`, `weapons` (`{name, pos, seen, picked}`), `cover` (cover spots in front of walls), and `objectives` (every gametype objective place with its visit and nav verdicts, see below). A link is `{take_off, land, runup, apex, air_s, path, found_by, human, bot_ok, bot_fail, t}` with optional `back` (taken the other way), `called`, `ride`, crouch or recorded-route flags, and simulator counters `sim_ok` / `sim_fail`.
 
 #### The tracker (`Track`)
 
@@ -1797,12 +1831,22 @@ Results come back through `on_events` and the Roomba's `landed`, `crawled`, `rod
 - `HumanWatch(map, rec, T)`: a `Track` per person. `update(now, people)` takes `(index, pos, alive, crouch, jump pressed, riding)`; riding restarts the track (a seat is no floor), deaths are recorded, and a landing counts as the person's jump only if jump was pressed between 1 s before and 0.3 s after the take-off (`meant`), so being pushed off a ledge by a bot does not count. `save()` merges into `lidar.json`. `live_bots.py` uses it in every match, so people's jumps teach the nav even outside LiDAR mode.
 - `RideWatch(map, T)`: for every ridden vehicle, ground and hover vehicles record driven cells (counts for people and bots kept apart); aircraft record flown cells with height over the floor below, a height histogram per source, and take-offs, landings and turn-backs (heading reversed within 3 s). `save()` merges into `maps/<map>/rides.json`; `brain/maps.py rides_layers` turns it into vehicle ground and airspace.
 
+#### Gametype objectives (`objective_points`, `Objectives`)
+
+A LiDAR run sends a bot to every objective place of every game type on the map, so the scan covers them all even though the game only spawns the objects of the mode being played.
+
+- `objective_points(map, stations)` lists the places, all modes at once, as `[{pos, roles, names, src}]`. The map's own come from its scenario as the editing kits export it (`objects.json` netgame flags and Forge labels: flag stands and returns, hills, oddball and bomb spawns, plant points, territories, havens, drop points, race checkpoints, Invasion zones and so on), sorted into roles by `tools/map_features.py` (`from_objects`, `role_of`). Objective objects read live by `brain/stations.py` are added (a Forge layout's own); a Forge canvas variant with no layout of the base map's own (`brain/variants.base_area`) has only those. Places closer than `OBJ_MERGE` (2.5 u) are one place, keeping all their roles and names; `src` is `map`, `live` or `map+live`.
+- `Objectives(map, T, stored, stations)` holds the places for one run. For each it keeps `reached` and `given_up` from the stored list (matched by position) and the nav's verdict (`nav_of`): `floor` (the nav's floor cell there), `on` (walkable floor within `OBJ_NAV_Z`, 2.5 u, of the objective's height) and `reach` (also reachable from the spawns). Stored places of another layout are kept as they are.
+- `seed(director)` gives the LiDAR director one spot per place not yet reached (`add_spot(goal, bots=1, label=role)`), where the goal is the nav's floor there, else the objective itself.
+- `update(positions, now)`, at most twice a second, marks a place reached once anyone, bot or person, stands within `OBJ_REACH_R` (2.5 u) across and `OBJ_REACH_Z` (2 u) up or down of its goal, or the director's spot for it is done; a spot the director gave up on marks the place `given_up`.
+- `saved()` refreshes the nav verdicts (the nav learns during a run, so new jumps can reach more) and returns the list the `Recorder` saves as `objectives`; reached stays reached over runs, and reached places are not sent again. `line()` is the status text ("objectives: r of n places reached, k not reachable on the nav from the spawns"), and `report` lists the places nobody reached or the nav cannot reach.
+
 #### The LiDAR match loop (`main`)
 
 1. Picks the reader for `--game`, opens the shared memory, and loads the level data (`level_data`: terrain and bounds; on a Reach Forge variant the variant's name and its pieces face by face). Makes the `Recorder`, sets whether pickups work (`PICKUP_GAMES`: CE and H2), and the physics (`jumpphys.Phys`, with the map's measured apex after 20 jumps).
-2. Starts the view server (`serve(Hub(rec, "live"))`), `HumanWatch`, `Notices` (notices over the game when a person's jump is learned and when bots first do one twice), `PathRec`, `ShotRec`, the `LidarDirector` when there is level data, `Stations` (H3, Reach, H4, H2A), `Oob`, and a Data collector (`logs/collect_<map>_<stamp>.jsonl`).
+2. Starts the view server (`serve(Hub(rec, "live"))`), `HumanWatch`, `Notices` (notices over the game when a person's jump is learned and when bots first do one twice), `PathRec`, `ShotRec`, the `LidarDirector` when there is level data, `Stations` (H3, Reach, H4, H2A), with level data the run's `Objectives` (from the stored list, seeded into the director and printed), `Oob`, and a Data collector (`logs/collect_<map>_<stamp>.jsonl`).
 3. Each tick at 30 Hz: reads players (10 s of failed reads ends the run), vehicle places (`seat_places`: a rider's place is his vehicle's), shows a "LIDAR MODE" notice once, grows a variant's nav window, detects a new round (half or more of the bots gone at once: not deaths), re-reads lying weapons twice a second, keeps the last 2 s of botcore's copy of the person's action bytes and, when the person picks up a weapon, appends the pickup and those bytes to `logs/owner_pickups_<map>.jsonl` (for decoding the pickup fields), updates stations, the collector, bug report filing, out of bounds, people, and then each Roomba: death handling (a fall teaches the nav at once with `teach_falls`), the hub's player rows, tracker events, weapon pickups and sightings, `think`, and `botctl.act`.
-4. Every 6 s the director plans; every 2 s new usable links go into the nav (`nav_learn`: `T.add_human_links` and fresh spawn reachability). Every 60 s the recorder saves and `logs/lidar_<map>.md` is rewritten (botcore kills the process when the match ends).
+4. The director plans (every 6 s, `lidar_director.PERIOD`); a bot it just sent to a spot or an objective drops its old goal unless a trial is under way, `Objectives.update` gets every player's position, and the director's status line carries the objectives line. When a variant's grown nav is swapped in, the director is rebuilt and the objectives seeded into it again. Every 2 s new usable links go into the nav (`nav_learn`: `T.add_human_links` and fresh spawn reachability). Every 60 s the recorder saves and `logs/lidar_<map>.md` is rewritten (botcore kills the process when the match ends).
 5. On exit: collector closed, stations and oob saved, a final save and report, learned nav spots saved (`save_learned`), the server shut down.
 
 #### The 3D view server (`Hub`, `serve`)
@@ -1820,7 +1864,7 @@ Results come back through `on_events` and the Roomba's `landed`, `crawled`, `rod
 | `POST /sim` | simulator commands (header `X-LiDAR: sim`) |
 | `POST /yield` | a stored view gives up the port to a live LiDAR match |
 
-`serve` does not reuse addresses. A live match that finds the port taken first asks the stored view there to yield, then retries for a few seconds; a stored view that finds it taken gives up and the launcher's window simply shows the running server. `view(o)` serves the newest scanned map (or the named one) in `stored` mode and exits when a live match takes over. `replay(o)` feeds a trace's bot positions through trackers and the recorder at `--speed`, with `--human-id` treating one bot as a person, as a test without the game.
+`serve` does not reuse addresses. A live match that finds the port taken first asks the stored view there to yield, then retries for a few seconds; a stored view that finds it taken gives up and the launcher's window simply shows the running server. The LiDAR Viewer and a LiDAR match use `PORT` (8797); the simulator serves on its own port (8798), so a simulator left open never keeps a match's live view from starting. `view(o)` serves the newest scanned map (or the named one) in `stored` mode and exits when a live match takes over. `replay(o)` feeds a trace's bot positions through trackers and the recorder at `--speed`, with `--human-id` treating one bot as a person, as a test without the game.
 
 #### Other helpers
 
@@ -1833,20 +1877,21 @@ The WebGL 3D view (no external libraries; it shows a message if WebGL is unavail
 - **Header.** "LiDAR" with a status pill: CONNECTING, WAITING or LIVE (a live run with or without players), STORED, STORED SCAN or SIMULATOR SCAN (a map opened from the list), SIMULATION, REPLAY or REPLAY DONE, RECORDING PATH or SAVING PATH (a route recording), OFFLINE (the server stopped).
 - **Toggles** (with keys): Earlier runs (E), Air paths (P), Deaths (D), Jumps (J), Weapons (W), Air space (A), Map features (M), Maps list (L), Grid (G), Follow you (F), Top view (T), Reset view (R). Arrow keys orbit and tilt, plus and minus zoom; the mouse drags and zooms.
 - **Maps list.** From `/maps`: each map with its game logo, picture and scans, a "Scanned maps only" filter, opening a stored map (`/map`), Remove with a confirmation (`/remove`), and "Back to the live scan".
-- **Simulator panel** (shown when served by the simulator): Pick a map, Every map, speed choice, Pause, Stop, "Click spots to cover" (C) and Clear spots; it posts to `/sim` with `X-LiDAR: sim` and draws the spots and the director's state from `/live`.
-- **Live feed.** Polls `/live?since=<seq>` and appends new cells; a changed session id resets the scene.
+- **Simulator panel** (shown when served by the simulator): Pick a map, Every map, speed choice, Pause, Stop, "Click spots to cover" (C) and Clear spots; it posts to `/sim` with `X-LiDAR: sim` and draws the spots and the director's state from `/live`. Spots with a label are gametype objectives: the panel counts them apart ("Gametype objectives: k of n visited", and how many have no way there), and Clear spots counts and clears only the spots a person marked.
+- **Live feed.** Polls `/live?since=<seq>` and appends new cells; a changed session id resets the scene. When the server stops, the message says the Simulator has stopped (open it again from the launcher) or, for the live view, how to open the stored map.
+- The page title starts with "LiDAR Simulator", "LiDAR live" or "LiDAR" by the server's mode.
 
 ### `tools/lidar_sim.py`
 
 **Purpose.** The offline LiDAR Simulator: the real `Roomba` code mapping a map's level data at high speed, without the game, watched in the LiDAR view.
 
-**Usage.** `python -I lidar_sim.py [maps... | --all] [--game ce] [--minutes 6] [--walkers 16] [--aircraft 8] [--speed 0] [--max-real 240] [--open] [--port 8797] [--hold 0] [--no-director]`. With no map names it waits for a pick from the view (the launcher's `lidar_sim` task).
+**Usage.** `python -I lidar_sim.py [maps... | --all] [--game ce] [--minutes 6] [--walkers 16] [--aircraft 8] [--speed 0] [--max-real 240] [--open] [--port 8798] [--hold 0] [--no-director]`. With no map names it waits for a pick from the view (the launcher's `lidar_sim` task).
 
 **How it works.**
 - `Body` moves a walking bot by its action with `jumpphys.walk_step` and `air_step` (a small random take-off error), returning a fall when a landing is too hard and void when it falls out of the level.
-- `run_map(name, ...)`: loads the terrain and teleporters, makes a `Recorder` that writes `maps/<map>/lidar_sim.json` but starts from the real `lidar.json` links (people's jumps, earlier simulator jumps), with fresh coverage, counters `sim_ok` / `sim_fail` and `found_by: "sim"`. Probes, rides and switches are off (`PROBE_P`, `RIDE_P`, `USE_P` set to 0). Walkers start on spawn points snapped to reachable floor; a `LidarDirector` plans unless `--no-director`. `Airspace` builds voxels of free air over walked floor up to the ceiling (`ceiling_of`: `maps/<map>/air.json` or 2 units over the highest surface) and `Craft` aircraft fly routes through unflown air at 6 units per second, painting it (`KIND_AIRSPACE`). New called jumps go into the nav at once; at the end `merge_links` writes them and the results on known links into the real `lidar.json` (only `links` is touched), and a row is appended to `logs/lidar_sim.md`. The simulation runs at 20 Hz of simulated time.
+- `run_map(name, ...)`: loads the terrain and teleporters, makes a `Recorder` that writes `maps/<map>/lidar_sim.json` but starts from the real `lidar.json` links (people's jumps, earlier simulator jumps), with fresh coverage, counters `sim_ok` / `sim_fail` and `found_by: "sim"`. Probes, rides and switches are off (`PROBE_P`, `RIDE_P`, `USE_P` set to 0). Walkers start on spawn points snapped to reachable floor; a `LidarDirector` plans unless `--no-director`, and with it a fresh `lidar.Objectives` sends one walker to each gametype objective place every run (marked reached from the walkers' positions, saved in `lidar_sim.json`). `Airspace` builds voxels of free air over walked floor up to the ceiling (`ceiling_of`: `maps/<map>/air.json` or 2 units over the highest surface) and `Craft` aircraft fly routes through unflown air at 6 units per second, painting it (`KIND_AIRSPACE`). New called jumps go into the nav at once; at the end `merge_links` writes them and the results on known links into the real `lidar.json` (only `links` is touched), and a row is appended to `logs/lidar_sim.md`. The simulation runs at 20 Hz of simulated time.
 - `Switch` holds the hub currently served (the server reads `hub.current`); `Control` is the panel's state: `command()` handles `pick`, `all` (every map except Forge variants), `speed` (1, 2, 4, 8, 16 or 0 for as fast as possible), `pause` / `resume`, `stop`, `spot` (snapped to the nearest walkable floor within 3 units, handed to the director as a spot to cover) and `clear_spots`; `state()` is added to each `/live` answer.
-- `main` orders maps by game, starts the view server (exits if another simulator or LiDAR match holds the port), opens the window with `--open`, and runs maps from the queue. Without named maps it waits for picks and exits 90 s after the window stops polling. One failing map is logged and the tour continues.
+- `main` orders maps by game, starts the view server on `PORT` (8798, not `lidar.PORT`), opens the window with `--open`, exits if another simulator already holds the port (two would save the same maps; the window just opened shows the running one), and runs maps from the queue. Without named maps it waits for picks and exits 90 s after the window stops polling. One failing map is logged and the tour continues.
 
 ### `tools/lidar_director.py`
 
@@ -1856,7 +1901,10 @@ Plans the whole map for the mapping bots, every 6 s (`PERIOD`), in LiDAR matches
 - computes which sample cells are reachable by walking, teleporters and landed jumps from the spawns (`_reach`, over `graph_h`);
 - splits unpainted reachable floor into connected regions per floor level (`_pieces`, SciPy `label`; pieces under 6 cells ignored) and unpainted unreachable floor into islands;
 - gives each bot a region job (keeping its own until painted, else the best free one by size and distance, never two bots on one region while another has none; a bot's own region is worth 25 path units in `region_bias`), and once 70% of reachable floor is painted gives up to two bots within 30 units of an island a jump job (walk to the take-off side, then call the jump; dropped after 40 s);
-- sends the 3 nearest free bots to each spot a person marked in the simulator view (`add_spot`), marking it covered within 2.5 units or given up after 120 s.
+- sends the 3 nearest free bots (`SPOT_BOTS`) to each spot a person marked in the simulator view, marking it covered within 2.5 units or given up after 120 s;
+- sends one bot to each gametype objective spot (`tools/lidar.py Objectives`), pairing the nearest free bot and objective first, with at most `OBJECTIVE_SHARE` (half) of the bots on objectives at a time (at least one) so the rest keep painting the map.
+
+`add_spot(pos, bots, label)` adds a spot for `bots` bots and returns it; a `label` (the objective's role) marks a gametype objective, None a spot a person marked. `clear_spots()` removes only the marked spots and keeps the objectives. `spot_view()` lists the spots with their label for the view.
 
 `job(index, pos)` returns `("go", target)`, `("jump", take-off)`, `("call", None)` at the take-off side, or None; `Roomba.pick` calls it. `line(now)` prints a status line every 30 s.
 
@@ -1886,7 +1934,7 @@ Plans the whole map for the mapping bots, every 6 s (`PERIOD`), in LiDAR matches
 | `POST /api/build?name=` | runs `roofless.build(name)` |
 | `POST /api/paint?name=` | saves the posted layers and jumps; answers the counts |
 
-`recorded_links` lists people's LiDAR jumps with their status (used by a bot, untried, retired by `brain.maps.usable_links`); `objectives` lists Invasion territories, core and delivery point. Map names are validated against `^[a-z0-9_]+$` and an existing folder, so the page cannot address other paths. CLI: `python -I paint.py [--port 8796] [--open]`, `--selftest`.
+`recorded_links` lists people's LiDAR jumps with their status (used by a bot, untried, retired by `brain.maps.usable_links`); `objectives` lists Invasion territories, core and delivery point. Map names are validated against `^[a-z0-9_]+$` and an existing folder, so the page cannot address other paths. CLI: `python -I paint.py [--port 8796] [--open]`, `--selftest`. The server does not reuse addresses: when the port is taken a painter already runs, and this copy opens a window on it (with `--open`) and returns.
 
 ### `tools/paint_view.html`
 
@@ -2264,8 +2312,8 @@ scan finds private data. `build_installer.py` and `human_data.py` import it.
 
 ### `tools/build_installer.py`
 
-Builds the Windows installer for a release, `ProjectProvingGrounds-Setup-<version>.exe`: everything a player needs in
-one file, with no Python, build tools or anything else to install. Everything is staged in `installer_build` beside the
+Builds the Windows installer for a release, `ProjectProvingGrounds-Setup-<version>.exe`, and the Linux and Steam Deck
+download, `ProjectProvingGrounds-Linux-<version>.tar.gz`: everything a player needs in one file, with no Python, build tools or anything else to install. Everything is staged in `installer_build` beside the
 project folder.
 
 Steps in `main()`:
@@ -2289,10 +2337,16 @@ Steps in `main()`:
 6. `compile_setup()`: finds Inno Setup's `ISCC.exe` (`iscc()`: the per-user and machine-wide Inno Setup 6 folders,
    then the PATH) and runs it with `/DAppVersion=<VERSION>`, `/DPayload=<payload>` and `/DBuildDir=<installer_build>`
    over `installer/ProjectProvingGrounds.iss`; prints the size and SHA-256 of the result.
-7. `zip_map_pack()`: zips `installer_build/release-map-pack` into
+7. `linux_bundle()`: the Linux and Steam Deck download, `installer_build/ProjectProvingGrounds-Linux-<version>.tar.gz`.
+   It holds `install.sh` and `uninstall.sh` from `installer/linux` at the top of a
+   `ProjectProvingGrounds-Linux-<version>/` folder and the same payload under its `payload/` folder (the mod's Windows
+   parts run through Proton). User and group ids and names are blanked, folders get mode 755, shell scripts get LF line endings and
+   the executable bit (a Windows checkout may have CRLF), other files 644. It prints the size and SHA-256.
+8. `zip_map_pack()`: zips `installer_build/release-map-pack` into
    `project-proving-grounds-map-pack-<version>.zip`, the separate download developers unzip over a source checkout.
 
-Command line: `python -I tools/build_installer.py [--skip-native]`. It needs the map tools built, Visual Studio's C++
+Command line: `python -I tools/build_installer.py [--skip-native]`; `--linux-only` makes only the Linux tar.gz, from
+the payload already staged. It needs the map tools built, Visual Studio's C++
 build tools (unless `--skip-native`), Inno Setup 6, and internet access the first time (for the embeddable Python and
 the wheels).
 
@@ -2418,6 +2472,55 @@ Uninstall logic (`CurUninstallStepChanged`):
 - `[UninstallDelete]` also removes `%LOCALAPPDATA%\ProjectProvingGrounds`, the app window's WebView2 data
   (`tools/appwindow.py`).
 
+### `installer/linux/` (Linux and Steam Deck)
+
+Bash scripts that install and run the mod on Linux and Steam Deck (SteamOS), for MCC on Steam through Proton. They ship
+in the Linux tar.gz (`tools/build_installer.py linux_bundle`) and in every install. `.gitattributes` keeps `*.sh` at
+LF line endings. Nothing goes into MCC's own files or its Proton prefix, and no root rights are needed.
+
+How it fits together: MCC runs through Proton (Wine), and so do the mod's Windows parts (the bundled Windows Python,
+`inject.exe`, `botcore.dll`). In the game, Steam's launch option runs `tools/launch.py` inside MCC's own Proton session
+(same prefix, same wineserver), which starts the game and loads the bots; botcore then starts the brain inside that
+session as on Windows. Outside the game (the launcher, the first-time setup, the tools) the mod uses a Wine prefix of
+its own, run with MCC's Proton, so MCC's prefix (`compatdata/976730`) is never changed or held open. Wine reaches the
+mod's folder as drive Z:.
+
+- `common.sh` (sourced by the others). `ppg_steam_roots` finds Steam's folders (native `~/.steam/steam`,
+  `~/.steam/root`, `~/.local/share/Steam`, and Flatpak Steam); `ppg_libraries` lists every library in
+  `libraryfolders.vdf` (SD cards included); `ppg_winpath` turns a Linux path into the Windows path Wine sees.
+  `ppg_find` sets Steam's folder, MCC's folder and library (the library whose `appmanifest_976730.acf` names an
+  existing install folder), MCC's `compatdata`, the Proton to use (the one MCC last ran with, from line 3 of
+  `compatdata/976730/config_info`, else the newest Proton in the libraries or `compatibilitytools.d`) and the Steam
+  Linux Runtime that Proton asks for in its `toolmanifest.vdf` (sniper or soldier), stopping with a clear message when
+  Steam, MCC or Proton is missing. `ppg_data_dir` is where the mod lives:
+  `~/.local/share/project-proving-grounds` (with `XDG_DATA_HOME` honoured), or inside Flatpak Steam's own data folder,
+  the only place its launch option can reach. `ppg_wine` runs a Windows program of the mod in the mod's prefix
+  (`<data>/prefix`) with MCC's Proton, through the runtime when there is one, with `PPG_LINUX=1` and `HB_STEAM_COMMON`
+  set to the folder MCC is in, and waits for it. `ppg_port_open` and `ppg_mcc_running` are small checks. Overrides:
+  `PPG_STEAM`, `PPG_MCC`, `PPG_PROTON`.
+- `install.sh [--download] [--payload DIR] [--no-setup]`. Finds the payload beside it (the unpacked tar.gz, or the
+  install it is in), else downloads the newest Linux release from the project's GitHub releases with `curl`. Stops if
+  MCC is running. Copies the payload to `<data>/app`; an update first deletes the previous version's code and documents
+  (`docs`, `ghidra`, `native/tests`, `tools/menu_titles`, the code files in `tools`, `brain` and `native`) and keeps the player's logs, maps, LiDAR scans,
+  `user/` settings and the art the setup built. Runs the first-time setup in the mod's prefix (output also in
+  `logs/linux_setup.txt`), writes the "Project Proving Grounds" menu entry (and a desktop copy when there is a Desktop
+  folder) that runs `ppg-launcher.sh`, and prints the Steam launch option to paste (copied to the clipboard with
+  `wl-copy` or `xclip` when present).
+- `ppg-run.sh`, the Steam launch option (`"<app>/installer/linux/ppg-run.sh" %command%`). When Steam's command runs
+  `MCC-Win64-Shipping.exe` (the anti-cheat off choice), it keeps the Proton part of the command and swaps the game's
+  program for the mod's Windows Python running `tools/launch.py --exe <MCC's program> -- <its arguments>`, with
+  `PPG_LINUX=1` and `HB_MCC` set to that MCC folder; output goes to `logs/linux_play.txt`. Any other command (the
+  anti-cheat on choice, `mcclauncher.exe`), or a mod folder missing its Python or `launch.py`, runs exactly as Steam
+  asked, so the bots never load into an anti-cheat session.
+- `ppg-launcher.sh`, run by the menu entry. If the launcher already answers on 8793 it opens the page again; else it
+  starts `tools/launcher.py --no-window` in the mod's prefix (output in `logs/launcher/linux.txt`), waits up to 180 s
+  for the port and opens the page in the system's browser with `xdg-open` (there is no WebView2 under Wine).
+- `uninstall.sh [--yes]`. Stops if MCC is running. Asks whether to keep the LiDAR scans, learned map data and recorded
+  matches (`--yes` keeps them without asking): keeping leaves `maps`, `logs` and `user` in the app folder, not keeping
+  deletes it. Removes the mod's prefix and menu entries, and leaves a stand-in `ppg-run.sh` that only runs Steam's
+  command, so MCC keeps starting until the player clears the launch option.
+- `icon.png`: the menu entry's icon.
+
 ### `native/panel_preview.cpp` and `native/build_preview.bat`
 
 `panel_preview.exe` draws the BOTS panel (`native/bots_panel.cpp`, with `native/model_view.cpp` for the 3D bot)
@@ -2496,6 +2599,8 @@ Game reading, the live loop and the brain's plumbing
 - `test_roster.py`: `botcore.ini` bot lines parse and `tools/play.py` adds exactly those bots.
 - `test_injector.py`: `inject.exe` restored when Windows Defender deletes it (`tools/botctl.py injector`); needs the built injector.
 - `test_conflicts.py`: the mod conflict scan finds proxy DLLs and ASI plugins in a made-up MCC folder, moves them aside and restores them.
+- `test_mcc_folder.py`: how the mod finds MCC (`brain/paths.py`) on fake folder layouts: Steam libraries in both `libraryfolders.vdf` formats, several MCC copies, the folder the player picks or one near it, `HB_MCC` over the choice, back to automatic, and how Play starts a copy Steam does not (`tools/launch.py`).
+- `test_linux_install.py`: the `installer/linux` scripts run with bash on a fake home (a library on an "SD card", a fake Proton and Steam Linux Runtime): the install finds them, copies the mod, runs the setup in the mod's own prefix and writes the menu entry; the launch option swaps MCC's program for `launch.py` in the same Proton command and leaves the anti-cheat on command alone; the uninstall keeps the player's data and leaves the stand-in. Skipped without bash.
 - `test_carnage_names.py`: `tools/carnage_names.py` fills in bot rows MCC left blank in the post-game report and leaves other rows alone.
 
 The BOTS panel, profile view and models
@@ -2599,10 +2704,10 @@ Vehicles
 - `test_vehicle_roles.py`: roles by vehicle (artillery, splatter and others).
 - `test_vehicle_targets.py`: target scoring for each seat.
 - `test_vehicle_threats.py`: rams and threats, such as never ramming a man in armor lock.
-- `test_vehicle_dead.py`: wrecks and duds recognised by each game's reader and avoided.
+- `test_vehicle_dead.py`: wrecks from each game's destroyed bit (`DEAD_AT`, CE from its body field), health where `object_get_health` reads it, and wrecks and duds avoided by drivers' orders and the bots' own picks.
 - `test_vehicle_wedge.py`: a wedged driver backs out.
 - `test_wedges.py`: wedge spots learned from recordings and kept off the vehicles' ground; needs LiDAR scans.
-- `test_boarding.py`: boarding and anti-tank play on foot.
+- `test_boarding.py`: boarding and anti-tank play on foot: when a bot boards (a slow tank looking away from farther), a tank boarded from its front, melee aboard (a press every 0.55 s, no grenade in Reach), the plasma launcher's lock on a vehicle.
 - `test_anti_vehicle.py`: the Grenadier's anti-vehicle mission and grenades.
 - `test_elephant.py`: Sandtrap's Elephants as a way in and for flag delivery.
 - `test_air_guard.py`: pilots do not fly into structures beside them.
@@ -2615,6 +2720,7 @@ Map knowledge, LiDAR and Forge
 
 - `test_forge_shields.py`: Forge shields by their groups (two way, one way, no pass) on Forge World.
 - `test_forge_surfaces.py`: Forge building pieces face by face (`brain/forge.py`, `Terrain.add_faces`).
+- `test_forge_dynamic.py`: Forge pieces that come and go (`brain/forge.py PieceWatch`): a wall standing up after the nav was built is a wall while it stands and open again once gone; a built-in piece that goes is filed as dynamic once and left out of the next match's nav.
 - `test_variants.py`: map variants filed under their base map with a nav that grows; needs Forge recordings.
 - `test_stations.py`: stations classified from real tag names in each Forge game, kept and saved.
 - `test_tag_names.py`: every saved tag name list matches its `.map` file; skips without MCC.
@@ -2624,6 +2730,7 @@ Map knowledge, LiDAR and Forge
 - `test_shot_recipes.py`: shot recordings and their replay.
 - `test_lidar_spots.py`: the LiDAR simulator's controls and spots to cover; needs the map pack.
 - `test_view_port.py`: the LiDAR 3D view's server port shared correctly between a stored view and a live match.
+- `test_lidar_objectives.py`: every gametype objective place found (`objective_points`), one bot to each at a time within `OBJECTIVE_SHARE`, reached places saved in `lidar.json` and not sent again, Halo 3's flag and bomb stands classed as objectives (`brain/stations.py`), and the Simulator on its own port.
 
 The Observer, recordings and release tools
 
@@ -2721,13 +2828,13 @@ broke, compare two commits with `python -I tools\baseline_compare.py <old> <new>
    must never let through. It is never committed.
 4. `python -I tools\build_installer.py` makes the public copy and the map pack (`tools/make_release.py`, stopping on any
    privacy hit), builds the DLL, the injector and the app window, copies the map tools, stages the embeddable Python
-   with the packages, compiles `installer\ProjectProvingGrounds.iss`, and zips the map pack. The results are in
-   `installer_build` beside the project folder: `ProjectProvingGrounds-Setup-<version>.exe` and
-   `project-proving-grounds-map-pack-<version>.zip`. Use `--skip-native` to package DLLs already built.
+   with the packages, compiles `installer\ProjectProvingGrounds.iss`, packs the Linux tar.gz, and zips the map pack. The results are in
+   `installer_build` beside the project folder: `ProjectProvingGrounds-Setup-<version>.exe`,
+   `ProjectProvingGrounds-Linux-<version>.tar.gz` and `project-proving-grounds-map-pack-<version>.zip`. Use `--skip-native` to package DLLs already built.
 5. `python -I tools\make_release.py [folder]` writes the public copy and the map pack on their own, for updating the
    public repository. Its `.gitignore` is the public one. `python -I tools\make_release.py --scan <folder>` rescans any
    folder.
 6. Optionally, `python -I tools\human_data.py` builds `human-play-data-<version>.zip` from the recordings on the PC,
    scrubbed and scanned in the same way.
-7. Publish a release on GitHub with a version tag (for example `v0.2.0`) and attach the Setup file, the map pack zip
-   and, if built, the human play data zip.
+7. Publish a release on GitHub with a version tag (for example `v0.2.0`) and attach the Setup file, the Linux tar.gz (`install.sh --download`
+   looks for a `-Linux-` `.tar.gz` on the newest release), the map pack zip and, if built, the human play data zip.

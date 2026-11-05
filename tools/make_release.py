@@ -50,7 +50,7 @@ NOT_SHIPPED = (
     "tools/live_qc_batch.py", "tools/live_qc_run.py", "tools/live_walk.py", "tools/look_check.py",
     "tools/look_diff.py", "tools/look_dump.py", "tools/look_names.py", "tools/look_photo.py", "tools/look_probe.py",
     "tools/look_regions.py", "tools/look_sheet.py", "tools/look_sheet_aim.py", "tools/look_units.py",
-    "tools/make_zones.py", "tools/map_features.py", "tools/mcc_click.py", "tools/mcc_nav.py", "tools/mode_matrix.py",
+    "tools/make_zones.py", "tools/mcc_click.py", "tools/mcc_nav.py", "tools/mode_matrix.py",
     "tools/mode_sims.py", "tools/mutate_weapons.py", "tools/mute_app.ps1", "tools/next_match.py",
     "tools/object_frames.py", "tools/object_shapes.py", "tools/objects_near.py", "tools/original_vs_mcc.py",
     "tools/panel_shots.py", "tools/pe_xref.py", "tools/placed_refresh.py", "tools/probe_action.py",
@@ -73,7 +73,7 @@ RULES = tuple((p, None) for p in NOT_SHIPPED) + (
     ("native/tests/*.pdb", None),
     ("ghidra/**", None), ("tools/menu_titles/**", None),
     # docs: the code guide and the players' bot status sheet only (research and design notes stay here)
-    ("docs/CODE_GUIDE.md", "release"), ("docs/BOT_STATUS.pdf", "release"), ("docs/bot_status.png", "release"), ("docs/banner.jpg", "release"), ("docs/KNOWN_BUGS.md", "release"), (".github/**", "release"), ("docs/**", None),
+    ("docs/CODE_GUIDE.md", "release"), ("docs/BOT_STATUS.pdf", "release"), ("docs/bot_status.png", "release"), ("docs/banner.jpg", "release"), ("docs/KNOWN_BUGS.md", "release"), ("docs/UPDATES.md", "release"), (".github/**", "release"), ("docs/**", None),
     ("tools/bsp2obj/**", None), ("tools/model2obj/**", None), ("tools/map_tools/**", None),
     ("tools/view_art/games/**", None), ("tools/view_art/maps/**", None),     # (MCC's own art: map_art.py builds it)
     ("tools/backup.py", None), ("tools/verify_checks.py", None), ("tools/test_verify_checks.py", None),("tools/identity_probe.py", None),
@@ -90,7 +90,7 @@ RULES = tuple((p, None) for p in NOT_SHIPPED) + (
     ("maps/_shapes/**", "pack"),
     # release
     ("maps/*/callouts.json", "release"), ("maps/*/positions.json", "release"), ("maps/*/features.json", "release"),
-    ("maps/*/objects.json", "release"), ("maps/*/inv_spawns.json", "release"),
+    ("maps/*/objects.json", "release"), ("maps/*/inv_spawns.json", "release"), ("maps/*/killzones.json", "release"),
     ("maps/_inputs/**", "release"), ("maps/_looks/**", "release"), ("maps/_vehicles/**", "release"),
     ("maps/_human/**", "release"), ("maps/**", None),
     ("brain/**", "release"), ("tools/**", "release"), ("native/**", "release"), ("docs/**", "release"),
@@ -266,6 +266,37 @@ def build(out):
     return out, pack
 
 
+# (shipped file, left-out module) pairs that are fine: imported only by offline map-building code a player never runs
+OFFLINE_IMPORTS = {("tools/map_features.py", "reach_export"), ("tools/map_features.py", "scenario_extract")}
+
+
+def missing_imports(out):
+    """Imports in the release's brain/ and tools/ code (top level or inside a function) of this project's modules the
+    release left out: [(file, line, module)]. Such an import crashes in a player's install when that code runs."""
+    import ast
+    ours = {os.path.splitext(f)[0] for d in ("brain", "tools") for f in os.listdir(os.path.join(ROOT, d))
+            if f.endswith(".py")}
+    have = {os.path.splitext(f)[0] for d in ("brain", "tools") if os.path.isdir(os.path.join(out, d))
+            for f in os.listdir(os.path.join(out, d)) if f.endswith(".py")}
+    bad = []
+    for d in ("brain", "tools"):
+        for f in sorted(os.listdir(os.path.join(out, d))) if os.path.isdir(os.path.join(out, d)) else []:
+            if not f.endswith(".py") or f.startswith("test_"):
+                continue
+            rel = f"{d}/{f}"
+            for n in ast.walk(ast.parse(open(os.path.join(out, d, f), encoding="utf-8").read())):
+                if isinstance(n, ast.Import):
+                    names = [a.name for a in n.names]
+                elif isinstance(n, ast.ImportFrom):
+                    names = [a.name for a in n.names] if n.module in ("brain", "tools") else [n.module or ""]
+                else:
+                    continue
+                for m in (x.split(".")[-1] for x in names):
+                    if m in ours and m not in have and (rel, m) not in OFFLINE_IMPORTS:
+                        bad.append((rel, n.lineno, m))
+    return bad
+
+
 def report(folder):
     problems, quotes, n = scan(folder)
     print(f"privacy scan: {n} text files, {len(problems)} with private data, {quotes} development quotes left")
@@ -284,6 +315,10 @@ def main():
         print("release:", out)
         print("map pack:", pack)
         ok = report(out) and report(pack)
+        bad = missing_imports(out)
+        for f, line, m in bad:
+            print(f"  {f}:{line} imports {m}, which the release leaves out (NOT_SHIPPED)")
+        ok = ok and not bad
     raise SystemExit(0 if ok else 1)
 
 

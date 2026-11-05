@@ -309,11 +309,18 @@ def main():
     if "--selftest" in sys.argv:
         return selftest()
     port = int(sys.argv[sys.argv.index("--port") + 1]) if "--port" in sys.argv else 8796
-    srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     url = f"http://127.0.0.1:{port}/"
+    import appwindow                         # (its page opens as an app window)
+    try:
+        # (no address reuse: on Windows two copies could both serve the port; now the second one finds the first)
+        srv = type("Server", (ThreadingHTTPServer,), dict(allow_reuse_address=False))(("127.0.0.1", port), Handler)
+    except OSError:                          # it runs already (its window was closed): show it
+        if "--open" in sys.argv:
+            appwindow.open_window(url)
+        print("Paint the nav already running:", url, flush=True)
+        return
     print("Paint the nav:", url, flush=True)
     if "--open" in sys.argv:
-        import appwindow                     # (its page opens as an app window)
         appwindow.open_window(url)
     srv.serve_forever()
 

@@ -8,12 +8,14 @@ What goes in (staged in installer_build/payload beside this project's folder):
     found by brain/paths.map_tool) in tools/map_tools
   - Python: the official embeddable Python for Windows (the version this PC runs) in python/, with the packages the
     mod uses (numpy, scipy, Pillow, the versions this PC's tests pass with) in python/Lib/site-packages
-then Inno Setup compiles installer/ProjectProvingGrounds.iss over it.
+then Inno Setup compiles installer/ProjectProvingGrounds.iss over it, and the same payload with installer/linux's
+scripts becomes ProjectProvingGrounds-Linux-<version>.tar.gz (Linux and Steam Deck, through Proton).
 
 Needs: the .NET-free map tools build, Visual Studio's C++ build tools, Inno Setup 6 (ISCC.exe), internet for the
 embeddable Python and the packages the first time (cached in installer_build/cache).
 
 usage: python -I build_installer.py [--skip-native]      (--skip-native: use the botcore.dll already built)
+       python -I build_installer.py --linux-only       (only the Linux tar.gz, from the payload already staged)
 """
 import glob
 import hashlib
@@ -173,7 +175,51 @@ def zip_map_pack():
     print(f"   {out}: {os.path.getsize(out) / 1048576:.0f} MB", flush=True)
 
 
+def linux_bundle():
+    """The Linux / Steam Deck download: installer_build/ProjectProvingGrounds-Linux-<version>.tar.gz, the same payload
+    (the mod's Windows parts run through Proton) with installer/linux's install.sh and uninstall.sh beside it. Shell
+    scripts get LF line endings and the executable bit (a Windows checkout may have CRLF)."""
+    import io
+    import tarfile
+    step("Linux / Steam Deck tar.gz")
+    top = f"ProjectProvingGrounds-Linux-{version()}"
+    out = os.path.join(BUILD, top + ".tar.gz")
+
+    def add(tar, path, name):
+        info = tar.gettarinfo(path, name)
+        info.uid = info.gid = 0
+        info.uname = info.gname = ""
+        if info.isdir():
+            info.mode = 0o755
+            tar.addfile(info)
+        elif name.endswith(".sh"):
+            data = open(path, "rb").read().replace(b"\r\n", b"\n")
+            info.size, info.mode = len(data), 0o755
+            tar.addfile(info, io.BytesIO(data))
+        else:
+            info.mode = 0o644
+            with open(path, "rb") as f:
+                tar.addfile(info, f)
+
+    with tarfile.open(out + ".part", "w:gz", compresslevel=6) as tar:
+        for f in ("install.sh", "uninstall.sh"):
+            add(tar, os.path.join(PAYLOAD, "installer", "linux", f), f"{top}/{f}")
+        for dp, ds, fs in os.walk(PAYLOAD):
+            rel = os.path.relpath(dp, PAYLOAD).replace("\\", "/")
+            base = f"{top}/payload" + ("" if rel == "." else "/" + rel)
+            add(tar, dp, base)
+            for f in sorted(fs):
+                add(tar, os.path.join(dp, f), f"{base}/{f}")
+    os.replace(out + ".part", out)
+    print(f"   {out}: {os.path.getsize(out) / 1048576:.0f} MB, sha256 "
+          f"{hashlib.sha256(open(out, 'rb').read()).hexdigest()}", flush=True)
+    return out
+
+
 def main():
+    if "--linux-only" in sys.argv:                   # (the tar.gz from the payload already staged)
+        linux_bundle()
+        return
     if os.path.exists(PAYLOAD):
         shutil.rmtree(PAYLOAD)
     os.makedirs(PAYLOAD)
@@ -184,6 +230,7 @@ def main():
     stage_texts()
     shutil.copy2(os.path.join(ROOT, "VERSION"), os.path.join(PAYLOAD, "VERSION"))
     compile_setup()
+    linux_bundle()
     zip_map_pack()
 
 

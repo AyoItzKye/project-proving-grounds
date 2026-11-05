@@ -16,7 +16,7 @@ body:
     attributes:
       label: Mod version
       description: Shown at the top of the launcher.
-      placeholder: "0.2.0"
+      placeholder: "0.2.1"
     validations:
       required: true
   - type: dropdown

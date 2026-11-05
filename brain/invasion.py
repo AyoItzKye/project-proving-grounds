@@ -38,10 +38,12 @@ def _centroid(pts):
     return Vec(sum(p.x for p in pts) / len(pts), sum(p.y for p in pts) / len(pts), sum(p.z for p in pts) / len(pts))
 
 
-def layout(objs, shapes=None):
+def layout(objs, shapes=None, styles=None):
     """The map's Invasion setup, or None on a map without one:
     dict(attackers=team, defenders=team, phases={1: [territory Vec, ...], 2: [...], 3: [delivery Vec]},
-         core=Vec (the stand), res={team: {phase: [Vec]}}, barriers=[dict(key, a, b, z0, z1, through, kind)])."""
+         core=Vec (the stand), res={team: {phase: [Vec]}}, barriers=[dict(key, a, b, z0, z1, through, kind)], bomb=Vec
+         or None, bomb_phase). styles: a custom variant's phase objectives (brain/mvar.py phase_styles, {phase:
+         "assault" ...}): a map variant file's Assault phase has its bomb at that phase's inv_obj_flag."""
     flags = objs.get("netgame_flags", [])
     of = lambda t: [f for f in flags if f["type"] == t]
     goals = [_v(f["pos"]) for f in of("inv_objective")]
@@ -54,13 +56,23 @@ def layout(objs, shapes=None):
         zone_r.append((_v(f["pos"]), max(0.6, min(4.0, r or TERRITORY_R))))
     core = [_v(f["pos"]) for f in of("inv_obj_flag")]
     res = {}
+    # a map variant read from its file (brain/mvar.py) gives each object's spawn sequence as "phase": on Bungie's own
+    # Boneyard and Breakpoint files inv_objective 1, 2, 3 are the phase 1 and 2 territories and the delivery point,
+    # inv_obj_flag 3 the core's stand, 2 Breakpoint's bomb (DERIVED, haloreach/map_variants). Respawn zones: inv_res_zone
+    # by team and sequence where the map has them so (the issue #2 player: "I only use Inv_res_zone on the hills because
+    # Inv_Res_ph1 to 3 don't work in customs") when it has no inv_res_p1..p3 (Boneyard has both: its p1..p3 hold)
+    zoned = [] if any(of(f"inv_res_p{ph}") for ph in (1, 2, 3)) else [
+        f for f in of("inv_res_zone") if f.get("phase") in (1, 2, 3) and f["team"] in (0, 1)]
     for ph in (1, 2, 3):
-        for f in of(f"inv_res_p{ph}"):
+        for f in [f for f in zoned if f["phase"] == ph] if zoned else of(f"inv_res_p{ph}"):
             res.setdefault(f["team"] % 2, {}).setdefault(ph, []).append(_v(f["pos"]))
     if len(goals) < 3 or not core or len(res) < 2 or any(1 not in r for r in res.values()):
         return None
-    # the attackers start farther from every objective (Boneyard: team 1 at x 220, the objectives at 250-310)
-    far = {t: min((_centroid(r[1]) - g).flat() for g in goals) for t, r in res.items()}
+    staged = {ph: [_v(f["pos"]) for f in of("inv_objective") if f.get("phase") == ph] for ph in (1, 2, 3)}
+    staged = staged if all(staged.values()) else None
+    # the attackers start farther from every objective (Boneyard: team 1 at x 220, the objectives at 250-310), from
+    # phase 1's where the file says which they are (Tempest, issue #2: the attackers' Pelican waits by their own side)
+    far = {t: min((_centroid(r[1]) - g).flat() for g in (staged[1] if staged else goals)) for t, r in res.items()}
     att = max(far, key=far.get)
     dfn = 1 - att
     # each phase's territories: the two objectives nearest the defenders' respawn zone of that phase; the one left
@@ -80,6 +92,12 @@ def layout(objs, shapes=None):
     # Breakpoint's phase 2 is a bomb run (halopedia, Invasion: "arm the bomb"; Breakpoint: "plant a bomb on the outside
     # of the vault"): its second core marker, by phase 1, is the bomb's stand; the phase 2 markers are where it is armed
     bomb = next((q for q in core if (q - stand).flat() > 5.0), None)
+    if staged:                                    # (the file's own phases, core stand and bomb stand)
+        phases = {1: staged[1], 2: staged[2], 3: staged[3][:1]}
+        by = {f.get("phase"): _v(f["pos"]) for f in of("inv_obj_flag")}
+        stand = by.get(3, stand)
+        bp = next((ph for ph in (1, 2) if styles.get(ph) == "assault"), None) if styles else 2
+        bomb = by.get(bp) if bp else None
     shp = _shapes() if shapes is None else shapes
     bars = []
     for k, f in enumerate(flags):
@@ -93,6 +111,11 @@ def layout(objs, shapes=None):
         if f["type"] == "inv_platform" and any((_v(f["pos"]) - q).flat() < 1.0 for q in core):
             continue                              # the core's (or bomb's) own stand: walked up to, not a wall (Spire's
                                                   # cov_powermodule_stand, a gate on the core: attackers 2 u off, live)
+        if f["type"] == "inv_platform" and staged and (_v(f["pos"]) - phases[3][0]).flat() < 5.0:
+            continue                              # the ship the core is delivered to (Tempest's Pelican, 1.7 u off)
+        if abs((f.get("up") or (0, 0, 1))[2]) < 0.9:
+            continue                              # a piece on its side (a floor tile stood up as a wall): brain/forge.py
+                                                  # PieceWatch walls it with its real axes; this outline is yaw-only
         yaw = math.radians(f.get("facing") or 0.0)
         fx, fy = math.cos(yaw), math.sin(yaw)     # the object's forward; left = (-fy, fx)
         p = _v(f["pos"])
@@ -109,7 +132,7 @@ def layout(objs, shapes=None):
         bars.append(dict(key=f"inv{k}", a=a, b=b, z0=p.z + z0, z1=p.z + z1, kind=kind, name=name, pos=p,
                          through=Vec(-fx, -fy, 0.0) if one_way else None))
     return dict(attackers=att, defenders=dfn, phases=phases, core=stand, res=res, barriers=bars, zone_r=zone_r,
-                bomb=bomb)
+                bomb=bomb, bomb_phase=(bp if staged else 2) if bomb is not None else None)
 
 
 def zone_radius(inv, p):
@@ -252,8 +275,9 @@ class Watch:
                 # Breakpoint's vault doors (the gates at its bomb's plant markers) are what the bomb blows open: in
                 # phase 3 they are open whatever still stands there (live: read closed after the detonation, the
                 # attackers' way in went over the vault's roof and they stood 4 u over the core for 250 s)
-                blown = [] if s.phase < 3 or s.inv.get("bomb") is None else [
-                    k for k, b in enumerate(s.gates) if any((b["pos"] - q).flat() < 1.5 for q in s.inv["phases"][2])]
+                bp = s.inv.get("bomb_phase") or 2
+                blown = [] if s.phase <= bp or s.inv.get("bomb") is None else [
+                    k for k, b in enumerate(s.gates) if any((b["pos"] - q).flat() < 1.5 for q in s.inv["phases"][bp])]
                 apply_barriers(s.T, s.inv, {b["key"]: k in here and k not in blown for k, b in enumerate(s.gates)})
                 # gates opening = the phase moved on (live, Boneyard: all 9 laser fields went when phase 1 was
                 # taken). Two reads in a row, so a flicker is not a phase; 20 s between steps (gate openings no
@@ -272,7 +296,7 @@ class Watch:
         snap.inv_core, snap.inv_core_carrier = (s.core, s.carrier) if s.phase == 3 else (None, None)
         if s.phase == 3 and s.core is None:       # phase 3 but the core not seen yet: go for its stand
             snap.inv_core = s.inv["core"]
-        if s.phase == 2 and s.inv.get("bomb") is not None:
+        if s.phase == (s.inv.get("bomb_phase") or 2) and s.inv.get("bomb") is not None:
             # Breakpoint's bomb run, played as phase 3's core run: the attackers take the bomb from its stand to the
             # nearer phase 2 marker and arm it there; the defenders guard the stand, hunt the carrier, hold the marker
             # (live: both rounds stood on the markers for minutes; nothing happens there without the bomb)
@@ -289,7 +313,7 @@ class Watch:
                 bm, key=lambda b: (Vec(*b["pos"]) - last).flat(), default=None)
             pos, carrier = (Vec(*b["pos"]), b["carrier"]) if b else (s.inv["bomb"], None)
             s.bomb_last = pos
-            plant = min(s.inv["phases"][2], key=lambda z: (z - pos).flat())
+            plant = min(s.inv["phases"][s.inv.get("bomb_phase") or 2], key=lambda z: (z - pos).flat())
             snap.inv_phase, snap.inv_zones, snap.inv_zone_r = 3, [plant], [zone_radius(s.inv, plant)]
             snap.inv_delivery, snap.inv_core, snap.inv_core_carrier = plant, pos, carrier
             # lying in its plant zone: armed (live: the carrier stood 4.6 s on the marker, then the game took it from

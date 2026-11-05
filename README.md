@@ -41,6 +41,8 @@ Found a bug? **[Report it here](https://github.com/AyoItzKye/project-proving-gro
 6. At the end the launcher opens and runs the **first-time setup** (a few minutes): it builds the 3D bots, emblems,
    effects and map pictures from your own copy of the game. None of the game's files ship with the mod.
 
+On Linux or a Steam Deck: see [Linux and Steam Deck](#linux-and-steam-deck).
+
 Optional download on the same Releases page: **human-play-data-&lt;version&gt;.zip**, recorded matches of people
 and bots for anyone who wants to study how they play (the zip has its own README).
 
@@ -161,7 +163,10 @@ player, gold on a vehicle, white on the ground or a wall. Click yourself on the 
 what you ride and which gun. Text versions: `tools\observer.py you <trace file>` and
 `tools\observer.py at <trace file> <seconds>`.
 
-The Observer keeps the last 10 matches.
+The Observer keeps your newest 5 games. When a new game starts, the oldest one you did not keep is removed. Press
+**Keep game** to keep a game for good; exported games and games with bug reports are always kept. A recording keeps
+at most the last 15 minutes of a game, so a long game does not fill your disk. Change both in **Recording settings**
+(saved in the `user` folder, kept by updates and Repair).
 
 ### Share a game
 
@@ -190,6 +195,16 @@ Tick **LiDAR mode** in the BOTS panel and start any match: up to 16 players, all
 The bots walk every floor, measure heights and jumps, and record where they fall. Open the **LiDAR Viewer** to watch
 in 3D: bots are white dots, you are gold, every step colours the floor by height, a jump or fall is a white trail that
 turns magenta only if the bot lands and is still alive 5 seconds later, and a red cross marks each deadly edge.
+Open the Viewer any time during the match: it shows the match live (the Simulator has its own window and never gets in
+the way).
+
+**Objectives of every game type.** Any game type works for LiDAR mode: the bots also visit every objective place the
+map has for all of its game types at once (flag stands and returns, hills, oddball and bomb spawns, plant points,
+territories, havens, drop points, race checkpoints, Invasion zones), read from the map's own data, plus objectives seen
+in the game on a Forge layout. Up to half the bots at a time walk to the nearest ones; the rest keep mapping. The scan
+saves each place with whether someone reached it and whether the bots' navigation reaches it, and the map's report
+(`logs\lidar_<map>.md`) lists the ones nobody reached. A jump you land up to one of those makes it reachable for every
+bot. The Simulator does the same offline and shows "Gametype objectives: n of m visited" in its panel.
 
 **Maps list** (L, or the button): one button per game, then a picture button per map with its real name and scan
 status (runs, floor cells, when it was last updated; LIVE on the one being scanned now). Click any map to see its
@@ -267,7 +282,7 @@ form asks for the game, mode, map and difficulty and has a box to drop the zippe
 
 | | Minimum | Recommended |
 |---|---|---|
-| Windows | 10, 64-bit | 11, 64-bit |
+| Windows | 10, 64-bit (or Linux / SteamOS with Proton: [Linux and Steam Deck](#linux-and-steam-deck)) | 11, 64-bit |
 | Game | Halo: The Master Chief Collection on Steam, Easy Anti-Cheat off | same |
 | CPU | 4 cores, one core as fast as an Intel Core i5-8400 / i7-4790K or AMD Ryzen 5 3600 | 6+ cores, one core as fast as an AMD Ryzen 5 5600X or Intel Core i5-12400 |
 | Memory | 8 GB | 16 GB |
@@ -285,12 +300,62 @@ The bots think on one CPU core, so a fast single core matters most; fewer bots n
 | Bots do not join | The brain's log is logs\brain.txt in the install folder (Open the install folder in the launcher). |
 | The game stutters with many bots | Use fewer bots; see the requirements. |
 | Another mod (ReShade, an ASI loader ...) | The launcher lists files from other mods that can clash and offers to start without them for one session. |
+| The launcher says the game is not found, or uses the wrong copy of MCC | In the launcher, **Game folder > Choose folder ...** and pick your MCC folder (the one with `MCC`, `halo1`, `halo3` ... in it), or paste its path and press **Use**. The choice is kept through updates and Repair; **Use automatic** goes back to the copy Steam has installed. Run **Repair** after switching to another copy. |
+
+### Which copy of MCC the mod uses
+
+In this order:
+
+1. The environment variable **`HB_MCC`**, if it is set (for example `setx HB_MCC "D:\MCC builds\stable"` in a
+   command prompt, then open the launcher again; `setx HB_MCC ""` clears it).
+2. The folder you chose in the launcher (**Game folder**), saved in `user\mcc_folder.txt` in the install folder.
+3. The copy Steam has installed (Steam's library list, `steamapps\libraryfolders.vdf`, every library on every drive).
+
+Several copies of MCC (for example one kept away from Steam updates for your own mods): choose the one to play in
+the launcher. **Play** starts Steam's own copy through Steam. Any other copy is started directly from its folder
+(`MCC\Binaries\Win64\MCC-Win64-Shipping.exe`, with anti-cheat off); Steam must be running and signed in, and the mod
+puts a `steam_appid.txt` file (976730) in that copy's folder so it starts as itself and not as Steam's copy. Already
+running a copy? The bots load into the one that runs.
+
+`python -I brain\paths.py` (from the install folder, with `python\python.exe`) prints what the mod finds.
 
 ## Uninstall
 
 In the launcher: **Uninstall** (bottom row), or Windows **Settings > Apps > Installed apps > Project Proving
 Grounds > Uninstall**. It removes the Windows Security
 exclusion if you added one and asks whether to keep your LiDAR scans, learned map data and recorded matches.
+
+## Linux and Steam Deck
+
+MCC runs on Linux and SteamOS through Proton, and so does the mod: its Windows parts run through the same Proton as
+the game. Linux support is new: if something does not work, please [report it](#report-a-problem).
+
+**Install** (on a Steam Deck: in Desktop Mode, with a keyboard or the on-screen keyboard: Steam + X)
+
+1. Install MCC through Steam and start it once (Steam sets up Proton for it), then quit it.
+2. Download **ProjectProvingGrounds-Linux-&lt;version&gt;.tar.gz** from the
+   [Releases page](https://github.com/AyoItzKye/project-proving-grounds/releases/latest) and unpack it (right-click >
+   Extract, or `tar -xzf ProjectProvingGrounds-Linux-<version>.tar.gz`).
+3. In a terminal (Konsole on the Deck), in the unpacked folder: `./install.sh`. It finds Steam (also the Flatpak
+   Steam) and MCC in any of your libraries (an SD card too), copies the mod to `~/.local/share/project-proving-grounds`,
+   runs the first-time setup (a few minutes) and adds **Project Proving Grounds** to the application menu. It does not
+   change MCC or MCC's Proton prefix, and needs no root rights.
+4. It prints one line for Steam. In Steam: **Halo: The Master Chief Collection > Properties > General > Launch
+   Options**, paste it. It looks like `"/home/deck/.local/share/project-proving-grounds/app/installer/linux/ppg-run.sh" %command%`.
+
+**Play**: press Play in Steam (Game Mode works) and choose the **anti-cheat off** option. The bots load as MCC
+starts; the rest is the same as on Windows ([Play](#play)). With anti-cheat on, the game starts as normal, without
+the bots. The log of each start is `logs/linux_play.txt` in the mod's folder.
+
+**The launcher** (setup, Repair, the Observer and the LiDAR tools): **Project Proving Grounds** in the application
+menu. It opens in your web browser.
+
+**Update**: run the new version's `./install.sh` (your LiDAR scans, learned map data and recordings are kept).
+**Uninstall**: `~/.local/share/project-proving-grounds/app/installer/linux/uninstall.sh`, then clear the launch option
+in Steam.
+
+Found in an unusual place? Set `PPG_STEAM` (Steam's folder), `PPG_MCC` (MCC's folder) or `PPG_PROTON` (a Proton
+folder) before `./install.sh`.
 
 ## For developers
 

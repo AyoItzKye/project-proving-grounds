@@ -146,6 +146,7 @@ SHIELD_BACK = 10.0                  # guide 06: a popped shield is 7-10 s out of
 DEFEND_R, ESCORT_R = 15.0, 12.0     # how far a defender strays from its post, an escort from our flag carrier (keep_role)
 DEFEND_HOLD = 6.0                   # a CTF defender closes on a man only this near its post (fight): from cover otherwise
 CLOSE_FIGHT_R = 8.0                 # a man in sight this close is fought whatever the role (decide)
+PRESS_NEAR = 3.0                    # u: a press (press_on) walks in to here; closer, push_in and the melee take over
 POWER_NEAR = 15.0                   # u: a power weapon up this near is not held back by a post (keep_role)
 REGROUP_MATE = 8.0                  # a teammate this close is support (brain/tracefmt.py FORM_R): no pull-back (regroup_point)
 HUNT_R = 12.0                       # an Invasion defender sent at the carrier / a territory being taken strays no farther
@@ -240,6 +241,10 @@ BLAST = {"rockets": 2.0, "fuelrod": 1.8, "plasma_launcher": 1.6, "incineration_c
 # (spartan laser); seconds of hold the bot wants
 CHARGE = {"plasma_pistol": ("release", 0.9), "plasma_launcher": ("release", 1.6), "railgun": ("release", 1.1),
           "boltshot": ("release", 1.0), "spartan_laser": ("auto", 3.0)}
+# the plasma launcher on a vehicle: its bombs lock one by one while the reticle holds it, then the red reticle; the player
+# (Breakpoint 20261102-184132, a Banshee at 14-25 u, logs/tmp/pl_spells.py) held his reticle within 4 deg of it 2.4, 2.2
+# and 4.4 s before letting go, the last volley killed it. Charged and the reticle on it this long, then let go
+PL_LOCK_S, PL_LOCK_R, PL_SLIP = 2.2, 1.5, 0.3   # s, u (the reticle on a vehicle: within this of its middle), s
 # melee-only weapons fire when the man is within their reach: the sword lunges on a red reticle (guide 03:
 # ~22 ft Halo 2, ~15 ft Halo 3 and later), the hammer swings so the impact lands at ~8 ft
 LUNGE = {"sword": 1.6, "gravity_hammer": 1.1}
@@ -283,6 +288,11 @@ FLEE_D, FLEE_PROGRESS, FLEE_REST = 8.0, 0.6, 5.0   # a boarder fled by open grou
                                                    # in a flee: none for FLEE_REST s (Bot.drive, open_way)
 BOARD_GIVE_UP, BOARD_BAN = 4.0, 20.0   # s pressing Use beside an enemy vehicle before it is left alone, and for how long
 BOARD_TRY_R, BOARD_SPEED = 6.0, 3.0   # u, u/s: an enemy vehicle this near, not running at us faster, is boarded (board_check)
+# the player's Scorpion board (Boneyard 20261102-192517, 544-557 s, logs/tmp/board_detail.py): its driver fought a man
+# 36 u off the other way (its view 110-170 deg off the line to him), the tank under 1.5 u/s; he walked in from 11 u,
+# waited 1.8-2.6 u off its front 3 s, got on from 2.3 u, and its driver was dead 1.6 s later (hits 0.55 s apart, melee
+# only, no grenade), he stepped off 1 s after. A tank whose driver looks BOARD_BLIND off us is stalked from BOARD_STALK_R
+BOARD_STALK_R, BOARD_BLIND, BOARD_FRONT, BOARD_MELEE_EVERY = 11.0, math.radians(90.0), 2.0, 0.55   # u, rad, u, s
 TANK_FETCH_R = 25.0   # u: an enemy tank about, a launcher this near is fetched by anyone Normal and up (vehicle_mission)
 IDLE_JUMP = 0.0255    # jumps a second standing about out of a fight, for nothing (times jump skill and 0.3 + jumpiness)
 JUMP_SHOT = 0.2125    # chance of a jump shot at each shot (times jumpiness and jump skill; 0.16 before, 0.25 to)
@@ -1156,19 +1166,24 @@ class Bot:
                 s.next_decide = now
                 return act
             vp = s.seat_point(v, "driver")
+            f = v.get("fwd")
+            if vehicles.kind_of(v["kind"]) in vehicles.TANKS and f and math.hypot(f[0], f[1]) > 0.1:
+                n = math.hypot(f[0], f[1])    # a tank from its front (the player's board, BOARD_FRONT)
+                vp = Vec(v["pos"][0] + f[0] / n * BOARD_FRONT, v["pos"][1] + f[1] / n * BOARD_FRONT, v["pos"][2])
             s.move_to(me, vp, act, nav)
             act.yaw, act.pitch = s.aim.step(now, dt, me, None, Vec(*v["pos"]), Vec(), False)
             if dist(me.pos, vp) < 1.8 or dist(me.pos, Vec(*v["pos"])) < 2.6:
                 act.action = int(now * 6) % 2 == 0
-                seat = vehicles.reach_seat(v["kind"], "driver")
-                if seat:
-                    act.seat, act.turret = seat
                 # Use beside it that does not take within BOARD_GIVE_UP: that vehicle is left alone BOARD_BAN s (live
                 # Avalanche 064500: #7 pressed Use 1.3 u from a Warthog's seat 200 s, its driver fleeing into a wall
                 # the whole time)
                 t = getattr(s, "board_try", None)
                 if t is None or t[0] != arg:
                     t = s.board_try = (arg, now)
+                # (Reach: its boarding seats, a second each; the other games' seat numbers are not Reach's)
+                seat = vehicles.reach_seat(v["kind"], "board" if s.game == "reach" else "driver", int(now - t[1]))
+                if seat:
+                    act.seat, act.turret = seat
                 if now - t[1] > BOARD_GIVE_UP:
                     s.__dict__.setdefault("board_ban", {})[arg] = now + BOARD_BAN
                     s.board_try, s.next_decide = None, now
@@ -1933,9 +1948,14 @@ class Bot:
             vp = Vec(*v["pos"])
             d = dist(me.pos, vp)
             drv = next((p for p in snap.players if p.vehicle == v["handle"] and p.alive and p.team != me.team), None)
-            if d > BOARD_TRY_R or drv is None:
+            if drv is None:
                 continue
             speed = drv.vel.flat() if drv.vel is not None else 0.0
+            # a slow tank whose driver looks away from us (BOARD_BLIND) is walked up on from farther (the player's board)
+            stalk = (vehicles.kind_of(v["kind"]) in vehicles.TANKS and speed <= BOARD_SPEED / 2 and
+                     abs(wrap(math.atan2(me.pos.y - vp.y, me.pos.x - vp.x) - drv.yaw)) > BOARD_BLIND)
+            if d > (BOARD_STALK_R if stalk else BOARD_TRY_R):
+                continue
             nose = abs(wrap(math.atan2(me.pos.y - vp.y, me.pos.x - vp.x) - s.heading(drv, v))) < math.radians(45)
             if (speed > BOARD_SPEED and nose) or speed > 2 * BOARD_SPEED:
                 continue
@@ -2321,12 +2341,15 @@ class Bot:
             if s.crew_ride is not None:
                 s.drive_to = s.patrol_point(me)
         seen = s.per.visible_enemies()
-        if any(p.vehicle == me.vehicle and p.alive and p.team != me.team for p in snap.players):
-            # on an enemy's vehicle (board_check): beat its driver out and plant a grenade, as people do on a tank's
-            # hull (UNVERIFIED live: what each game's boarding needs pressed after Use)
+        bt = getattr(s, "board_try", None)
+        if (bt is not None and bt[0] == me.vehicle and now - bt[1] < 15.0
+                and any(p.vehicle == me.vehicle and p.alive and p.team != me.team for p in snap.players)):
+            # on an enemy's vehicle we boarded (board_check): beat its driver out (and plant a grenade outside Reach).
+            # Only the boarder: live (Boneyard 20261103-183101) every boarded driver stopped and meleed as well
             act.forward = act.strafe = 0.0
-            act.fire, act.melee = False, int(now * 2.5) % 2 == 0
-            if now - s.seat_since > 1.0 and getattr(s, "board_nade", None) != me.vehicle:
+            # a press every BOARD_MELEE_EVERY (the player's); in Reach melee alone killed the driver, no grenade
+            act.fire, act.melee = False, int(now / (BOARD_MELEE_EVERY / 2)) % 2 == 0
+            if now - s.seat_since > 1.0 and getattr(s, "board_nade", None) != me.vehicle and s.game != "reach":
                 act.grenade, s.board_nade = True, me.vehicle
             s.note("vehicle: aboard theirs, beating it")
             return
@@ -3088,6 +3111,10 @@ class Bot:
             # 86%, Rusher 45%, Camper 27%, Sniper 18%). Rolled every tick of the opening 0.6 s it came out for nearly
             # everyone (99 / 91 / 75%), so the Grenadier did not stand out (tools/style_report.py)
             s.nade_open = s.rng.random() < min(1.0, s.p.grenades * 1.6 * (0.5 + 0.5 * s.p.tactics))   # (1.3 to)
+            # this fight, walking in on him in the gun's band (press_on; profiles.PRESS: Legendary every fight, Heroic
+            # half, no draw for the others)
+            press = profiles.PRESS.get(s.p.tier, 0.0)
+            s.press_fight = press >= 1.0 or (press > 0.0 and s.rng.random() < press)
         d = dist(me.pos, b.pos)
         target = snap.player(tid)
         s.dry_fire_check(me, target, tid)
@@ -3110,6 +3137,9 @@ class Bot:
         s.pushing = s.push_in(me, b, target, snap, d, lo) if not hold else False
         if s.pushing:
             fwd = 1.0
+        s.pressed_in = not s.pushing and not hold and fwd == 0.0 and s.press_on(me, b, target, snap, d, unseen)
+        if s.pressed_in:
+            fwd = 1.0              # intent to kill: in band, walk in on him while strafing (not stand and trade)
         if s.keep_off(me, target, d):
             fwd = -1.0             # out of his sword's lunge or hammer's swing, shooting (guide 03 counter-sword: keep
             s.pushing = False      # away and shoot the head on his way in; audit JUG-02: hunters out of hammer reach)
@@ -3345,7 +3375,7 @@ class Bot:
         # the fight's own reasons (tools/observer.py): on target or not, how long unseen, chasing by
         # the nav, held fire for a splash weapon, out of ammo
         s.fx = dict(d=round(d, 1), on=bool(on), hold=bool(hold), unseen=round(min(unseen, 99.0), 1),
-                    chase=bool(unseen > 0.5 and s.p.tactics > 0.15), strafe=bool(act.strafe),
+                    chase=bool(unseen > 0.5 and s.p.tactics > 0.15), strafe=bool(act.strafe), press=bool(s.pressed_in),
                     splash_hold=bool(blast and (d < blast or mates_near)), dry=bool(s.dry(me)),
                     charge=round(now - s.charge_since, 2) if getattr(s, "charge_since", None) is not None else None,
                     zoom=act.zoom)
@@ -3463,6 +3493,26 @@ class Bot:
                 and (not snap.shieldless or target.health <= 0.5))
         return w in CQ or (weak and d < 8.0) or d < min(lo, 2.0)
 
+    def press_on(s, me, b, target, snap, d, unseen):
+        """Intent to kill (profiles.PRESS, rolled per fight): inside the gun's band a Heroic or Legendary bot walks in on
+        the man it fights, strafing on the way, instead of holding its ground: while he is in view, the only man in view
+        or shield down, and the trade even or better (his shield down: always), to PRESS_NEAR. A skilled player walked
+        toward the man in view 47% of the in-view time, Legendary 33% (tools/intent.py). Not with a sniper, a launcher,
+        a sword or a hammer (their own rules), not onto another floor, not into his sword, not in a match without
+        shields (Halo 2 SWAT's Legendary already plays as it should)."""
+        if not getattr(s, "press_fight", False) or snap.shieldless or target is None or not target.alive:
+            return False
+        w = me.weapon
+        if w in SNIPERS or w in BLAST or w in LUNGE or target.weapon in LUNGE or unseen > 0.25:
+            return False
+        if d <= PRESS_NEAR or abs(b.pos.z - me.pos.z) > 1.3:
+            return False
+        if target.shield <= 0.25:
+            return True                      # his shield is down: commit to the kill
+        if len(s.per.visible_enemies()) > 1:
+            return False                     # two in view: hold (regroup_point and the retreat rules decide)
+        return me.shield + me.health >= target.shield + target.health - 0.3
+
     def fire_gap(s, w, d):
         """Seconds to the next press of a one-shot-a-press weapon: spam up close, the paced cadence at Medium,
         a little slower at Long (guide 03: DMR "At Short band spam; at Medium pace at 0.4 s; at Long 0.5
@@ -3491,6 +3541,18 @@ class Bot:
                 act.fire = s.shot_now = True
                 s.next_fire = now + s.fire_gap(w, d)
             return
+        if w == "plasma_launcher" and need > 0.05 and target is not None and target.vehicle != -1:
+            # on a vehicle: every bomb locked (PL_LOCK_S of the reticle on it) before letting go. The reticle is on it
+            # anywhere within the vehicle's size (PL_LOCK_R), not the man-sized window "on" uses: live (Breakpoint
+            # 20261103-181702, bot 5) the aim sat within 2.4 deg of a Banshee at 24-37 u for 12 s and never let go.
+            # Off it over PL_SLIP s, the clock restarts
+            ya, pa = angles_to(eye(me), target.pos)
+            r = math.atan2(PL_LOCK_R, max(d, 0.3))
+            if seen and abs(wrap(ya - act.yaw)) < r and abs(pa - act.pitch) < r:
+                s.pl_on, s.pl_seen = getattr(s, "pl_on", None) or now, now
+            elif now - getattr(s, "pl_seen", -9.0) > PL_SLIP:
+                s.pl_on = None
+            need, on = PL_LOCK_S, s.pl_on is not None and now - s.pl_on >= PL_LOCK_S and now - s.pl_seen < 0.05
         hi = WEAPON_RANGE.get(w, (5.0, 25.0))[1]
         if since is None:
             if seen and d <= hi * 1.3 and now >= s.next_fire:

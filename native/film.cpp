@@ -13,7 +13,8 @@
 // same input goes in at the same ticks, so the bots come back and do what they did. The brain never runs in a film
 // (botcore.cpp: g_playback).
 //
-// Files: <project>\logs\films\<key>.hbf, the newest KEEP kept. Record: u32 tick, u16 type, u16 length, bytes.
+// Files: %LOCALAPPDATA%\ProjectProvingGrounds\films\<key>.hbf (every copy of the mod; a film is replayed from
+// <project>\logs\films too, where each copy kept its own before), the newest KEEP kept. Record: u32 tick, u16 type, u16 length, bytes.
 #include <windows.h>
 #include <stdio.h>
 #include <string.h>
@@ -22,7 +23,8 @@
 
 extern hb_shared* g_shm;
 void logf(const char* fmt, ...);
-void film_dir(wchar_t* out);                  // botcore.cpp: <project>\logs\films (made if missing)
+void film_dir(wchar_t* out);                  // botcore.cpp: %LOCALAPPDATA%\ProjectProvingGrounds\films, every copy's
+void film_old_dir(wchar_t* out);              // botcore.cpp: <project>\logs\films, this copy's before (read only)
 
 enum : uint16_t { R_CMD = 1, R_BOTS = 2, R_BUTTONS = 3, R_SPAWN = 4 };
 static const int KEEP = 30;
@@ -54,8 +56,8 @@ static void close_all() {
     g_mode = 0; g_have = false; g_rec_any = false;
 }
 
-static void path_of(uint64_t key, wchar_t* out) {
-    wchar_t dir[MAX_PATH]; film_dir(dir);
+static void path_of(uint64_t key, wchar_t* out, bool old = false) {
+    wchar_t dir[MAX_PATH]; if (old) film_old_dir(dir); else film_dir(dir);
     swprintf_s(out, MAX_PATH, L"%s\\%016llx.hbf", dir, (unsigned long long)key);
 }
 
@@ -158,7 +160,11 @@ const film_frame* film_tick(uint64_t key, uint32_t tick, bool playback, uint32_t
             close_all();
             g_key = key;
             wchar_t p[MAX_PATH]; path_of(key, p);
-            if (_wfopen_s(&g_in, p, L"rb") == 0 && g_in) { g_mode = 2; logf("film: replaying the bots from %ls", p); }
+            if (_wfopen_s(&g_in, p, L"rb") != 0) {    // (a match recorded before the shared folder)
+                g_in = nullptr; path_of(key, p, true);
+                if (_wfopen_s(&g_in, p, L"rb") != 0) g_in = nullptr;
+            }
+            if (g_in) { g_mode = 2; logf("film: replaying the bots from %ls", p); }
             else { g_mode = 3; logf("film: no recording for this film (%016llx): no bots in it", (unsigned long long)key); }
             for (int i = 0; i < HB_MAX_PLAYERS; i++) g_frame.index[i] = -1;
             memset(g_frame.act, 0, sizeof g_frame.act);

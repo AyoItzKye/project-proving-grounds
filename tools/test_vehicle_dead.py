@@ -1,9 +1,10 @@
 """Wrecks and duds (The Pit the same night: two Warthogs behind the map's fences took 15-18% of both teams' bot time,
 13,921 rows 2-4 u off them, nobody ever in):
 
-1. each game's reader calls a vehicle dead from its body field (Live.VEH_VITAL: health left in CE / Halo 2 / Halo 3 /
-   ODST, damage taken in Reach / Halo 4 / H2A), only once it was read alive this match (a field that reads 0 from the
-   start keeps it usable); live_bots.vehicle_dead and vehicle_left (the trace's health left) never raise
+1. each game's reader calls a vehicle dead from the game's destroyed bit (Live.DEAD_AT: Halo 2 to Halo 4 / H2A) and
+   reads its health where object_get_health does (Live.HEALTH_BLOCK: Reach / H4 / H2A); CE from its body field once it
+   was read alive (a field that reads 0 from the start keeps it usable); live_bots.vehicle_dead and vehicle_left (the
+   trace's health left) never raise
 2. vehicles.usable: a wreck, a vehicle on its side and a dud are no ride; ride_score is 0 for a wreck
 3. the director sends no driver to a wreck (crew_orders) and a bot's own trip pick skips it (decide)
 4. a bot standing by a vehicle it cannot get into gives it up after DUD_S, and then nobody goes for it (the team's crew
@@ -30,51 +31,61 @@ import live_bots  # noqa: E402
 
 
 class Mem:
-    def __init__(s, off):
-        s.off, s.val = off, {}
+    """Objects at handle << 16, 0x400 bytes each, zeroed."""
+    def __init__(s):
+        s.obj = {}
+
+    def at(s, h):
+        return s.obj.setdefault(h, bytearray(0x400))
 
     def read(s, a, n):
-        b = bytearray(0x200)
-        struct.pack_into("<f", b, s.off, s.val.get(a >> 16, 1.0))
-        return bytes(b[a & 0xFFFF:(a & 0xFFFF) + n])
+        return bytes(s.at(a >> 16)[a & 0xFFFF:(a & 0xFFFF) + n])
 
 
 def reader(cls):
     r = object.__new__(cls)
-    r.g = Mem(cls.VEH_VITAL[0])
+    r.g = Mem()
     r.object = lambda h: h << 16
     return r
 
 
 def main():
     fails = []
-    # 1. the readers
-    for cls, off, dmg in ((Live, 0x9C, False), (LiveH2, 0xEC, False), (LiveH3, 0xF4, False), (LiveODST, 0xE8, False),
-                          (LiveReach, 0x128, True), (LiveH4F, 0x15C, True)):
-        if cls.VEH_VITAL != (off, dmg):
-            fails.append(f"{cls.__name__}: VEH_VITAL {cls.VEH_VITAL}, want {(off, dmg)}")
+    # 1. the readers: the game's destroyed bit (bit 2 of the damage flags byte, each DLL's object_get_health), and the
+    # health object_get_health reads (Reach / H4 / H2A: in a block the object places)
+    for cls, dead_at, block in ((LiveH2, 0x10A, None), (LiveH3, 0x110, None), (LiveODST, 0x104, None),
+                                (LiveReach, 0x138, 0x184), (LiveH4F, 0x16C, 0x1D0)):
+        if (cls.DEAD_AT, cls.HEALTH_BLOCK) != (dead_at, block):
+            fails.append(f"{cls.__name__}: DEAD_AT, HEALTH_BLOCK {cls.DEAD_AT}, {cls.HEALTH_BLOCK}, want {dead_at}, {block}")
             continue
         r = reader(cls)
-        alive, gone = (0.0, 1.0) if dmg else (1.0, 0.0)
-        r.g.val[1] = alive
+        o = r.g.at(1)
+        o[dead_at] = 0x03                     # other damage flags set, not the dead bit
         a = r.vehicle_dead(1)
-        r.g.val[1] = gone
+        o[dead_at] = 0x04
         b = r.vehicle_dead(1)
-        r.g.val[2] = gone                     # never read alive: kept usable
-        c = r.vehicle_dead(2)
-        if (a, b, c) != (False, True, False):
-            fails.append(f"{cls.__name__}: alive {a}, after its death {b}, read dead from the start {c} "
-                         f"(want False, True, False)")
+        if (a, b) != (False, True):
+            fails.append(f"{cls.__name__}: flags 0x03 dead {a}, flags 0x04 dead {b} (want False, True)")
+        if block is not None:
+            struct.pack_into("<hH", o, block, 0x18, 0x200)
+            struct.pack_into("<f", o, 0x210, 0.4)
+            got = r.vehicle_left(1)
+            struct.pack_into("<h", o, block, 0)
+            if got is None or abs(got - 0.4) > 1e-6 or r.vehicle_left(1) is not None:
+                fails.append(f"{cls.__name__}: health in its block read {got} (want 0.4), no block {r.vehicle_left(1)}")
+    r = reader(Live)                          # CE: no destroyed bit; body field 0 after read alive
+    struct.pack_into("<f", r.g.at(1), 0x9C, 1.0)
+    a = r.vehicle_dead(1)
+    struct.pack_into("<f", r.g.at(1), 0x9C, 0.0)
+    b, c = r.vehicle_dead(1), r.vehicle_dead(2)   # (2: read 0 from the start, kept usable)
+    if (a, b, c) != (False, True, False):
+        fails.append(f"Live (CE): alive {a}, after its death {b}, read dead from the start {c} (want False, True, False)")
     r = reader(LiveH3)
     r.object = lambda h: (_ for _ in ()).throw(OSError("read failed"))
     if live_bots.vehicle_dead(r, 1) is not False or live_bots.vehicle_dead(object(), 1) is not False:
         fails.append("live_bots.vehicle_dead raised or did not answer False on a failed read / a reader without it")
     if live_bots.vehicle_left(r, 1) is not None or live_bots.vehicle_left(object(), 1) is not None:
         fails.append("live_bots.vehicle_left raised or did not answer None on a failed read / a reader without it")
-    r = reader(LiveReach)                     # the trace's health left: Reach's field is damage taken
-    r.g.val[1] = 0.25
-    if live_bots.vehicle_left(r, 1) != 0.75:
-        fails.append(f"live_bots.vehicle_left: Reach damage 0.25 read {live_bots.vehicle_left(r, 1)} left (want 0.75)")
     # 2. usable
     ok = dict(handle=7, kind="warthog", pos=(0.0, 0.0, 0.0), occupied=False, riders=0, up=(0.0, 0.0, 1.0))
     wreck, side = dict(ok, dead=True), dict(ok, up=(0.0, 1.0, 0.0))

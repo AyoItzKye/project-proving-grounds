@@ -275,6 +275,11 @@ REACH_SEATS = {"warthog": dict(passenger=(1,), turret=True), "rwarthog": dict(pa
                "wraith": dict(turret=True), "falcon": dict(passenger=(1, 2, 3, 4, 5), turret=True),
                # ponytail: the seat by the driver only; the troop bed's three ride on the bed, a vehicle of its own
                "thog": dict(passenger=(1,))}
+# ... and its boarding seats (reach_seats.json: the seats flagged "boarding seat"), where a boarder of an enemy's vehicle
+# asks to go: live (Breakpoint 20261103-181702, bot 1) Use with the driver's seat asked 3 s beside an enemy Wraith never
+# took. The gun riding on a Warthog / Falcon has its own (seat 1 of the gun)
+REACH_BOARD = {"warthog": (2, 3), "rwarthog": (2, 3), "gauss": (2, 3), "mongoose": (2, 3), "scorpion": (5, 6, 7),
+               "ghost": (1, 2, 3), "wraith": (1, 2, 3), "revenant": (2, 3), "banshee": (1, 2), "falcon": (6, 7)}
 
 
 def reach_seat(kind, want, tries=0):
@@ -284,6 +289,9 @@ def reach_seat(kind, want, tries=0):
     if k == "turret":
         return (0, False)                   # a standalone gun: its only seat
     s = REACH_SEATS.get(k, {})
+    if want == "board":                     # an enemy's vehicle: its boarding seats in turn, else its driver's
+        b = REACH_BOARD.get(k)
+        return (b[tries % len(b)], False) if b else (0, False)
     if want == "driver":
         return (0, False)
     if want == "gunner":

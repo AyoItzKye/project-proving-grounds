@@ -33,6 +33,12 @@ LOOSE = {"novice": dict(follow=0.35, early=0.4), "average": dict(follow=0.3, ear
 # onto a man (435 deg/s, p95 of his Cyberdyne acquisitions, Aim.step); Legendary 1000 deg/s, a 180 in about 0.27 s.
 # Not jittered (make_profile): one more random draw would shift every seeded bot's other values
 TURN = {k: math.radians(v) for k, v in dict(novice=270, average=435, strong=650, top=1000).items()}
+# Intent to kill (bot.Bot.press_on): the share of fights a bot walks in on the man it fights inside its gun's band rather
+# than holding its ground to strafe. A skilled player's Halo 3 matches against Legendary (tools/intent.py, game memory
+# only): he walked toward the man in view 47% of the in-view time and held 39%, Legendary 33% and 63%; he came inside
+# melee reach in 18% of fights, Legendary 10%. Heroic half of Legendary's; Easy and Normal hold as before. Not jittered,
+# like TURN
+PRESS = {"novice": 0.0, "average": 0.0, "strong": 0.5, "top": 1.0}
 TIERS = {
     #           memory s, uses motion tracker, teamwork: follows the team's plan, shoots who the team
     #           shoots (focus fire) (+ HANDS). Easy goes it alone

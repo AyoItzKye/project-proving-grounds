@@ -327,8 +327,19 @@ uint32_t g_collector = 0;            // the brain records the player for the Obs
 uint32_t g_scale_games = 5;         // Scaling difficulty: the player's last games averaged (scale_games=)
 uint32_t g_sounds = 60;              // the BOTS panel's sound volume, 0-100, 0 off (sounds=; overlay.cpp play_sound)
 uint32_t g_playback = 0;             // a Theater film is running (set by the games' hooks): no brain, no bots (film.cpp)
-void film_dir(wchar_t* out) {        // where film.cpp keeps each match's bots: <project>\logs\films
+void film_old_dir(wchar_t* out) {    // where this copy kept them before: <project>\logs\films (film.cpp still reads it)
     swprintf_s(out, MAX_PATH, L"%s..\\..\\logs\\films", g_dir);
+}
+// where film.cpp keeps each match's bots: %LOCALAPPDATA%\ProjectProvingGrounds\films (made if missing). One folder for
+// every copy of the mod, like MCC's own films (per user): a film recorded with one copy (the working repo) plays with
+// the bots in another (the install). Each copy's own logs\films had a Reach film play with no bots.
+void film_dir(wchar_t* out) {
+    wchar_t base[MAX_PATH];
+    DWORD n = GetEnvironmentVariableW(L"LOCALAPPDATA", base, MAX_PATH);
+    if (!n || n >= MAX_PATH) { film_old_dir(out); CreateDirectoryW(out, nullptr); return; }
+    swprintf_s(out, MAX_PATH, L"%s\\ProjectProvingGrounds", base);
+    CreateDirectoryW(out, nullptr);
+    wcscat_s(out, MAX_PATH, L"\\films");
     CreateDirectoryW(out, nullptr);
 }
 void bug_reports_dir(wchar_t* out) { // the player's bug reports (overlay.cpp): <project>\logs\bug_reports

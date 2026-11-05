@@ -66,6 +66,16 @@
       <h2 id="play-h">Play</h2>
       <dl class="rows" id="play-rows">
         <dt>Game</dt><dd id="r-game" class="dim">Checking ...</dd>
+        <dt>Game folder</dt><dd><span id="r-folder" class="dim"></span>
+          <div class="actions" style="margin-top:6px">
+            <button id="mcc-browse" title="Pick the folder of the MCC copy the bots use (the one with MCC, halo1, halo3 ... in it)">Choose folder ...</button>
+            <button id="mcc-auto" hidden title="Use the copy Steam has installed">Use automatic</button>
+          </div>
+          <form class="actions" id="mcc-form" style="margin-top:6px">
+            <input id="mcc-path" aria-label="MCC folder path" placeholder="or paste the folder path here" style="flex:1; min-width:220px; font:inherit; color:var(--text); background:#0b0f14; border:1px solid var(--line); border-radius:8px; padding:8px 10px">
+            <button type="submit">Use</button>
+          </form>
+          <span id="mcc-state" aria-live="polite"></span></dd>
         <dt>Setup</dt><dd id="r-setup" class="dim">Checking ...</dd>
         <dt>Other mods</dt><dd id="r-mods" class="dim">Checking ...</dd>
       </dl>
@@ -107,7 +117,8 @@
         mapped map.
         <span id="r-lidar"></span></p></div>
     <div class="tool"><button data-task="lidar_view">LiDAR Viewer</button>
-      <p>See a map's scan in 3D, live during a LiDAR match or stored.</p></div>
+      <p>Your LiDAR match live in 3D (BOTS panel &gt; LiDAR mode, open this any time during the match), or a map's
+        stored scan. The Simulator has its own window.</p></div>
     <div class="tool"><button data-task="paint">Paint the nav</button>
       <p>Advanced: mark where bots may and may not walk on a map.</p></div>
     <p class="note" id="tool-state" aria-live="polite"></p>
@@ -147,7 +158,14 @@ function render(s) {
   $("version").textContent = "version " + s.version;
   if (s.mcc) setText("r-game", "Found" + (s.mcc_running ? " (running)" : "")
                      + (s.missing_games.length ? `; not installed: ${s.missing_games.join(", ")} (bots play in the games you have)` : ""), "ok");
-  else setText("r-game", "Not found: install Halo: The Master Chief Collection through Steam", "bad");
+  else if (s.mcc_choice) setText("r-game", "Your chosen folder is not there any more: choose it again, or use automatic", "bad");
+  else setText("r-game", "Not found: choose its folder below, or install Halo: The Master Chief Collection through Steam", "bad");
+  const how = s.mcc_env ? "set by HB_MCC" : s.mcc_choice ? "chosen by you" : "found automatically";
+  setText("r-folder", s.mcc ? `${s.mcc} (${how}` + (s.mcc_steam || s.wine ? ")" : "; Play starts this copy directly, Steam must be running)")
+                     : s.mcc_choice || "None yet", s.mcc ? "" : "dim");
+  if (s.mcc_found.length > 1) $("r-folder").textContent += `. Copies in your Steam libraries: ${s.mcc_found.join(", ")}`;
+  $("mcc-auto").hidden = !s.mcc_choice;
+  $("mcc-browse").hidden = s.wine;
   $("uninstall").hidden = !s.installed;
   const ready = s.setup.filter(x => x[1]).length;
   setText("r-setup", ready === s.setup.length ? "Ready" : `${ready} of ${s.setup.length} parts ready: run the first-time setup below`,
@@ -210,8 +228,21 @@ async function follow(task, box, stateEl) {
   refresh();
 }
 
+async function chooseMcc(body) {
+  setText("mcc-state", body.browse ? "Choose the folder in the window that opens ..." : "Checking ...", "dim");
+  const r = await post("/mcc", body);
+  setText("mcc-state", r.ok ? (body.auto ? "Back to automatic." : `Using ${r.message}. Run Repair if it is a different copy.`)
+                            : r.message, r.ok ? "ok" : "bad");
+  if (r.ok) $("mcc-path").value = "";
+  refresh();
+}
+$("mcc-browse").onclick = () => chooseMcc({browse: true});
+$("mcc-auto").onclick = () => chooseMcc({auto: true});
+$("mcc-form").onsubmit = e => { e.preventDefault(); chooseMcc({path: $("mcc-path").value}); };
+
 $("play").onclick = async () => {
-  if (state && !state.mcc) { setText("play-state", "Install MCC through Steam first.", "bad"); return; }
+  if (state && state.wine) { location.href = "steam://rungameid/976730"; setText("play-state", "Steam starts MCC: choose the anti-cheat off option. The bots load as it starts.", "dim"); return; }
+  if (state && !state.mcc) { setText("play-state", "Choose the MCC folder above first, or install MCC through Steam.", "bad"); return; }
   if (state && state.setup.some(x => !x[1])) setText("play-state", "Starting (the first-time setup is not finished: the 3D bots or pictures may be missing) ...", "warn");
   else setText("play-state", "Starting MCC ...", "dim");
   const r = await post("/run/play", {clean: !$("clean-wrap").hidden && $("clean").checked});
@@ -229,7 +260,15 @@ $("setup-force").onclick = () => runSetup("setup_force");
 for (const b of document.querySelectorAll("[data-task]")) {
   b.onclick = async () => {
     setText("tool-state", `Opening ${b.textContent} ...`, "dim");
+    const tab = state && state.wine ? window.open("about:blank") : null;   // (Linux: the tool's page opens in a tab)
     const r = await post("/run/" + b.dataset.task);
+    if (tab && r.ok && r.port) {
+      const url = `http://127.0.0.1:${r.port}/`;
+      for (let i = 0; i < 60; i++) {
+        try { await fetch(url, {mode: "no-cors"}); break; } catch (e) { await new Promise(res => setTimeout(res, 500)); }
+      }
+      tab.location = url;
+    } else if (tab) tab.close();
     setText("tool-state", r.ok ? `${b.textContent}: its window opens in a moment.` : r.message, r.ok ? "dim" : "bad");
   };
 }

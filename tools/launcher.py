@@ -1,5 +1,6 @@
 """Project Proving Grounds' launcher: the window the Start Menu shortcut opens. It shows what is ready (the game, the
-first-time setup, the map tools, mapped maps, mods that can clash), starts MCC with the bots, runs the first-time setup
+first-time setup, the map tools, mapped maps, mods that can clash), lets the player choose which MCC folder the mod uses
+(Windows' folder picker or a pasted path, saved in user/mcc_folder.txt; or automatic), starts MCC with the bots, runs the first-time setup
 (Repair: all of it again), opens the tools (Observer, LiDAR Simulator, LiDAR Viewer, nav painter), each in its own app
 window (tools/appwindow.py), and uninstalls (the installer's own uninstaller, once everything of the mod is closed).
 
@@ -35,15 +36,15 @@ PY = os.path.join(os.path.dirname(sys.executable), "python.exe") \
     if os.path.basename(sys.executable).lower() == "pythonw.exe" else sys.executable
 IDLE_STOP = 20.0          # seconds without a ping from the window before the server stops (no task running)
 LOGS = os.path.join(ROOT, "logs", "launcher")
-# task: (script and its arguments, keeps running on its own after it opened its window)
+# task: (script and its arguments, keeps running on its own after it opened its window, its window's port)
 TASKS = {
-    "play": (["launch.py"], False),
-    "setup": (["setup.py"], False),
-    "setup_force": (["setup.py", "--force"], False),
-    "observer": (["observer.py", "serve", "--open"], True),
-    "lidar_sim": (["lidar_sim.py", "--open"], True),
-    "lidar_view": (["lidar.py", "--view", "--open"], True),
-    "paint": (["paint.py", "--open"], True),
+    "play": (["launch.py"], False, None),
+    "setup": (["setup.py"], False, None),
+    "setup_force": (["setup.py", "--force"], False, None),
+    "observer": (["observer.py", "serve", "--open"], True, 8799),
+    "lidar_sim": (["lidar_sim.py", "--open"], True, 8798),     # (its own port: the Viewer and a LiDAR match use 8797)
+    "lidar_view": (["lidar.py", "--view", "--open"], True, 8797),
+    "paint": (["paint.py", "--open"], True, 8796),
 }
 procs = {}                # task: Popen
 last_ping = [time.time()]
@@ -79,11 +80,83 @@ def uninstall(srv):
     srv.shutdown()
 
 
+def pick_folder(start=None):
+    """Windows' own folder picker (IFileOpenDialog, folders only) over the launcher's window; the folder picked, or
+    None (cancelled, or no picker: the page also takes a pasted path)."""
+    import ctypes
+    from ctypes import wintypes as wt
+    ole = ctypes.oledll.ole32
+
+    def guid(s):
+        g = (ctypes.c_ubyte * 16)()
+        ole.CLSIDFromString(s, ctypes.byref(g))
+        return g
+
+    def call(obj, index, *args):                     # a COM method by its vtable slot (shobjidl.h order)
+        fn = ctypes.cast(obj, ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p)))[0][index]
+        types = [ctypes.c_void_p if type(a).__name__ == "CArgObject" else type(a) for a in args]   # (byref: a pointer)
+        return ctypes.WINFUNCTYPE(ctypes.HRESULT, ctypes.c_void_p, *types)(fn)(obj, *args)
+
+    try:
+        ole.CoInitializeEx(None, 2)                  # COINIT_APARTMENTTHREADED (this request's own thread)
+    except OSError:
+        pass
+    dlg, item = ctypes.c_void_p(), ctypes.c_void_p()
+    try:
+        ole.CoCreateInstance(guid("{DC1C5A9C-E88A-4DDE-A5A1-60F82A20AEF7}"), None, 1,       # FileOpenDialog
+                             guid("{D57C7288-D4AD-4768-BE02-9D969532D960}"), ctypes.byref(dlg))  # IFileOpenDialog
+        opts = wt.DWORD()
+        call(dlg, 10, ctypes.byref(opts))                                                   # GetOptions
+        call(dlg, 9, wt.DWORD(opts.value | 0x20 | 0x40 | 0x800))     # SetOptions: PICKFOLDERS FORCEFILESYSTEM PATHMUSTEXIST
+        call(dlg, 17, wt.LPCWSTR("Choose the Halo: The Master Chief Collection folder"))      # SetTitle
+        if start and os.path.isdir(start):
+            folder = ctypes.c_void_p()
+            try:
+                ctypes.oledll.shell32.SHCreateItemFromParsingName(
+                    wt.LPCWSTR(start), None, guid("{43826D1E-E718-42EE-BC55-A1E261C37BFE}"), ctypes.byref(folder))
+                call(dlg, 12, folder)                                                       # SetFolder
+                call(folder, 2)                                                             # Release
+            except OSError:
+                pass
+        owner = ctypes.windll.user32.FindWindowW(None, appwindow.TITLES["8793"])          # the launcher's window
+        call(dlg, 3, wt.HWND(owner or None))                                                 # Show (cancel raises)
+        call(dlg, 20, ctypes.byref(item))                                                   # GetResult
+        name = ctypes.c_void_p()
+        call(item, 5, ctypes.c_int(0x80058000 - (1 << 32)), ctypes.byref(name))            # GetDisplayName FILESYSPATH
+        path = ctypes.wstring_at(name.value)
+        ole.CoTaskMemFree(name)
+        return path
+    except OSError:
+        return None
+    finally:
+        for o in (item, dlg):
+            if o.value:
+                call(o, 2)
+
+
+def choose_mcc(body):
+    """The launcher's MCC folder choice: {"path": ...} (picked or pasted), {"browse": true} (the folder picker first),
+    {"auto": true} (back to automatic). (ok, message)."""
+    if body.get("auto"):
+        paths.choose(None)
+        return True, "automatic"
+    path = pick_folder(paths.mcc()) if body.get("browse") else (body.get("path") or "").strip().strip('"')
+    if not path:
+        return False, "" if body.get("browse") else "Type or paste a folder first."
+    if paths.wine() and path.startswith("/"):        # (a Linux path: Wine's drive Z: is the Linux root)
+        path = "Z:" + path.replace("/", "\\")
+    ok, said = paths.choose(path)
+    return ok, said
+
+
 def status():
     found = conflicts.scan()
     mapped, total = lidar_counts()
     mcc = paths.mcc()
-    return dict(version=version(), mcc=mcc, mcc_running=conflicts.mcc_running(), installed=bool(uninstaller()),
+    shown = os.path.realpath(mcc) if mcc else mcc    # (as the folder is really spelled: Steam's file is lowercase)
+    return dict(version=version(), mcc=shown, mcc_running=conflicts.mcc_running(), installed=bool(uninstaller()),
+                mcc_choice=paths.chosen(), mcc_env=bool(os.environ.get("HB_MCC")), mcc_steam=paths.is_steam_copy(mcc),
+                mcc_found=paths.installs(), wine=paths.wine(),
                 missing_games=[paths.GAME_NAMES[g] for g in paths.GAME_MAPS if g not in paths.games(mcc)] if mcc else [],
                 setup=setup.status()[1:], map_tools=bool(paths.map_tool("model2obj")),
                 lidar=dict(mapped=mapped, total=total), workshop=conflicts.workshop_count(),
@@ -96,13 +169,16 @@ def start(task, clean=False):
     if task not in TASKS:
         return False, "unknown task"
     if task in procs and procs[task].poll() is None:
+        port = TASKS[task][2]
+        if port:                                     # a tool keeps serving after its window closes: open it again
+            appwindow.open_window(f"http://127.0.0.1:{port}/")
         return True, "already running"
     if task == "play" and clean:
         moved = conflicts.turn_off()
         if moved:                                    # put back once MCC has come and gone (its own process)
             subprocess.Popen([PY, "-I", os.path.join(HERE, "conflicts.py"), "--restore-after-mcc"],
                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), cwd=ROOT)
-    args, _ = TASKS[task]
+    args = TASKS[task][0]
     os.makedirs(LOGS, exist_ok=True)
     log = open(os.path.join(LOGS, task + ".txt"), "w", encoding="utf-8")
     procs[task] = subprocess.Popen([PY, "-u", "-I", os.path.join(HERE, args[0]), *args[1:]], cwd=ROOT,
@@ -158,7 +234,11 @@ class Handler(BaseHTTPRequestHandler):
             self.send({"ok": True})
         elif self.path.startswith("/run/"):
             ok, msg = start(self.path[5:], bool(body.get("clean")))
-            self.send({"ok": ok, "message": msg}, code=200 if ok else 400)
+            port = TASKS.get(self.path[5:], (0, 0, None))[2]
+            self.send({"ok": ok, "message": msg, "port": port}, code=200 if ok else 400)
+        elif self.path == "/mcc":
+            ok, msg = choose_mcc(body)
+            self.send({"ok": ok, "message": msg})
         elif self.path == "/folder":
             os.startfile(ROOT)
             self.send({"ok": True})
@@ -175,6 +255,12 @@ class Handler(BaseHTTPRequestHandler):
             threading.Thread(target=uninstall, args=(self.server,), daemon=True).start()
         else:
             self.send({"error": "not found"}, code=404)
+
+
+class Server(ThreadingHTTPServer):
+    # no address reuse: on Windows it let a second launcher serve the same port as the first, and the new window
+    # talked to the old launcher (whose tools said "already running" and never opened)
+    allow_reuse_address = False
 
 
 def watch_idle(srv):
@@ -199,7 +285,7 @@ def main():
     conflicts.restore()                              # (files a clean launch moved aside, if the PC went off since)
     appwindow.remove_old_edge_profile()              # (0.1.0's Edge profile, signed into the user's account by Windows)
     try:
-        srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+        srv = Server(("127.0.0.1", port), Handler)
     except OSError:                                  # it runs already: show its window again
         if "--no-window" not in sys.argv:
             appwindow.open_window(url, (1040, 700))

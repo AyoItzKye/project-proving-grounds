@@ -15,10 +15,12 @@ import os
 
 
 class Collector:
-    def __init__(s, path, map_name, game, clock):
+    def __init__(s, path, map_name, game, clock, seconds=None):
+        """seconds: the longest recording, its last that many seconds kept (tools/recording.py); None: all of it."""
         s.path, s.clock = path, clock
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        s.out = open(path, "w", encoding="utf-8")
+        from recording import RollingFile           # (tools/ is on the path where a collector runs)
+        s.out = RollingFile(path, seconds, encoding="utf-8")
         s.last = {}                                  # person -> the last guns / equipment line written
         s.out.write(json.dumps(dict(t=round(clock(), 3), collect="start", map=map_name, game=game)) + "\n")
 
@@ -38,6 +40,7 @@ class Collector:
                 s.last[p.id] = g
                 lines.append(dict(t=round(now, 3), id=p.id, **g))
         s.out.write("".join(json.dumps(x) + "\n" for x in lines))
+        s.out.tick(now)
 
     def close(s):
         s.out.close()
