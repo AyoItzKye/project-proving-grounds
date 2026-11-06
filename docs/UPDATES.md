@@ -5,9 +5,10 @@ What changed in each version. Download the newest one from the [Releases page](h
 Click a version to see what changed since the one before it.
 
 <details open>
-<summary><b>0.2.2 s181</b> (November 6, 2026): Firefight on DLC maps, one brain per match</summary>
+<summary><b>0.2.2 s181</b> (November 6, 2026): Flood survivors use their shotguns, one Firefight brain per match</summary>
 
 ### Fixed
+- **Halo 4 Flood** (and Infection against swords): human bots kept swapping their shotgun for the magnum when the Flood were still a few steps away, then got caught with the magnum when the Flood arrived. Against an enemy with a sword or hammer coming at them, they now keep the shotgun out, or take it out in time. Against enemies with guns nothing changes.
 - **Firefight** ([#12](https://github.com/AyoItzKye/project-proving-grounds/issues/12)): after a match on Unearthed or Installation 04, the bots' brain for that match kept running into the next one and gave your bots a second set of orders. It now stops when its match ends.
 
 </details>

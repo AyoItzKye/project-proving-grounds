@@ -393,6 +393,35 @@ def check_h3_deployed():
     return out
 
 
+def check_flood_shotgun():
+    # Halo 4 Flood survivors meet a sword Flood with the shotgun (owner's game, trace 20261106-144807: they swapped to the
+    # magnum at 4-10 u, 76 times, and 41% of the Flood that reached a survivor found the magnum out); against a gunner
+    # the magnum still wins at Medium band (PvP unchanged)
+    M = get_map("h4_z05_cliffside")
+    out = []
+
+    def held(tier, mine, foe_w, d):
+        b = Bot(1, 0, make_profile(tier, "rusher", random.Random(1)), M, random.Random(1))
+        b.game = "h4"
+        me = PlayerState(1, 0, "human", Vec(20, 0, 1), weapon=mine, weapons=["shotgun", "magnum"])
+        me.ammo, me.mag = [24, 60], [6, 12]
+        foe = PlayerState(6, 1, "foe", Vec(20 + d, 0, 1), weapon=foe_w)
+        b.per.beliefs[6] = Belief(foe.pos, Vec(), 10.0, True, "eyes")
+        b.switch_ok_at, b.notes = 0.0, []
+        w = b.choose_weapon(10.0, me, "fight", 6, Snapshot(10.0, [me, foe], mode="infection"))
+        return mine if w < 0 else me.weapons[w]
+
+    for tier in ("average", "top"):
+        for d in (4.5, 6.0, 9.0):
+            if held(tier, "shotgun", "sword", d) != "shotgun":
+                out.append(f"flood_shotgun: {tier}, shotgun out, a sword Flood {d} u off: swapped to the magnum")
+        if held(tier, "magnum", "sword", 7.0) != "shotgun":
+            out.append(f"flood_shotgun: {tier}, magnum out, a sword Flood 7 u off: kept the magnum (want the shotgun)")
+        if held(tier, "shotgun", "magnum", 7.0) != "magnum":
+            out.append(f"flood_shotgun: {tier}, shotgun out, a magnum man 7 u off: kept the shotgun (want the magnum)")
+    return out
+
+
 def check_escort_stops():
     # the map-free escort brain ends with its match (live Nov 6, installed s180: an Installation 04 escort brain lived on
     # into the next match and drove its bots beside that match's brain; botcore ends play.py, not this child): reads that
@@ -732,7 +761,7 @@ def check_release_gate():
 CHECKS = {"air_kill_zone": check_air_kill_zone, "air_clearance": check_air_clearance, "air_wall": check_air_wall,
           "banshee_take": check_banshee_take, "warthog_gunner": check_warthog_gunner, "ctf_carry": check_ctf_carry,
           "h2a_flag_use": check_h2a_flag_use, "forge_items": check_forge_items, "h3_deployed": check_h3_deployed,
-          "ff_sides": check_ff_sides, "escort_stops": check_escort_stops,
+          "ff_sides": check_ff_sides, "escort_stops": check_escort_stops, "flood_shotgun": check_flood_shotgun,
           "mine_keep_clear": check_mine_keep_clear, "mine_route": check_mine_route, "dry_rearm": check_dry_rearm, "ff_dlc": check_ff_dlc, "melee_swing": check_melee_swing,
           "core_carry": check_core_carry, "koth_company": check_koth_company, "zone_rules": check_zone_rules,
           "territories_posts": check_territories_posts, "release_gate": check_release_gate}

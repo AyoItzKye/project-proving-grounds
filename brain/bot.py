@@ -259,6 +259,7 @@ PL_LOCK_S, PL_LOCK_R, PL_SLIP = 2.2, 1.5, 0.3   # s, u (the reticle on a vehicle
 # export-tag-to-xml): Reach, Halo 4, H2A swords (and Halo 4's Flood prongs, H2A's infected sword) autoaim range 2.25 u,
 # angle 6 deg; the gravity hammer (Reach, Halo 4) 1.35 u, 10 deg
 LUNGE = {"sword": 2.25, "gravity_hammer": 1.35}
+RUSH_R = 10.0         # u: a sword or hammer this near is met with the shotgun (the Flood close 3 u/s, 6 with a thruster)
 LUNGE_ANGLE = {"sword": math.radians(6.0), "gravity_hammer": math.radians(10.0)}
 LUNGE_BODY = 0.15     # u: half a Spartan's width, the part of him the red cone may touch (INFERRED: tags give width 0)
 # ... per game where the kit has no tags here: a skilled player's Halo 3 sword kills came from first presses at 1.2-2.0 u
@@ -1647,6 +1648,11 @@ class Bot:
                     v += 2.5 if d < (8.0 if i == cur else 6.0) else 0.0
                 if w in CQ:                            # up close the automatic / shotgun / sword comes out
                     v += 2.0 if d < CLOSE else 1.0 if d < SHORT_BAND else 0.0
+                    if t is not None and t.weapon in LUNGE and d < RUSH_R:
+                        # a sword or hammer coming for us (the Flood): the gun that stops him at arm's length is out
+                        # before he gets there (owner's Halo 4 Flood, trace 20261106-144807: 41% of the Flood that
+                        # reached a survivor found him holding the magnum, swapped to it at 5.6 u)
+                        v += 2.5
                 elif w in PRECISION and w not in ("pistol", "magnum") and d < CLOSE:
                     v -= 1.0                           # a rifle against a man strafing at arm's length
                 if (w == "plasma_pistol" and t is not None and t.shield > 0.6 and d < 10.0
@@ -1668,6 +1674,9 @@ class Bot:
             return v
 
         best = max(range(n), key=score)
+        # ponytail: the magnum's edge on the shotgun at Medium band is exactly this 1.0, and only floating point
+        # (3.0 * 0.8 = 2.4000000000000004) makes it a switch; right against a gunner, so kept. Make it explicit if the
+        # band table changes
         if best != cur and (cur < 0 or score(best) > score(cur) + 1.0):
             return pick(best, "range" if d is not None else "best gun")
         return -1
