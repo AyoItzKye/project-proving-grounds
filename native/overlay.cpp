@@ -21,6 +21,7 @@
 
 extern hb_shared* g_shm;
 extern hb_roster g_roster;           // botcore.cpp: the BOTS panel's list
+extern hb_roster g_ff_roster;        // botcore.cpp: Firefight's list (3 bots, your team)
 extern uint32_t g_collector;         // botcore.cpp: the brain records the player (Data collector)
 extern uint32_t g_scale_games;       // botcore.cpp: Scaling difficulty's games averaged
 extern uint32_t g_sounds;            // botcore.cpp: the BOTS panel's sound volume, 0-100 (0 off)
@@ -126,6 +127,8 @@ static bool frame_pixel(const uint8_t* p, DXGI_FORMAT f) {
     return b > 55 && b > r + 25 && g > r + 15;
 }
 
+static UINT g_probe_rows0, g_probe_rows1, g_probe_solid0, g_probe_solid1;
+static LONG g_probe_ff_logged = -1;
 static void probe_lobby(IDXGISwapChain* sc) {
     ID3D11Texture2D* back = nullptr;
     if (FAILED(sc->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)&back)) || !back) return;
@@ -145,7 +148,7 @@ static void probe_lobby(IDXGISwapChain* sc) {
     }
     bool ok = g_probe && bd.SampleDesc.Count == 1;
     for (int e = 0; e < 2 && ok; e++) {                   // OPTIONS' and START's left frame lines
-        UINT x = (UINT)mcc_probe_x(W, H, e), left = x > 6 ? x - 6 : 0;
+        UINT x = (UINT)mcc_probe_x(W, H, e, g_ff_lobby != 0), left = x > 6 ? x - 6 : 0;   // (Firefight: its own row)
         if (left + 12 > bd.Width || bot > bd.Height) { ok = false; break; }
         D3D11_BOX box;                                     // field order is left, top, FRONT, right, bottom, back
         box.left = left; box.right = left + 12;
@@ -154,15 +157,29 @@ static void probe_lobby(IDXGISwapChain* sc) {
         g_ctx->CopySubresourceRegion(g_probe, 0, 0, 0, 0, back, 0, &box);
         D3D11_MAPPED_SUBRESOURCE m;
         if (FAILED(g_ctx->Map(g_probe, 0, D3D11_MAP_READ, 0, &m))) { ok = false; break; }
-        UINT rows = 0;
+        UINT rows = 0, solid = 0;
         for (UINT y = 0; y < h; y++) {
             const uint8_t* row = (const uint8_t*)m.pData + y * m.RowPitch;
-            for (int xx = 0; xx < 12; xx++) if (frame_pixel(row + xx * 4, bd.Format)) { rows++; break; }
+            int on = 0;
+            for (int xx = 0; xx < 12; xx++) on += frame_pixel(row + xx * 4, bd.Format);
+            rows += on > 0;
+            solid += on == 12;
         }
         g_ctx->Unmap(g_probe, 0);
-        ok = rows > h * 7 / 10;
+        if (e == 0) g_probe_rows0 = rows; else g_probe_rows1 = rows;
+        if (e == 0) g_probe_solid0 = solid; else g_probe_solid1 = solid;
+        // a line down the tile height, not a blue band: the carnage report's blue team rows are blue straight across
+        // (the tile showed over the scoreboard, live H2A Nov 6); in the lobby the strip is solid in 37% of rows at most
+        // (its video behind the tiles; "a line only" made the tile blink there, s175-s176)
+        ok = rows > h * 7 / 10 && solid < h * 6 / 10;
     }
     back->Release();
+    if (ok != g_lobby_visible || g_ff_lobby != g_probe_ff_logged) {      // (evidence: which row was read, what it found)
+        logf("lobby probe: %s lobby, %ux%u, OPTIONS %u (%u solid) START %u (%u solid) of %u rows -> %s",
+             g_ff_lobby ? "Firefight" : "custom game", bd.Width, bd.Height, g_probe_rows0, g_probe_solid0, g_probe_rows1,
+             g_probe_solid1, h, ok ? "on screen" : "not seen");
+        g_probe_ff_logged = g_ff_lobby;
+    }
     g_lobby_visible = ok;
 }
 
@@ -194,7 +211,7 @@ static float ui_scale() { ImVec2 d = ImGui::GetIO().DisplaySize; return mcc_cont
 // --- the tile: same size as the lobby's tiles, the next slot right of START (ui_layout.h bots_tile_rect)
 static ImVec4 tile_rect() {
     ImVec2 b = bb_size();
-    return to_ui(bots_tile_rect(b.x, b.y));
+    return to_ui(bots_tile_rect(b.x, b.y, g_ff_lobby != 0));
 }
 
 static ImFont* g_font_label;   // Bahnschrift (Windows), close to MCC's condensed UI font
@@ -251,13 +268,15 @@ static void draw_tile(float t) {
     else if (g_shm->bots_enabled)
     {
         // the list in a few words: 7v8 Legendary, 12 bots Mixed (more than two teams), No bots
-        int teams = 0, tier = -1;
-        for (int t = 0; t < HB_TEAMS_MAX; t++) teams += roster_on_team(g_roster, t) > 0;
-        for (int i = 0; i < g_roster.n; i++) tier = tier < 0 || tier == g_roster.bot[i].tier ? g_roster.bot[i].tier : 5;
+        const hb_roster& R = g_ff_lobby ? g_ff_roster : g_roster;   // (Firefight: its own list of 3)
+        int teams = 0, tier = -1, n = R.n;
+        for (int t = 0; t < HB_TEAMS_MAX; t++) teams += roster_on_team(R, t) > 0;
+        for (int i = 0; i < n; i++) tier = tier < 0 || tier == R.bot[i].tier ? R.bot[i].tier : 5;
         const char* d = tier < 0 ? "" : DIFF_NAME[tier < 6 ? tier : 5];
-        if (!g_roster.n) sprintf_s(sum, "No bots");
-        else if (teams <= 2) sprintf_s(sum, "%dv%d %s", roster_on_team(g_roster, 0), roster_on_team(g_roster, 1), d);
-        else sprintf_s(sum, "%d bots %s", g_roster.n, d);
+        if (!n) sprintf_s(sum, "No bots");
+        else if (g_ff_lobby) sprintf_s(sum, "%d %s %s", n, n == 1 ? "bot" : "bots", d);
+        else if (teams <= 2) sprintf_s(sum, "%dv%d %s", roster_on_team(R, 0), roster_on_team(R, 1), d);
+        else sprintf_s(sum, "%d bots %s", R.n, d);
     }
     else
         sprintf_s(sum, "OFF");
@@ -317,7 +336,8 @@ static void draw_panel() {
     bots_panel_env e{};
     e.make_texture = make_texture;
     e.render_model = render_model; e.model_has = model_has; e.model_zoom = mv_set_zoom; e.model_head = mv_head; e.model_headroom = mv_set_headroom;
-    e.roster = &g_roster; e.enabled = &g_shm->bots_enabled; e.difficulty = &g_shm->difficulty;
+    e.roster = g_ff_lobby ? &g_ff_roster : &g_roster;     // (Firefight: its own list of 3; the 16-player list is kept)
+    e.enabled = &g_shm->bots_enabled; e.difficulty = &g_shm->difficulty;
     e.lidar_mode = &g_shm->lidar_mode; e.lidar_players = &g_shm->lidar_players;
     e.collector = &g_collector;
     e.sounds = &g_sounds; e.play_sound = play_sound; e.scale_games = &g_scale_games;
@@ -436,13 +456,21 @@ static void pad_frame() {
     g_pad_held = (g_show_tile && g_panel) || (g_pad_held && any);
 }
 
+static DWORD g_esc_eat;              // Esc closed the panel at this tick: its release (and repeats) stay ours
 static LRESULT CALLBACK wndproc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
     if (msg == WM_KEYDOWN || msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN || msg == WM_MOUSEWHEEL) g_pad_last = false;
+    // MCC backs out of the lobby on Esc's release: closing the panel with Esc left the lobby too (live Nov 6), as the
+    // pad's B would without g_pad_held
+    if (g_esc_eat && (msg == WM_KEYUP || msg == WM_KEYDOWN) && wp == VK_ESCAPE && GetTickCount() - g_esc_eat < 3000) {
+        if (msg == WM_KEYUP) g_esc_eat = 0;
+        return 0;
+    }
     if (g_ready && g_show_tile) {
         bool typing = g_panel && ImGui::GetIO().WantTextInput;   // a bot's name being typed: B and Esc are its
         if (!typing && msg == WM_KEYDOWN && wp == 'B' && !(lp & (1 << 30))) { g_panel = !g_panel; return 0; }
         if (!typing && msg == WM_KEYDOWN && wp == VK_ESCAPE && g_panel && !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId)) {
-            g_panel = false; play_sound(PS_BACK, g_sounds); return 0;   // (a confirmation open: Esc closes just that)
+            g_panel = false; play_sound(PS_BACK, g_sounds);   // (a confirmation open: Esc closes just that)
+            g_esc_eat = GetTickCount() | 1; return 0;
         }
         ImGui_ImplWin32_WndProcHandler(h, msg, wp, lp);
         bool mouse = msg >= WM_MOUSEFIRST && msg <= WM_MOUSELAST;

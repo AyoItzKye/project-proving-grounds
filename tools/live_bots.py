@@ -676,6 +676,7 @@ def main():
     ap.add_argument("--personality", default="rusher")
     ap.add_argument("--roster", help="botcore.ini with the BOTS panel's list: each bot's difficulty and play "
                     "style by its name (bots not on it get --tier / --personality)")
+    ap.add_argument("--ff-list", action="store_true", help="Firefight: --roster's Firefight list (ffbot= lines)")
     ap.add_argument("--map", default="bloodgulch", help="map folder in maps/ (play.py passes the running map)")
     ap.add_argument("--ffa", action="store_true", help="free for all: every player is an enemy")
     ap.add_argument("--game", default="ce", choices=("ce", "h2", "h3", "reach", "odst", "h2a", "h4"), help="ce = Halo CE (halo1.dll), h2 = Halo 2, h3 = Halo 3, reach = Halo: Reach, h2a = Halo 2 Anniversary, h4 = Halo 4")
@@ -693,7 +694,11 @@ def main():
     # Scaling difficulty (brain/scaling.py): one skill rating with no limit, set from the person's last Scaling games'
     # K/D; every bot on Scaling (its row on the BOTS list, else --tier) is made from it, both teams
     SCALE, SCALE_CFG = None, scaling.settings()
-    on_list = [b["tier"] for b in (botctl.roster(o.roster) or [])] if o.roster else []
+    panel = (botctl.roster(o.roster) or []) if o.roster else []
+    if o.roster and o.ff_list:   # Firefight's own list (play.py), else the list's first 3 till it is saved (ff_seed)
+        ff_list = botctl.roster(o.roster, firefight=True)
+        panel = ff_list if ff_list is not None else panel[:botctl.FIREFIGHT_PLAYERS - 1]
+    on_list = [b["tier"] for b in panel]
     if "scaling" in o.tier.split(",") + on_list:
         SCALE = scaling.update(n=scaling.games_window(o.roster) if o.roster else scaling.GAMES, cfg=SCALE_CFG)["play"]
         print("Scaling difficulty:", scaling.summary(SCALE, SCALE_CFG["weights"]),
@@ -763,7 +768,7 @@ def main():
     comms, said = [], 0           # director log: every callout spoken
     said_calls = set()            # callouts already in the trace
     everyone = Everyone()         # the world line rows: still time, teammates formed up, who is in sights
-    listed = {b["name"].lower(): b for b in (botctl.roster(o.roster) or [])} if o.roster else {}
+    listed = {b["name"].lower(): b for b in panel}
     dealt = {}                         # team -> bots dealt a style / tier so far (roster_pick)
     flag_before = {}
     t0 = time.time()

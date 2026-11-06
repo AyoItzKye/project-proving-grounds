@@ -35,10 +35,19 @@ inline ui_rect mcc_lobby_options(float W, float H) { return ui_at(mcc_content(W,
 inline ui_rect mcc_lobby_start(float W, float H) { return ui_at(mcc_content(W, H), 976, 158, 1211, 316); }
 inline ui_rect mcc_lobby_tiles(float W, float H) { return ui_at(mcc_content(W, H), 96, 158, 1211, 330); }  // + bars
 // the lobby probe (overlay.cpp probe_lobby): OPTIONS' and START's left frame lines, most of the tile height
-inline float mcc_probe_x(float W, float H, int k) { ui_page p = mcc_content(W, H); return p.x0 + (k ? 976 : 736) * p.s; }
+inline float mcc_probe_x(float W, float H, int k, bool ff = false) {
+    ui_page p = mcc_content(W, H); return p.x0 + (ff ? (k ? 1136 : 655) : (k ? 976 : 736)) * p.s;
+}
 inline ui_rect mcc_probe_rows(float W, float H) { return ui_at(mcc_content(W, H), 0, 164, 0, 308); }
 // the BOTS tile: the next slot right of START, MCC's own gap (5) and START's size
-inline ui_rect bots_tile_rect(float W, float H) { return ui_at(mcc_content(W, H), 1216, 158, 1451, 316); }
+inline ui_rect bots_tile_rect(float W, float H, bool ff = false) {
+    return ff ? ui_at(mcc_content(W, H), 1376, 158, 1611, 316) : ui_at(mcc_content(W, H), 1216, 158, 1451, 316);
+}
+// Firefight's custom lobby (Reach, ODST: mission, game type, OPTIONS, difficulty, START): the same tiles one slot
+// further right (the difficulty tile; measured live Nov 6 on the 3440x1440 buffer, Reach Custom Firefight frame lines:
+// mission 95-410, game type 416-651, OPTIONS 655-891, difficulty 896-1131, START 1136-1370, y 158-314)
+inline ui_rect mcc_ff_lobby_start(float W, float H) { return ui_at(mcc_content(W, H), 1136, 158, 1371, 316); }
+inline ui_rect mcc_ff_lobby_tiles(float W, float H) { return ui_at(mcc_content(W, H), 95, 158, 1371, 330); }
 
 // MCC's pause menu: the tile row (LEAVE, END GAME, SETTINGS, ...; room for six, 232 apart) and the Back button
 inline ui_rect mcc_pause_tiles(float W, float H) { return ui_at(mcc_content(W, H), 96, 160, 1484, 363); }

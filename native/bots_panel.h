@@ -100,9 +100,10 @@ const char* tier_key(int tier);                         // novice average strong
 const char* style_name(int style);                      // rusher .. sniper, any (brain/profiles.py)
 
 // botcore.ini lines: "roster=1", "teams=N", "bot=<team>,<tier key>,<style key>,<name>" (tools/botctl.py reads
-// them too); parse returns true when the line was a roster line
+// them too); parse returns true when the line was a roster line. Firefight's own list (3 bots, your team) is written
+// with the prefix "ff": "ffroster=1", "ffbot=..." (no teams line)
 bool roster_parse_line(const char* line, hb_roster& r);
-void roster_write(FILE* f, const hb_roster& r);
+void roster_write(FILE* f, const hb_roster& r, const char* prefix = "");
 
 // The bug report over a match: with MCC's pause menu up, a "Report bot bug" button; it (or F9) opens the report window.
 // overlay.cpp saves what was typed (logs/bug_reports/<time>/report.json); the brain adds the match recording.

@@ -280,6 +280,23 @@ def check_ctf_carry():
     return []
 
 
+def check_h2a_flag_use():
+    # H2A takes a CTF flag with Use, as a gun (native f_interaction); the brain only pressed Use on bombs, cores and
+    # Stockpile flags, so runners stood on red's flag and never took it (live Lockdown Multi Flag CTF, Nov 6 s177)
+    M = get_map("h2a_ca_lockout")
+    red, blue = Vec(0.3, 8.96, 3.15), Vec(-10.7, -8.82, -3.08)
+    me = PlayerState(2, 1, "runner", red + Vec(0.3, 0.2, 0.0))
+    flags = {0: FlagState(0, red, red, "home"), 1: FlagState(1, blue, blue, "home")}
+    snap = Snapshot(10.0, [me], flags, mode="ctf")
+    got = Bot.use_flag_point(me, snap, "h2a")
+    out = [] if got is not None and dist(got, red) < 0.01 else [f"h2a_flag_use: on red's flag, Use point {got} (want it)"]
+    if Bot.use_flag_point(me, snap, "h3") is not None:
+        out.append("h2a_flag_use: Halo 3 takes flags by walking onto them, no Use point wanted")
+    if bot(2, M, team=1).game != "h2a":
+        out.append("h2a_flag_use: the bot's game on an H2A map is not h2a")
+    return out
+
+
 def check_core_carry():
     from brain import invasion
     M = get_map("reach_70_boneyard")
@@ -399,6 +416,7 @@ def check_release_gate():
 
 CHECKS = {"air_kill_zone": check_air_kill_zone, "air_clearance": check_air_clearance, "air_wall": check_air_wall,
           "banshee_take": check_banshee_take, "warthog_gunner": check_warthog_gunner, "ctf_carry": check_ctf_carry,
+          "h2a_flag_use": check_h2a_flag_use,
           "core_carry": check_core_carry, "koth_company": check_koth_company, "zone_rules": check_zone_rules,
           "territories_posts": check_territories_posts, "release_gate": check_release_gate}
 

@@ -68,6 +68,11 @@ int main() {
         check(1400 * c.s <= W && 860 * c.s <= H && 680 * c.s <= W, "panel / report wider than the window", W, H);
         // the lobby probe reads inside the window
         check(mcc_probe_x(W, H, 0) >= 6 && mcc_probe_x(W, H, 1) + 6 <= W && mcc_probe_rows(W, H).y1 <= H, "probe", W, H);
+        // Firefight's lobby (its own row: further right, narrower tiles): the tile beside its START, START's size, on screen
+        ui_rect ft = bots_tile_rect(W, H, true), fs = mcc_ff_lobby_start(W, H), frow = mcc_ff_lobby_tiles(W, H);
+        check(ui_inside(ft, W, H) && !ui_overlap(ft, frow) && !ui_overlap(ft, fs), "Firefight tile off screen or on MCC's", W, H);
+        check(near(ft.y0, fs.y0, 0.5f) && near(ft.x1 - ft.x0, fs.x1 - fs.x0, 0.5f) && ft.x0 > fs.x1, "Firefight tile anchor", W, H);
+        check(mcc_probe_x(W, H, 1, true) + 6 <= W && mcc_probe_x(W, H, 0, true) >= 6, "Firefight probe", W, H);
     }
     if (fails) { printf("%d failures\n", fails); return 1; }
     printf("ui layout OK\n");

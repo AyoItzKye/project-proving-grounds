@@ -779,15 +779,24 @@ class Bot:
                 # the core / bomb run: the lead escort ahead on the way to the delivery point, the other behind (guide
                 # 07: "lead escort clears the route ... rear escort kills chasers"; the CTF home means nothing here)
                 d = (snap.inv_delivery - c.pos) * (1.0 if s.id % 2 == 0 else -1.0)
+            if getattr(s, "_terrain", None) is None:
+                from .maps import terrain
+                s._terrain = terrain(s.map)
+            ok = (lambda q: s._terrain.ground_ok(q.x, q.y, c.pos.z, drop=0.6) and s._terrain.los(c.pos, q))
+            if snap.mode == "firefight":
+                # the person's teammates: a step behind him, each its own spot, turned round him past a wall or a drop
+                # (live s172-s173 Beachhead: median 0.4-1.2 u, sent onto him, the spot behind him in a wall)
+                back = c.yaw + math.pi                # ten spots round him 36 degrees apart, behind him first
+                turns = sorted((k * math.pi / 5 for k in range(-5, 5)), key=abs)
+                good = [q for q in (c.pos + Vec(math.cos(back + a) * ESCORT_TRAIL, math.sin(back + a) * ESCORT_TRAIL, 0.0)
+                                    for a in turns) if ok(q)]
+                return good[s.id % 3 % len(good)] if good else c.pos
             n = d.flat()
             if n < 0.5:
                 return c.pos
             side = 1.5 if s.id % 2 else -1.5          # two escorts: one each side, never one spot
             q = c.pos + Vec(d.x / n * ESCORT_TRAIL - d.y / n * side, d.y / n * ESCORT_TRAIL + d.x / n * side, 0)
-            if getattr(s, "_terrain", None) is None:
-                from .maps import terrain
-                s._terrain = terrain(s.map)
-            return q if s._terrain.ground_ok(q.x, q.y, c.pos.z, drop=0.6) and s._terrain.los(c.pos, q) else c.pos
+            return q if ok(q) else c.pos
         if o.role == "hunter" and snap.mode == "ctf":
             f = (snap.flags or {}).get(me.team)
             if f is not None and f.state != "home":
@@ -1430,7 +1439,7 @@ class Bot:
                                             # reads "unknown" 0.5 s before the carrier read: Use dropped it)
         elif core_out:
             s.use_quiet_until = 0.0
-        spot = None if me.has_flag else s.on_loose_objective(me, snap)
+        spot = None if me.has_flag else (s.on_loose_objective(me, snap) or s.use_flag_point(me, snap, s.game))
         if spot is not None and now >= getattr(s, "use_quiet_until", 0.0):
             s.take(me, act, spot)  # on a bomb / stockpile flag / the Invasion core: take it (live: stood on the core)
         # carrying: no gun, but the flag or ball swings: hit a man at arm's length (one press a swing). Not the Invasion
@@ -2306,6 +2315,16 @@ class Bot:
         armed bomb on our goal disarms it). Picking up is take()."""
         q = Bot.loose_point(me, snap) if snap.mode != "race" else None     # (a gate is run through: nothing to take)
         return q if q is not None and dist(me.pos, q) < reach else None
+
+    @staticmethod
+    def use_flag_point(me, snap, game, reach=0.9):
+        """H2A's CTF flag is taken with Use, as a gun (native/h4f.cpp f_interaction); the other games take it by walking
+        onto it. The other team's flag, not carried, within reach: where to hold Use (take); None. (Live Lockdown Multi
+        Flag CTF, Nov 6 s177: runners stood 0.41-0.89 u from red's flag 122 rows, Use in none of them, 0-0)"""
+        if game != "h2a" or snap.mode != "ctf" or me.has_flag:
+            return None
+        f = (snap.flags or {}).get(1 - me.team % 2)
+        return f.pos if f is not None and f.state != "carried" and dist(me.pos, f.pos) < reach else None
 
     @staticmethod
     def take(me, act, pos):

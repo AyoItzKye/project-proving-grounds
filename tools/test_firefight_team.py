@@ -11,7 +11,9 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, ".."))
 from brain.core import PlayerState, Snapshot, Vec, dist  # noqa: E402
+from brain.bot import Bot  # noqa: E402
 from brain.director import Director  # noqa: E402
+from brain.profiles import make_profile  # noqa: E402
 from brain.maps import get_map  # noqa: E402
 
 M = get_map("reach_ff20_courtyard")
@@ -37,6 +39,47 @@ def main():
         fails.append(f"player down: {[(r, p) for r, p, _ in slots]} (want defenders on the 2 spots nearest him {want})")
     if dist(M["points"]["mid"], me) > 5.0 and any(dist(p, M["points"]["mid"]) < 0.5 for _, p, _ in slots):
         fails.append("player down: a bot sent to the open middle")
+    # the orders themselves (live Beachhead Nov 6, s172: with him standing at the start the three roamed 25-45 u off,
+    # their escort orders named nobody, Order.target -1, so Bot.lead had no one and the escort leash never held): every
+    # bot, Easy too, escorts the person by name
+    tiers = ("novice", "average", "top")
+    team = {i: Bot(i, 0, make_profile(t, "rusher", random.Random(i)), M, random.Random(i)) for i, t in zip((1, 2, 3), tiers)}
+    d = Director(0, M, team, random.Random(1))
+    sn = Snapshot(20.0, [human] + bots, mode="firefight")
+    d.assign_roles(20.0, sn)
+    for i, b in team.items():
+        lead = b.lead(sn.player(i), sn)
+        if b.order.role != "escort" or lead is None or lead.id != 0:
+            fails.append(f"bot {i} ({tiers[i - 1]}): order {b.order.role} target {b.order.target} (want escort, lead you)")
+    # and the team's vehicle picks do not take them off him (the same match: 3175 of their order rows were "drive", to
+    # Mongooses 20-40 u off, 724 escort; director.crew_orders counted escorts as free bots)
+    hog = dict(handle=77, kind="warthog", pos=(me.x + 6, me.y, me.z), riders=0, occupied=False, team=-1, gunner=False,
+               turrets=[], manned=[], fwd=(1.0, 0.0, 0.0), up=(0.0, 0.0, 1.0), left=1.0, dead=False)
+    sn = Snapshot(22.0, [human] + bots, mode="firefight", vehicles=[hog])
+    d.assign_roles(22.0, sn)
+    d.vehicle_orders(22.0, sn, list(team.values()))
+    if any(b.order.role != "escort" for b in team.values()):
+        fails.append(f"an empty Warthog by them: orders {[(i, b.order.role) for i, b in team.items()]} (want all escort)")
+    # where each goes: a step behind him, three spots apart (the fixed match: median 0.2-0.7 u from him, standing on him)
+    spots = [b.live_point(sn.player(i), sn) for i, b in team.items()]
+    behind = Vec(-1.0, 0.0, 0.0)                                   # (he faces +x: yaw 0)
+    if any(q is None or not 2.0 < dist(q, me) < 4.5 or (q - me).x * behind.x <= 0 for q in spots) or \
+            min(dist(a, b) for k, a in enumerate(spots) for b in spots[k + 1:]) < 1.5:
+        fails.append(f"escort spots {spots} (want 2-4.5 u behind him, 1.5 u apart)")
+    # the live state (Beachhead s173, trace 20261106-033841): he stood at the start, facing -2.56, the spot straight
+    # behind him off the walkable floor, and all three were sent onto him (objective 0.00 u from him in 1275-1357 rows)
+    park = get_map("reach_ff50_park")
+    at = Vec(-162.77, 60.1, -33.5)
+    you = PlayerState(0, 0, "you", at, is_bot=False, yaw=-2.56)
+    mates = [PlayerState(i, 0, f"b{i}", at + Vec(0.5 * i, 0, 0)) for i in (1, 2, 3)]
+    crew = {i: Bot(i, 0, make_profile("top", "rusher", random.Random(i)), park, random.Random(i)) for i in (1, 2, 3)}
+    d = Director(0, park, crew, random.Random(1))
+    sn = Snapshot(30.0, [you] + mates, mode="firefight")
+    d.assign_roles(30.0, sn)
+    spots = [b.live_point(sn.player(i), sn) for i, b in crew.items()]
+    if any(q is None or dist(q, at) < 2.0 for q in spots) or \
+            min(dist(a, b) for k, a in enumerate(spots) for b in spots[k + 1:]) < 1.5:
+        fails.append(f"Beachhead start: escort spots {spots} (want 2+ u off him on walkable floor, 1.5 u apart)")
     if fails:
         print("firefight team FAIL:\n  " + "\n  ".join(fails))
         sys.exit(1)

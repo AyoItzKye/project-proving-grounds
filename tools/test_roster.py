@@ -38,10 +38,18 @@ def main():
         p = os.path.join(tmp, "botcore.ini")
         open(p, "w").write(INI)
         r = botctl.roster(p)
+        no_ff = botctl.roster(p, firefight=True)               # (s170 and before: no Firefight list)
+        open(p, "w").write(INI + "ffroster=1\nffbot=0,novice,sniper,FireOne\nffbot=0,top,any,FireTwo\n")
+        ff, mp = botctl.roster(p, firefight=True), botctl.roster(p)
+        open(p, "w").write(INI + "ffroster=1\n")                # Firefight's list emptied: no bots, not the 16's
+        ff_empty = botctl.roster(p, firefight=True)
         open(p, "w").write("enabled=1\nred=4\nblue=4\n")      # a build from before the list: no list at all
         old = botctl.roster(p)
     if old is not None:
         fails.append("an ini without the list read as an (empty) list")
+    # Firefight's own list (native botcore.cpp ffbot= lines): its bots only, the 16-player list untouched by it
+    if no_ff is not None or ff_empty != [] or [b["name"] for b in ff or []] != ["FireOne", "FireTwo"] or mp != r:
+        fails.append(f"Firefight list: none {no_ff}, empty {ff_empty}, read {ff}, the 16's {mp == r}")
     want = [dict(name="NobleJackal", team=0, tier="top", style="rusher"),
             dict(name="Monitorx", team=1, tier="strong", style="any"),
             dict(name="Ghost, the 3rd", team=2, tier="novice", style="sniper"),   # a name may hold a comma
@@ -72,6 +80,11 @@ def main():
     if ("room = botctl.player_cap(o.game, firefight)" not in src or src.count("room > 0") < 2
             or "[:max(0, room)]" not in src):
         fails.append("play.py adds bots on a path the player cap does not cover")
+    # Firefight takes the panel's list too (s169: it used made-up teammates, the panel's 3 never joined): its own
+    # list, all on your team, and live_bots reads the same list for each bot's difficulty
+    if ('team = players[0]["team"] if ff else team' not in src or "botctl.roster(o.roster, firefight=True)" not in src
+            or '["--ff-list"]' not in src):
+        fails.append("play.py: Firefight does not take the panel's Firefight list onto the player's team")
     if fails:
         sys.exit("FAIL: " + "; ".join(fails))
     print("roster OK")

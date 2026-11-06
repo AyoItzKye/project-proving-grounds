@@ -1,4 +1,4 @@
-# Known bugs (0.2.2-s165)
+# Known bugs (0.2.2-s177)
 
 What I already know is broken or buggy in this version, so you don't have to report it (but if you find something worse, or a way to make it happen every time, a [bug report](https://github.com/AyoItzKye/project-proving-grounds/issues/new?template=bug_report.yml) still helps).
 
@@ -142,11 +142,11 @@ For everything that works, game by game, see the [bot status sheet](BOT_STATUS.p
 | [#2](https://github.com/AyoItzKye/project-proving-grounds/issues/2) | Invasion on custom Forge maps | Open | Bots don't play custom Forge Invasion layouts yet. |
 | [#4](https://github.com/AyoItzKye/project-proving-grounds/issues/4) | Bots stuck on Boneyard's stairs | Fixed in 0.2.2 | A floor in the map data that isn't there in the game, and how bots run the route up, both fixed. |
 | [#5](https://github.com/AyoItzKye/project-proving-grounds/issues/5) | Bots at High Ground's gate | Open | Bots can't use the gate terminal yet. |
-| [#7](https://github.com/AyoItzKye/project-proving-grounds/issues/7) | Halo 2 Anniversary Assault bomb not picked up | Open | The bomb needs Use held; the fix touches the pickup the CTF flag uses, so it waits for a real-match test. |
+| [#7](https://github.com/AyoItzKye/project-proving-grounds/issues/7) | Halo 2 Anniversary Assault bomb not picked up | Fixed in 0.2.2 s177 | Bots now hold Use until the bomb is in their hands (it also sits on a stand the pickup used to skip). Tested on Lockdown Multi-Bomb: bombs taken and one armed. |
 | [#8](https://github.com/AyoItzKye/project-proving-grounds/issues/8) | LiDAR Simulator stops early | Fixed in 0.2.2 | At Max speed a map was cut after 4 minutes; now it runs until mapped. |
 | [#9](https://github.com/AyoItzKye/project-proving-grounds/issues/9) | Halo 3 bots ignore trip mines | Open | Bots don't see Halo 3's trip mines and other placed hazards yet. |
 | [#10](https://github.com/AyoItzKye/project-proving-grounds/issues/10) | LiDAR Simulator bots start outside Forge creations | Fixed in 0.2.2 | They started on Forge World's own spawns; now inside the creation. |
 | [#11](https://github.com/AyoItzKye/project-proving-grounds/issues/11) | No weapon pickups on Forge creations | Open | Being looked at: needs a recorded match on a creation. |
-| [#12](https://github.com/AyoItzKye/project-proving-grounds/issues/12) | Firefight | Partly fixed in 0.2.2 | The BOTS panel now shows in the Firefight lobby (3 bots at most) and teammates hold a safe spot while you're down. Still open: no respawn on DLC maps, swinging at teammates when there's nothing to fight, refilling ammo, driving, and Elite-side bots shooting allied AI. |
+| [#12](https://github.com/AyoItzKye/project-proving-grounds/issues/12) | Firefight | Partly fixed in 0.2.2 s177 | The BOTS tile and panel show in the Reach and ODST Firefight lobbies with their own list of up to 3 bots, and those bots join on your team and stay a few steps behind you (s165 promised this but the tile did not show and teammates wandered off). Still open: no respawn on DLC maps, swinging at teammates when there is nothing to fight, refilling ammo, driving, and Elite-side bots shooting allied AI. |
 
 *Last updated November 6, 2026.*

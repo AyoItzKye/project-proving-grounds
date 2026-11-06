@@ -710,7 +710,8 @@ class Director:
             alive = [b for b in alive if b.id not in bz.get("ids", ())]
         # Easy plays for itself: no place in the team's plan or the commander's orders. Slayer: it wanders the
         # map; objective games: straight at the objective (a flag carrier still runs home, below)
-        for b in [b for b in alive if b.p.teamwork <= 0 and not snap.player(b.id).has_flag]:
+        # (Firefight: every teammate goes with the person, Easy too: the owner's "have them follow the player around")
+        for b in [b for b in alive if b.p.teamwork <= 0 and not snap.player(b.id).has_flag and snap.mode != "firefight"]:
             alive.remove(b)
             point = s.straight_objective(snap, snap.player(b.id).pos)
             s.roles[b.id] = "runner" if point is not None else "free"
@@ -781,8 +782,14 @@ class Director:
                 escorts += 1
             holder = carrier.id if carrier else next(
                 (p.id for p in snap.players if p.team == s.team and p.has_flag and p.alive), None)   # a person too
-            lead = (holder if holder is not None else vip if vip is not None else runner) if role == "escort" else None
-            b.set_order(Order(role, point, via=via, target=-1 if lead is None else lead))
+            lead = (holder if holder is not None else vip if vip is not None else
+                    getattr(s, "ff_lead", None) if snap.mode == "firefight" else runner) if role == "escort" else None
+            o = Order(role, point, via=via, target=-1 if lead is None else lead)
+            if snap.mode == "firefight":    # the person's teammates: no rogue rounds off on their own, Easy too
+                b.via_left = list(o.via) if o.role != b.order.role or o.via != b.order.via else b.via_left
+                b.order = o
+            else:
+                b.set_order(o)
         for b in free:
             s.roles[b.id] = "free"
             b.set_order(Order("free"))
@@ -864,7 +871,11 @@ class Director:
         busy = [b for b in alive if b not in foot and players[b.id] is not None and players[b.id].alive
                 and players[b.id].vehicle == -1 and not players[b.id].has_flag and b.p.tier != "novice"
                 and s.roles.get(b.id) not in ("ride", "board", "ferry") and not b.urgent(players[b.id], snap)]
-        s.crew_orders(now, snap, players, foot, busy)
+        # (Firefight: the person's escorts stay with him, no vehicle of their own; his empty gun still calls one, below.
+        # Live Beachhead s172: 3175 of their order rows "drive", to Mongooses 20-40 u off, 724 escort)
+        ff = snap.mode == "firefight"
+        s.crew_orders(now, snap, players, [b for b in foot if not ff or s.roles.get(b.id) != "escort"],
+                      [] if ff else busy)
         foot = [b for b in foot if s.roles.get(b.id) != "drive"]
         for v in snap.vehicles:
             if v.get("team") != s.team or not vehicles.needs_gunner(v, snap):
@@ -1374,8 +1385,9 @@ class Director:
             # teammates of the people: stay with the nearest human, fight whatever comes
             people = [p for p in snap.players if p.team == s.team and p.alive and not p.is_bot]
             if people:
-                s.ff_last = people[0].pos
+                s.ff_last, s.ff_lead = people[0].pos, people[0].id   # (assign_roles: the escorts' lead, Bot.lead)
                 return [("escort", people[0].pos, "aggression")] * n
+            s.ff_lead = None
             # the player is down (the owner, Nov 6: "if player dies have them roam or find a safe spot"): they hold the
             # map's safe spots nearest where he fell (its holds and named points), two spots so they are not stacked,
             # and fight from there until he is back (they ran into the open middle before)

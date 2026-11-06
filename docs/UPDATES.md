@@ -5,6 +5,24 @@ What changed in each version. Download the newest one from the [Releases page](h
 Click a version to see what changed since the one before it.
 
 <details open>
+<summary><b>0.2.2 s177</b> (November 6, 2026): Firefight bots that actually follow you, Halo 2 Anniversary bomb and flag pickups</summary>
+
+### Fixed
+- **Firefight** (s165 said these worked; in a real match they did not):
+  - The BOTS tile now shows in the Reach and ODST Firefight lobbies, next to START.
+  - Firefight has its own list of up to 3 bots, all on your team. Your 16-player list is kept as it is.
+  - The bots on that list are the ones who join (s165 added 3 random teammates instead).
+  - Teammates stay a few steps behind you and fight what comes, instead of wandering off or driving away.
+- **Halo 2 Anniversary**:
+  - Bots pick up the Assault bomb, which needs Use held ([#7](https://github.com/AyoItzKye/project-proving-grounds/issues/7)).
+  - Bots pick up the enemy flag in CTF again.
+- **The BOTS panel**:
+  - Closing it with Esc no longer backs you out of the lobby.
+  - The BOTS tile no longer shows on top of the post-game scoreboard.
+
+</details>
+
+<details>
 <summary><b>0.2.2 s165</b> (November 6, 2026): Invasion rework, vehicles fixed, Firefight bots panel, launcher updates</summary>
 
 ### New

@@ -14,6 +14,8 @@
 #include "third_party/imgui/imgui.h"
 #include "third_party/imgui/imgui_impl_dx11.h"
 
+extern int hb_panel_firefight;    // bots_panel.cpp: the Firefight lobby's list (3 bots, your team)
+
 void bots_panel_debug(int select, const char* popup);
 void bots_panel_debug_tab(int tab);
 void bots_panel_debug_reroll_failed(bool f);
@@ -90,6 +92,15 @@ static int selftest() {
         int on = 0;
         for (int i = 0; i < q.n; i++) on += q.bot[i].tier == 4;
         CHECK(q.n == 8 && on == 8, "quick setup's Scaling puts every bot on Scaling");
+    }
+    {   // Firefight (4 players): its list holds 3 bots on one team, whatever quick setup or Add asks for
+        hb_panel_firefight = 1;
+        hb_roster q{};
+        roster_fill(q, 4, 5, 3, HB_STYLE_ANY, 7);
+        bool more = roster_add(q, 0, 3, HB_STYLE_ANY, 9);
+        CHECK(q.n == 3 && q.teams == 1 && !more && roster_max_teams(5) == 1, "Firefight: 3 bots, one team, Add stops");
+        hb_panel_firefight = 0;
+        CHECK(roster_max_teams(5) == 8, "multiplayer keeps its eight teams after Firefight");
     }
     char path[MAX_PATH]; GetTempPathA(MAX_PATH, path); strcat_s(path, "hb_roster_test.ini");
     FILE* f = nullptr; fopen_s(&f, path, "w");
@@ -279,6 +290,11 @@ int main(int argc, char** argv) {
     else if (!strcmp(state, "collector")) collector = 1;
     else if (!strcmp(state, "collectoroff")) { collector = 1; enabled = 0; }   // on, but greyed out: no bots
     else if (!strcmp(state, "ce")) { title = 1; r.bot[0].team = 2; r.teams = 3; }
+    else if (!strncmp(state, "firefight", 9)) {           // Firefight's own list: 3 bots, your team (botcore.cpp ff_seed)
+        hb_panel_firefight = 1; roster_fill(r, 1, 3, 3, HB_STYLE_ANY, 42); select = 1;
+        if (!strcmp(state, "firefightquick")) popup = "Quick setup";
+        if (!strcmp(state, "firefightempty")) { r.n = 0; select = -1; }
+    }
     else if (!strcmp(state, "eight")) { roster_fill(r, 8, 2, 4, HB_STYLE_ANY, 5); select = 9; }
     else if (!strcmp(state, "full")) { roster_fill(r, 3, 5, 4, 0, 8); select = 0; }
     else if (!strcmp(state, "long")) {
