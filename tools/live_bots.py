@@ -239,6 +239,11 @@ def snapshot(live, now, prev, bot_ids, crouch=(), person_crouch=False):
             honks.append(v["handle"])
     snap = Snapshot(now, players, flags, mode="ctf" if flags else "slayer", vehicles=vehicles, honks=honks,
                     ground_weapons=GROUND["list"], shieldless=now - live.shields_at > 3.0)
+    if type(live).__name__ == "LiveH3":          # Halo 3's equipment out in the world (#9; Reach / H4 readers inherit
+        try:                                     # LiveH3 but their object tables differ)
+            snap.deployed = live.deployed(raw, now)
+        except Exception:
+            snap.deployed = []
     if hasattr(live, "match_state") and now - MATCH["t"] > 0.5:      # score, the variant's limit, time left
         MATCH["t"] = now
         try:

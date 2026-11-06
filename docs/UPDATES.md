@@ -5,6 +5,20 @@ What changed in each version. Download the newest one from the [Releases page](h
 Click a version to see what changed since the one before it.
 
 <details open>
+<summary><b>0.2.2 s179</b> (November 6, 2026): Halo 3 trip mines, Firefight teammates that fight like teammates</summary>
+
+### Fixed
+- **Halo 3**: bots now see thrown equipment (trip mines, bubble shields, regenerators and the rest) and route around an enemy trip mine instead of walking into it ([#9](https://github.com/AyoItzKye/project-proving-grounds/issues/9)).
+- **Firefight** ([#12](https://github.com/AyoItzKye/project-proving-grounds/issues/12)):
+  - Bots now join on Reach's DLC Firefight maps (tested on Unearthed).
+  - A bot that runs out of ammo now goes for a dropped gun, a Covenant one included. Reach bots also read how many rounds they have left.
+  - Bots only melee when an enemy is right in front of them. They used to swing at the air and hit teammates after a fight.
+  - Your teammates stay on foot with you instead of taking vehicles across the map, where they drove into walls.
+  - On the Elite side (Versus' Elite rounds), bots now fight beside the Covenant instead of shooting them.
+
+</details>
+
+<details>
 <summary><b>0.2.2 s178</b> (November 6, 2026): weapon pickups on Forge creations</summary>
 
 ### Fixed

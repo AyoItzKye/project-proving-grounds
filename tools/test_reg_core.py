@@ -349,6 +349,234 @@ def check_forge_items():
     return out
 
 
+def check_h3_deployed():
+    # Halo 3's thrown equipment for snap.deployed (#9): the deployed tag "objects\equipment\X\X" (not the X_equipment
+    # pickup, not a grenade), its owner's team from the player handle at +0xBC, kept first-seen time
+    import struct
+    from brain.live import LiveH3, NONE
+
+    class FakeH3:
+        deployed, _deployed_kind, _h3_names, DEPLOYED_KINDS, DEPLOYED_OWNER = (
+            LiveH3.deployed, LiveH3._deployed_kind, LiveH3._h3_names, LiveH3.DEPLOYED_KINDS, LiveH3.DEPLOYED_OWNER)
+
+        def __init__(s):
+            s._h3_tag_names = ["objects\\equipment\\tripmine\\tripmine",
+                               "objects\\equipment\\tripmine_equipment\\tripmine_equipment",
+                               "objects\\weapons\\grenade\\frag_grenade\\frag_grenade"]
+            s.mem, ents = {}, bytearray()
+            for k, (tag_ix, owner, pos) in enumerate([(0, 0xEC7F0005, (1.0, 2.0, 3.0)), (1, NONE, (5.0, 5.0, 5.0)),
+                                                      (2, 0xEC750005, (9.0, 9.0, 9.0))]):
+                addr = 0x1000 + k * 0x100
+                ents += struct.pack("<HBBIQQ", 0x1234, 0, 3, 0, 0, addr)
+                head = bytearray(0xC0)
+                struct.pack_into("<I", head, 0, 0xE0000000 | tag_ix)
+                struct.pack_into("<3f", head, 0x50, *pos)
+                struct.pack_into("<I", head, 0xBC, owner)
+                s.mem[addr] = bytes(head)
+            s.mem[0x10] = bytes(ents)
+            s.g = s
+
+        def _array(s, slot):
+            return 0x10, 3, 0x18
+
+        def read(s, addr, n):
+            return s.mem[addr][:n]
+
+    live = FakeH3()
+    got = live.deployed([dict(index=5, team=1), dict(index=2, team=0)], 12.0)
+    again = live.deployed([dict(index=5, team=1)], 15.0)
+    want = [("trip_mine", (1.0, 2.0, 3.0), 1, 12.0)]
+    seen = [(d["kind"], (d["pos"].x, d["pos"].y, d["pos"].z), d["team"], d["t"]) for d in got]
+    out = [] if seen == want else [f"h3_deployed: read {seen} (want {want}: the thrown mine only, player 5's team)"]
+    if [d["t"] for d in again] != [12.0]:
+        out.append(f"h3_deployed: the mine's first-seen time {[d['t'] for d in again]} (want it kept, 12.0)")
+    return out
+
+
+def check_ff_sides():
+    # Reach Firefight's AI by side (GitHub #12 "bots on the elites side will kill AI allies"): the unit's side byte
+    # +0x1CA, live Beachhead Versus Nov 6: Spartan players 1, Elite players 7, the Covenant 3. The Covenant go on the
+    # Elite players' team, human-side AI on the Spartans', and with no one playing Elites the Covenant stay -1
+    import struct
+    from brain.live import LiveReach, NONE
+
+    class FakeReach:
+        ai_units, UNIT_TEAM = LiveReach.ai_units, LiveReach.UNIT_TEAM
+
+        def __init__(s, sides):
+            s.mem, ents, s.g = {}, bytearray(), s
+            for k, (side, player) in enumerate(sides):
+                addr = 0x1000 + k * 0x400
+                e = bytearray(0x18)
+                struct.pack_into("<H", e, 0, 0x1234)
+                struct.pack_into("<Q", e, 0x10, addr)
+                ents += e
+                u = bytearray(0x214)
+                struct.pack_into("<I", u, 0x14, NONE)
+                struct.pack_into("<I", u, 0x1D0, player)
+                u[0x1CA] = side
+                s.mem[addr] = bytes(u)
+            s.mem[0x10], s.n = bytes(ents), len(sides)
+
+        def _array(s, slot):
+            return 0x10, s.n, 0x18
+
+        def read(s, addr, n):
+            return s.mem[addr][:n]
+
+        def _vitals(s, *a, **kw):
+            return 1.0, 1.0
+
+    h = lambda i: (0x1234 << 16) | i
+    versus = FakeReach([(1, 0), (7, 1), (3, NONE), (2, NONE)])     # a Spartan, an Elite (players 0, 1), two AI
+    got = [d["team"] for d in versus.ai_units([dict(unit=h(0), team=0), dict(unit=h(1), team=1)])]
+    out = [] if got == [1, 0] else [f"ff_sides: Versus AI teams {got} (want [1, 0]: the Covenant with the Elite, "
+                                    f"the human AI with the Spartan)"]
+    classic = FakeReach([(1, 0), (3, NONE)])
+    got = [d["team"] for d in classic.ai_units([dict(unit=h(0), team=0)])]
+    if got != [-1]:
+        out.append(f"ff_sides: Classic, Spartans only: Covenant team {got} (want [-1], everyone's enemy)")
+    return out
+
+
+def check_mine_keep_clear():
+    # the live frame (Rat's Nest Team King s178, trace 20261106-070330, 168.5-169.3 s): bot 11 backed toward team 1's
+    # trip mine at (-4.5, -5.4) facing away (yaw 2.249, forward -1), turning as it went, and set it off at 2.0 u (its
+    # shield gone). Kit.steer_clear sidestepped by the old facing and only inside 2.0 u. Replayed: 1.2 s at 3 u/s, the
+    # command's own facing turning, the mine must stay outside its reach (2.3 u: it went off at 2.0)
+    from brain.equipment import Kit
+    kit = Kit(make_profile("top", "objector", random.Random(11)), "h3")
+    mine = Vec(-4.5, -5.4, -9.4)
+    pos, yaw = Vec(-7.29, -3.46, -9.4), 2.249
+    closest = 99.0
+    for k in range(36):                       # 30 Hz, the brain's tick
+        me = PlayerState(11, 0, "b11", pos, yaw=yaw)
+        snap = Snapshot(168.5 + k / 30.0, [me], mode="king")
+        snap.deployed = [dict(kind="trip_mine", pos=mine, team=1, t=161.9)]
+        turn = yaw - 0.035 * k                # (it was turning toward the hill: 2.249 -> 1.224 in 0.3 s live)
+        act = Action(forward=-1.0, yaw=turn)
+        kit.steer_clear(me, snap, act)
+        c, sn = math.cos(act.yaw), math.sin(act.yaw)
+        wx, wy = act.forward * c - act.strafe * sn, act.forward * sn + act.strafe * c
+        n = math.hypot(wx, wy) or 1.0
+        pos = Vec(pos.x + wx / n * 0.1, pos.y + wy / n * 0.1, pos.z)
+        yaw = act.yaw
+        closest = min(closest, dist(pos, mine))
+    # inside the keep-out, pushing into a wall (168.88 s live: 2.55 u off it, the command north-east at 0.6, the body
+    # sliding south-east along the wall onto it): the command goes straight out, away from the mine
+    me = PlayerState(11, 0, "b11", Vec(-6.73, -4.16, -9.4), yaw=0.899)
+    snap = Snapshot(168.9, [me], mode="king")
+    snap.deployed = [dict(kind="trip_mine", pos=mine, team=1, t=161.9)]
+    act = Action(forward=0.6, yaw=0.913)
+    kit.steer_clear(me, snap, act)
+    c, sn = math.cos(act.yaw), math.sin(act.yaw)
+    wx, wy = act.forward * c - act.strafe * sn, act.forward * sn + act.strafe * c
+    ox, oy = me.pos.x - mine.x, me.pos.y - mine.y
+    if (wx * ox + wy * oy) / ((math.hypot(wx, wy) * math.hypot(ox, oy)) or 1.0) < 0.95:
+        return [f"mine_keep_clear: 2.55 u from the mine the step is ({wx:.2f}, {wy:.2f}), not away from it"]
+    return [] if closest > 2.3 else [f"mine_keep_clear: came {closest:.2f} u from an enemy trip mine (want 2.3+)"]
+
+
+def check_mine_route():
+    # Terrain.nav round an enemy mine (Kit.hazards, 3.0 u) on Rat's Nest's own nav: from bot 11's live start
+    # (-7.29, -3.46) to the hill way point it walked to (-3.6, -0.1), a mine put on the plain way's middle. Walked
+    # along the waypoints: the plain way goes over it, the hazard way round it and still gets there. (Its live mine lay
+    # 3.17 u off this way: that bot slid onto it along a wall, Kit.steer_clear's push-out, check mine_keep_clear)
+    T = terrain(get_map("h3_armory"))
+    goal = Vec(-3.6, -0.1, -9.4)
+
+    def walk(hazards, mine=None):
+        p, closest, path = Vec(-7.29, -3.46, -9.4), 99.0, []
+        for _ in range(300):
+            w = T.nav(p, goal, hazards=hazards)
+            if w is None or dist(p, goal) < 0.6:
+                break
+            d = Vec(w.x - p.x, w.y - p.y, 0.0)
+            n = math.hypot(d.x, d.y)
+            if n < 1e-6:
+                break
+            p = Vec(p.x + d.x / n * 0.2, p.y + d.y / n * 0.2, w.z)
+            path.append(p)
+            if mine is not None:
+                closest = min(closest, math.hypot(p.x - mine.x, p.y - mine.y))
+        return closest, dist(p, goal), path
+
+    _, _, plain = walk(())
+    if len(plain) < 6:
+        return [f"mine_route: the plain way is {len(plain)} steps (want a real walk)"]
+    mine = plain[len(plain) // 2]
+    round_, left, _ = walk(((round(mine.x, 1), round(mine.y, 1), round(mine.z, 1), 3.0),), mine)
+    if round_ < 2.3 or left > 1.0:          # (it went off at 2.0 u live; the 3 u nodes, cut a little at corners)
+        return [f"mine_route: with a mine on the way at {mine}: {round_:.2f} u off it, {left:.2f} u from the goal "
+                f"(want 2.3+ and there)"]
+    return []
+
+
+def check_dry_rearm():
+    # the live think row (Beachhead Firefight Nov 6, trace 20261106-074751, bot 3 dry from 159 s: grenade launcher and
+    # magnum both 0): its scores, fight 3.45 over the guns lying 6 u off at 3.0, replayed through Bot.dry_fights: the
+    # gun wins; a man at arm's length (a melee) still wins; with rounds left nothing changes
+    M = get_map("reach_ff50_park")
+    at = Vec(-162.0, 58.0, -33.5)
+    out = []
+    for foe_off, ammo, want in ((3.45, [0, 0], "item"), (1.5, [0, 0], "fight"), (3.45, [4, 0], "fight")):
+        b = bot(3, M, tier="top", style="rusher")
+        me = PlayerState(3, 0, "b3", at, weapon="grenade_launcher", weapons=["grenade_launcher", "magnum"], ammo=ammo)
+        b.per.beliefs[1200] = Belief(at + Vec(foe_off, 0.0, 0.0), Vec(), 170.0, True, "eyes")
+        scores = {("objective", Vec(-160.2, 59.1, -33.5)): 1.72, ("fight", 1200): 3.45,
+                  ("item", Vec(-167.0, 56.2, -33.5)): 3.0}
+        b.dry_fights(scores, me)
+        got = max(scores, key=scores.get)[0]
+        if got != want:
+            out.append(f"dry_rearm: rounds {ammo}, the man {foe_off} u off: best {got} {scores} (want {want})")
+    return out
+
+
+def check_ff_dlc():
+    # Reach's DLC Firefight maps lie under levels\dlc (live Unearthed: levels\dlc\ff_unearthed\ff_unearthed): read as
+    # Firefight, and play.py sends Firefight with no map data to the escort brain instead of quitting (no bots joined)
+    from brain.live import LiveReach
+
+    class Fake:
+        firefight, CACHE_HEADER = LiveReach.firefight, 0
+
+        def __init__(s, path):
+            s.path, s.g = path, s
+            s.base = 0
+
+        def read(s, addr, n):
+            return (s.path + bytes(128))[:n]
+
+    out = []
+    for path, want in ((b"levels\\dlc\\ff_unearthed\\ff_unearthed", True), (b"levels\\firefight\\ff50_park\\ff50_park", True),
+                       (b"levels\\multi\\70_boneyard\\70_boneyard", False), (b"levels\\dlc\\dlc_slayer\\dlc_slayer", False)):
+        if Fake(path).firefight() != want:
+            out.append(f"ff_dlc: {path} read as Firefight {not want} (want {want})")
+    src = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "play.py"), encoding="utf-8").read()
+    if 'escort = not have_map and (o.game == "odst" or (o.game == "reach" and' not in src:
+        out.append("ff_dlc: play.py does not send Reach Firefight without map data to the escort brain")
+    return out
+
+
+def check_melee_swing():
+    # the live frame (Beachhead Firefight Nov 6, trace 20261106-075931, 83.3 s): bot 1 swung at Elite 1353 1.22 u off
+    # with bot 3 first in the swing, 1.13 u off 19 deg to the side. Replayed through Bot.melee_check: held; held too with
+    # the Elite dead (the swing at the air after the kill); kept with only the Elite there
+    M = get_map("reach_ff50_park")
+    b = bot(1, M, tier="top", style="rusher")
+    me = PlayerState(1, 0, "b1", Vec(-170.06, 59.56, -33.5))
+    mate = PlayerState(3, 0, "b3", Vec(-170.63, 58.58, -33.5))
+    elite = PlayerState(1353, -1, "ai", Vec(-170.99, 58.77, -33.43))
+    out = []
+    for who, want in (([me, mate, elite], False), ([me, mate], False), ([me, elite], True)):
+        act = Action(yaw=-2.428, melee=True)
+        b.melee_check(me, Snapshot(83.3, who, mode="firefight"), act)
+        if act.melee != want:
+            out.append(f"melee_swing: with {[p.id for p in who[1:]]} the press {'kept' if act.melee else 'held'} "
+                       f"(want {'kept' if want else 'held'})")
+    return out
+
+
 def check_core_carry():
     from brain import invasion
     M = get_map("reach_70_boneyard")
@@ -468,7 +696,9 @@ def check_release_gate():
 
 CHECKS = {"air_kill_zone": check_air_kill_zone, "air_clearance": check_air_clearance, "air_wall": check_air_wall,
           "banshee_take": check_banshee_take, "warthog_gunner": check_warthog_gunner, "ctf_carry": check_ctf_carry,
-          "h2a_flag_use": check_h2a_flag_use, "forge_items": check_forge_items,
+          "h2a_flag_use": check_h2a_flag_use, "forge_items": check_forge_items, "h3_deployed": check_h3_deployed,
+          "ff_sides": check_ff_sides,
+          "mine_keep_clear": check_mine_keep_clear, "mine_route": check_mine_route, "dry_rearm": check_dry_rearm, "ff_dlc": check_ff_dlc, "melee_swing": check_melee_swing,
           "core_carry": check_core_carry, "koth_company": check_koth_company, "zone_rules": check_zone_rules,
           "territories_posts": check_territories_posts, "release_gate": check_release_gate}
 

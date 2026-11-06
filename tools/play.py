@@ -161,7 +161,9 @@ def main():
             break
         time.sleep(1)
     have_map = os.path.exists(os.path.join(ROOT, "maps", map_name, "heightmap.npz"))
-    escort = o.game == "odst" and not have_map      # ODST without map data: the map-free escort brain
+    # Firefight without map data (ODST's kit exports none; Reach's DLC Firefight maps, Unearthed and Installation 04,
+    # are not exported: bots never joined there, GitHub #12): the map-free escort brain
+    escort = not have_map and (o.game == "odst" or (o.game == "reach" and getattr(live, "firefight", lambda: False)()))
     if not escort and not have_map and not o.lidar:     # LiDAR maps blind too
         sys.exit(f"bots do not know the map '{map_name}' yet (supported: "
                  f"{', '.join(d for d in os.listdir(os.path.join(ROOT, 'maps')) if os.path.isdir(os.path.join(ROOT, 'maps', d)))})")

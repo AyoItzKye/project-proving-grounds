@@ -36,6 +36,7 @@ ITEM = {
     "evade": ("dash", 0.4, 0.0), "thruster": ("dash", 0.4, 0.0), "promethean_vision": ("self", 2.0, 12.0),
     "hardlight_shield": ("self", 5.0, 0.0), "regen_field": ("feet", 10.0, 0.6), "autosentry": ("front", 8.0, 8.0),
 }
+TRIP_KEEP = 3.0     # u off an enemy trip mine (Kit.avoid): live Rat's Nest s178, one went off on a bot at 2.0 u
 HEALS = {"regenerator", "drop_shield", "regen_field"}           # heal shields inside (both teams)
 DOMES = {"bubble_shield", "drop_shield"}                         # shots do not cross the dome
 TEAM_ITEMS = {"regenerator", "drop_shield", "deployable_cover", "regen_field"}   # hold them for the regroup
@@ -441,9 +442,14 @@ class Kit:
         """Spots to keep out of when moving: enemy trip mines (beeping), a power drain going off."""
         if s.lvl == 0:
             return []
-        # a power drain takes everyone's shields, ours too ("throw and back out of the radius")
-        return [(d["pos"], ITEM[d["kind"]][2]) for d in snap.deployed
+        # a power drain takes everyone's shields, ours too ("throw and back out of the radius"); a trip mine is kept
+        # TRIP_KEEP off (live Rat's Nest s178: one went off on a bot 2.0 u from it)
+        return [(d["pos"], TRIP_KEEP if d["kind"] == "trip_mine" else ITEM[d["kind"]][2]) for d in snap.deployed
                 if d["kind"] == "power_drain" or d["kind"] == "trip_mine" and d["team"] != me.team]
+
+    def hazards(s, me, snap):
+        """avoid() for the route planner (Terrain.nav hazards): ((x, y, z, r), ...), rounded so routes are cached."""
+        return tuple((round(p.x, 1), round(p.y, 1), round(p.z, 1), r) for p, r in s.avoid(me, snap))
 
     # ------------------------------------------------------------------ using our own
     @staticmethod
@@ -1229,11 +1235,20 @@ class Kit:
     def steer_clear(s, me, snap, act):
         """Step round an enemy trip mine or power drain when the next step goes into it (guide 08:
         "never walk a known vehicle route without checking the ground"; "step out of the radius")."""
-        c, sn = math.cos(me.yaw), math.sin(me.yaw)
+        # (the step is taken along the facing this command asks: the body's facing was used, and a bot turning as it
+        # backed toward a mine sidestepped the wrong way)
+        c, sn = math.cos(act.yaw), math.sin(act.yaw)
         wx, wy = act.forward * c - act.strafe * sn, act.forward * sn + act.strafe * c   # strafe +1 = left
         if math.hypot(wx, wy) < 0.2:
             return
         for pos, r in s.avoid(me, snap):
+            off = Vec(me.pos.x - pos.x, me.pos.y - pos.y, 0.0)
+            if off.flat() < r and abs(me.pos.z - pos.z) < 1.5:
+                # already inside: straight out, whatever the way asks (live Rat's Nest s178: a bot pushing into a wall slid
+                # along it onto a mine, its commanded step pointing away the whole time)
+                n = off.flat() or 1.0
+                act.forward, act.strafe = (off.x * c + off.y * sn) / n, (-off.x * sn + off.y * c) / n
+                return
             ahead = Vec(me.pos.x + wx * 0.8, me.pos.y + wy * 0.8, me.pos.z)
             if dist(ahead, pos) >= r or dist(me.pos, pos) > r + 3.0:
                 continue

@@ -11,7 +11,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, ".."))
 from brain.core import PlayerState, Snapshot, Vec, dist  # noqa: E402
-from brain.bot import Bot  # noqa: E402
+from brain.bot import Belief, Bot  # noqa: E402
 from brain.director import Director  # noqa: E402
 from brain.profiles import make_profile  # noqa: E402
 from brain.maps import get_map  # noqa: E402
@@ -60,6 +60,19 @@ def main():
     d.vehicle_orders(22.0, sn, list(team.values()))
     if any(b.order.role != "escort" for b in team.values()):
         fails.append(f"an empty Warthog by them: orders {[(i, b.order.role) for i, b in team.items()]} (want all escort)")
+    # nor their own goals: a hunt 30 u off with an empty Warthog by them is walked (live Beachhead s178: a bot left for
+    # a Mongoose on a far hunt, 596 rows; driving, they went into walls, GitHub #12)
+    # (the live frame, t 89.3: shot by an unseen Elite 35.5 u off, bot 3 turned to hunt him, then took a Mongoose)
+    b3, picks = team[3], set()
+    sn2 = Snapshot(22.5, [human] + bots, mode="firefight", vehicles=[hog])
+    for k in range(12):
+        t = 22.5 + k * 0.5
+        b3.goal, b3.vehicle_retry_at = ("roam", None), 0.0
+        b3.per.beliefs[1050] = Belief(me + Vec(-40.0, 0.0, 0.0), Vec(), t, False, "hit")
+        b3.per.attacker_id, b3.per.attacker_t, b3.per.attacker_notice = 1050, t, 0.0
+        picks.add(b3.decide(t, sn2.player(3), sn2)[0])
+    if "vehicle" in picks or "hunt" not in picks:
+        fails.append(f"an escort's own goals with an empty Warthog by it: {sorted(picks)} (want hunt, no vehicle)")
     # where each goes: a step behind him, three spots apart (the fixed match: median 0.2-0.7 u from him, standing on him)
     spots = [b.live_point(sn.player(i), sn) for i, b in team.items()]
     behind = Vec(-1.0, 0.0, 0.0)                                   # (he faces +x: yaw 0)

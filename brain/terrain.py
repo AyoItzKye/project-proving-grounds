@@ -1907,7 +1907,7 @@ class Terrain:
             memo[(id(graph), tele)] = (graph, np.array(pos, dtype=np.int64))
         return memo[(id(graph), tele)][1]
 
-    def _field(s, goal, jump=False, human=False, safe=False, limit=None, no_tele=False):
+    def _field(s, goal, jump=False, human=False, safe=False, limit=None, no_tele=False, hazards=()):
         # limit: costs out to this far only (a search round the goal, not the map: brain/bot.py man_appears)
         """Cost-to-goal over the walkable grid (Dijkstra), cached per goal node; with jump=True over the grid plus jump
         links (and people's jumps), with human=True plus people's jumps. safe=True: people's jumps down more than
@@ -1942,6 +1942,9 @@ class Terrain:
         tele = s._risky(graph, True) if no_tele else ()
         if len(tele):
             risky, ckey = np.concatenate([np.asarray(risky, dtype=np.int64), tele]), ("tele",) + ckey
+        haz = s._hazard_edges(graph, hazards) if hazards else ()
+        if len(haz):      # (each hazard set its own field: mines are few and short-lived)
+            risky, ckey = np.concatenate([np.asarray(risky, dtype=np.int64), haz]), ("haz", hazards) + ckey
         if limit is not None:
             limit = 10.0 * math.ceil(limit / 10.0)          # (shared out to the next 10 u)
             ckey = ("limit", limit) + ckey
@@ -2116,12 +2119,13 @@ class Terrain:
             return a                    # at (or a cell off) the end of the vehicle's ground nearest the goal: here it
         return s._center(*far) if far else b   # stops (drive's ground_end: a = its answer, never a short step)
 
-    def nav(s, a, b, lookahead=6, jump=False, human=False, safe=False, no_tele=False):
+    def nav(s, a, b, lookahead=6, jump=False, human=False, safe=False, no_tele=False, hazards=()):
         """Next point to walk toward on the way from a to b. jump=True (skilled players) also
         uses jump links, human=True (any bot that jumps) people's jumps: then the answer may be a
         JumpVec (run to its start, jump). safe=True (a carrier): round people's big drops while any other way
         exists (_field). no_tele=True: round the teleporters while any other way exists (ponytail: the straight-line
-        lookahead below can still cut a pad's edge; check _straight_ok against s.links if bots clip pads)."""
+        lookahead below can still cut a pad's edge; check _straight_ok against s.links if bots clip pads). hazards:
+        ((x, y, z, r), ...) to go round while any other way exists (an enemy trip mine: Kit.hazards, GitHub #9)."""
         if not all(math.isfinite(c) for c in (a.x, a.y, a.z, b.x, b.y)):
             return None              # (a NaN place crashed a tick here, Forge: no way from or to nowhere)
         if not math.isfinite(b.z):   # a goal with no floor under it (a point off Halo 2 Ascension's edge, sim:
@@ -2129,7 +2133,7 @@ class Terrain:
         if math.hypot(b.x - a.x, b.y - a.y) < 2.5 and s._straight_ok(a, *s._node(b)):
             return b
         human = (human or jump) and bool(getattr(s, "hjumps", None) or getattr(s, "hroutes", None))
-        cost = s._field(b, jump, human, safe, no_tele=no_tele)
+        cost = s._field(b, jump, human, safe, no_tele=no_tele, hazards=hazards)
         l, j, i = s._node(a)
         if human and np.isfinite(cost[l, j, i]):
             # a person's jump (or crouch path) is a way in, never a detour: take it only when it is
@@ -2190,6 +2194,29 @@ class Terrain:
             else:
                 break
         return s._center(*far) if far else b
+
+    def _hazard_edges(s, graph, hazards):
+        """The graph's edges into and out of the floor within a hazard's reach ((x, y, z, r): an enemy trip mine, Kit.avoid),
+        priced as a wall for one search (_field), so a way round wins whenever there is one; through it when there is not
+        (Kit.steer_clear the last resort). Live Rat's Nest s178: a bot's way to the hill ran past a mine and set it off."""
+        nodes = []
+        for x, y, z, r in hazards:
+            _, j0, i0 = s._node(Vec(x, y, z))
+            n = int(math.ceil(r / NAV_CELL)) + 1
+            for j in range(max(0, j0 - n), min(s.nh, j0 + n + 1)):
+                for i in range(max(0, i0 - n), min(s.nw, i0 + n + 1)):
+                    cx, cy = s.x0 + (i + 0.5) * NAV_CELL, s.y0 + (j + 0.5) * NAV_CELL
+                    if math.hypot(cx - x, cy - y) > r:
+                        continue
+                    for l in range(s.L):
+                        if s.lwalk[l, j, i] and abs(s.lz[l, j, i] - z) < 1.5:
+                            nodes.append((l * s.nh + j) * s.nw + i)
+        if not nodes:
+            return np.zeros(0, dtype=np.int64)
+        nodes = np.unique(np.asarray(nodes, dtype=np.int64))
+        out = np.concatenate([np.arange(graph.indptr[u], graph.indptr[u + 1]) for u in nodes])
+        inn = np.nonzero(np.isin(graph.indices, nodes))[0]
+        return np.unique(np.concatenate([out, inn]).astype(np.int64))
 
     def _down(s, l, j, i, cost, n):
         """Up to n nodes on from (l, j, i), each the next step down the cost field along the graph's own edges (a drop the

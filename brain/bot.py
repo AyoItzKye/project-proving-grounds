@@ -140,6 +140,8 @@ HEARD_KEEP = 1.5                       # a shot heard is looked toward this long
 # a melee press within this (a skilled player's Reach game: 19 close melees at 0.37-1.91 u, median 0.80, 18 within
 # 1.18; bots pressing from 1.55 u, raised from 1.3 for the rate, swung at people well out of reach)
 MELEE_R = 1.25
+DRY_FIGHT_R = 2.5      # u: with every gun empty, a man nearer than this is still fought (a melee), Bot.choose
+SWING_R, SWING_COS = 3.0, 0.7   # a melee press needs an enemy this near (a sword lunge 2.25 u) within 45 deg (melee_check)
 HEAR_RANGE = 30.0                      # gunfire this close is heard: about where it came from (Perception.update)
 ON_THE_WAY = 2.0                       # u: Easy takes only guns this close, it never goes out of its way
 COVER_NEAR = 6.0                    # the farthest cover a top bot goes for in a losing fight (less for lower tiers)
@@ -1093,8 +1095,14 @@ class Bot:
 
     # --- per tick
     def think(s, now, dt, snap, los, nav, callouts, items=None):
+        me0 = snap.player(s.id)
+        haz = s.kit.hazards(me0, snap) if me0 is not None and getattr(snap, "deployed", None) else ()
+        if haz:   # an enemy trip mine or a power drain out: every way this tick goes round it (GitHub #9, Terrain.nav)
+            nav = (lambda nav0: lambda a, b, **kw: nav0(a, b, hazards=haz, **kw))(nav)
         act = s.plan(now, dt, snap, los, nav, callouts, items)
         me = snap.player(s.id)
+        if act.melee and me is not None and me.alive and me.vehicle in (None, -1):
+            s.melee_check(me, snap, act)
         if me and me.alive:
             s.turn_cap(me, act, dt)
         return act
@@ -1768,6 +1776,37 @@ class Bot:
         e = snap.player(cur) if cur in seen else None
         return e is not None and e.shield <= 0.25 and (not snap.shieldless or e.health <= 0.5)   # (no shields: hurt)
 
+    def melee_check(s, me, snap, act):
+        """A melee press goes only at an enemy in the swing (within SWING_R, SWING_DEG of the facing) with no teammate
+        nearer in it. Live Beachhead Firefight Nov 6 (4 matches): presses went on after the Elite they were at died, and
+        12 swung with a teammate first in the swing, 0.4-1.4 u off (GitHub #12: "melee the air and lock on the player
+        after combat ... team kills")."""
+        c, sn = math.cos(act.yaw), math.sin(act.yaw)
+
+        def ahead(q):
+            dx, dy = q.x - me.pos.x, q.y - me.pos.y
+            d = math.hypot(dx, dy)
+            return d if 1e-3 < d < SWING_R and abs(q.z - me.pos.z) < 1.5 and (dx * c + dy * sn) / d > SWING_COS else None
+        foes = [d for d in (ahead(p.pos) for p in snap.players if p.alive and p.team != me.team and p.id != me.id)
+                if d is not None]
+        mates = [d for d in (ahead(p.pos) for p in snap.players if p.alive and p.team == me.team and p.id != me.id)
+                 if d is not None]
+        if not foes or (mates and min(mates) < min(foes)):
+            act.melee, act.lunge_at = False, -1
+            if getattr(s, "notes", None) is not None:
+                s.notes.append("melee held: " + ("a teammate first in the swing" if foes else "nobody in the swing"))
+
+    def dry_fights(s, scores, me):
+        """Every gun empty and one to take: a fight is only a man at arm's length (a melee), the rest weigh 0.3. Live
+        Beachhead Firefight Nov 6: a bot dry from 159 s weighed guns 6 u off at 3.0 and fought on at 3.45, nothing to
+        shoot with."""
+        if not (s.dry(me) and me.vehicle in (None, -1) and any(k[0] == "item" for k in scores)):
+            return
+        for k in [k for k in scores if k[0] == "fight"]:
+            b = s.per.beliefs.get(k[1])
+            if b is None or dist(me.pos, b.pos) > DRY_FIGHT_R:
+                scores[k] *= 0.3
+
     def decide(s, now, me, snap):
         seen = s.per.visible_enemies()
         scores = {}
@@ -2028,6 +2067,7 @@ class Bot:
             # (Shrine 20261104-154714, bot 9's Banshee) item and retreat were 1221 of its 2852 choices, the fight 331
             for k in [k for k in scores if k[0] in ("item", "retreat")]:
                 del scores[k]
+        s.dry_fights(scores, me)
         s.last_scores = scores
         s.last_flags = dict(post=round(post, 2), seen=len(seen), friends=friends, avoid=avoid, cracked=cracked,
                             recharge=now < getattr(s, "recharge_until", 0.0), hit=hit_recent)
@@ -2072,8 +2112,11 @@ class Bot:
         # (not for a gate 12 u off: out of its Ghost under a gate on a ledge, a racer walks up, it does not get back in)
         trip = dist(me.pos, far) if far else 0.0
         trip = 40.0 if snap.mode == "race" and (trip > 12.0 or s.game == "reach") else trip   # (Reach: riding only counts)
+        # (Firefight teammates stay on foot with the person; a ride to his gun is its own order: live Beachhead Nov 6,
+        # 596 rows off to a Mongoose for a hunt 35.5 u away, and driving, they went into walls, GitHub #12)
+        ff_mate = snap.mode == "firefight" and s.order.role in ("escort", "defender")
         if (far and trip > VEHICLE_TRIP and not me.has_flag and best[0] != "fight" and not urgent and not infected
-                and now >= getattr(s, "vehicle_retry_at", 0.0)):
+                and not ff_mate and now >= getattr(s, "vehicle_retry_at", 0.0)):
             # any vehicle the table knows (brain/vehicles.py), by its value, nearness and the trip's length
             # (not on wheels to a goal far over it: live Spire 20261105-060020 phase 3, five attackers took turns in
             # the Warthog at the spire's foot for the core 37 u up, 300-1,200 rows each "waiting for crew", no pickup)

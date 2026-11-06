@@ -118,8 +118,8 @@ def main():
     ap.add_argument("--game", default="odst")
     ap.add_argument("--tier", default="average")
     o = ap.parse_args()
-    from brain.live import LiveODST
-    live, m = {"odst": LiveODST}[o.game](), botctl.shm()
+    from brain.live import LiveODST, LiveReach
+    live, m = {"odst": LiveODST, "reach": LiveReach}[o.game](), botctl.shm()   # (Reach: its Firefight maps)
     rng = random.Random(5)
     bots = {}
     trail = []
@@ -146,7 +146,8 @@ def main():
             me = ps.get(index)
             if not me or not me["pos"] or not person or not person["pos"]:
                 continue
-            fwd, strafe, yaw, pitch, buttons = bots[index].think(now, me, person, trail, enemies)
+            foes = [e for e in enemies if e["team"] != me["team"]]     # (Versus' Elite round: the Covenant are allies)
+            fwd, strafe, yaw, pitch, buttons = bots[index].think(now, me, person, trail, foes)
             botctl.act(m, slot, fwd, strafe, yaw, pitch, buttons)
             b = bots[index]
             tgt = next((e for e in enemies if e["index"] == b.target), None)
