@@ -259,7 +259,10 @@ PL_LOCK_S, PL_LOCK_R, PL_SLIP = 2.2, 1.5, 0.3   # s, u (the reticle on a vehicle
 # export-tag-to-xml): Reach, Halo 4, H2A swords (and Halo 4's Flood prongs, H2A's infected sword) autoaim range 2.25 u,
 # angle 6 deg; the gravity hammer (Reach, Halo 4) 1.35 u, 10 deg
 LUNGE = {"sword": 2.25, "gravity_hammer": 1.35}
-RUSH_R = 10.0         # u: a sword or hammer this near is met with the shotgun (the Flood close 3 u/s, 6 with a thruster)
+# u: a sword or hammer this near is met with the shotgun. The Flood close 3 u/s, 6 with a thruster: a swap begun here has
+# it out before they are in its reach (2.5 u). Past it the guns go by range (the magnum hits him on his way in): at 10 u
+# survivors held the shotgun from 10 u in, walked at the Flood and fired nothing (owner's Wraparound, Nov 6 16:01)
+RUSH_R = 6.0
 LUNGE_ANGLE = {"sword": math.radians(6.0), "gravity_hammer": math.radians(10.0)}
 LUNGE_BODY = 0.15     # u: half a Spartan's width, the part of him the red cone may touch (INFERRED: tags give width 0)
 # ... per game where the kit has no tags here: a skilled player's Halo 3 sword kills came from first presses at 1.2-2.0 u
@@ -1612,7 +1615,12 @@ class Bot:
             if prec:
                 s.combo_at = -9.0
                 return pick(prec[0], "noob combo")
-        if n < 2 or now < getattr(s, "switch_ok_at", 0.0):
+        # a sword or hammer about to reach us with no close-quarters gun out: the swap to one is not held back by the last
+        # swap's wait (owner's Cliffside Flood: the magnum was out when 41% of the Flood arrived, swapped to 1.3 s before)
+        foe = snap.player(arg) if snap is not None and d is not None else None
+        rushed = (foe is not None and foe.weapon in LUNGE and d < RUSH_R and me.weapon not in CQ
+                  and any(inv[i] in CQ and ammo[i] != 0 for i in range(n)))
+        if n < 2 or (now < getattr(s, "switch_ok_at", 0.0) and not rushed):
             return -1
         if kind not in ("fight", "retreat") and d is None and cur >= 0 and not s.per.visible_enemies():
             # between fights (where think runs reload_check: not in a retreat either, third review B1) a gun whose
@@ -3530,7 +3538,12 @@ class Bot:
         if s.keep_off(me, target, d):
             fwd = -1.0             # out of his sword's lunge or hammer's swing, shooting (guide 03 counter-sword: keep
             s.pushing = False      # away and shoot the head on his way in; audit JUG-02: hunters out of hammer reach)
-        if hold:
+        # a shotgun against a sword or hammer holds its ground and lets him come into its reach: walking in on him met his
+        # lunge first (owner's Wraparound Flood, Nov 6: survivors closed on the Flood 44% of the time, 0 shots at 3-10 u)
+        braced = me.weapon in ("shotgun", "scattershot") and target is not None and target.weapon in LUNGE
+        if braced:
+            s.pushing = s.pressed_in = False
+        if hold or braced:
             fwd = min(fwd, 0.0)
         # seen through a window that stops rounds (Terrain.shot_los): no shot from here, so go round as for a man out
         # of sight (standing to trade aim through bullet-proof glass is no fight)

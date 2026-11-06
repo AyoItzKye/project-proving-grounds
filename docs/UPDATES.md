@@ -8,7 +8,7 @@ Click a version to see what changed since the one before it.
 <summary><b>0.2.2 s181</b> (November 6, 2026): Flood survivors use their shotguns, one Firefight brain per match</summary>
 
 ### Fixed
-- **Halo 4 Flood** (and Infection against swords): human bots kept swapping their shotgun for the magnum when the Flood were still a few steps away, then got caught with the magnum when the Flood arrived. Against an enemy with a sword or hammer coming at them, they now keep the shotgun out, or take it out in time. Against enemies with guns nothing changes.
+- **Halo 4 Flood** (and Infection against swords): human bots got caught holding the magnum when the Flood reached them. Now they shoot the magnum at a Flood on its way in, switch to the shotgun before it gets close, and hold their ground with it instead of walking into the sword. Against enemies with guns nothing changes.
 - **Firefight** ([#12](https://github.com/AyoItzKye/project-proving-grounds/issues/12)): after a match on Unearthed or Installation 04, the bots' brain for that match kept running into the next one and gave your bots a second set of orders. It now stops when its match ends.
 
 </details>

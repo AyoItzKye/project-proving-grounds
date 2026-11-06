@@ -99,6 +99,14 @@ def main():
             fails.append(f"{tier} sword v sword at 1.0 u: press at {first}, melee at {mel} (want the follow-up {want})")
     if any(a.melee for _, a, _ in fight(mk(), "gravity_hammer", 1.0, 0.8, foe_weapon="sword")):
         fails.append("the hammer pressed melee")
+    # 4b. a shotgun against a sword holds its ground (owner's Wraparound Flood, Nov 6 16:01: survivors walked at the
+    # Flood 44% of the time from 3-10 u and fired nothing there)
+    for tier in ("strong", "top"):
+        ticks = fight(mk(tier, game="h4"), "shotgun", 5.0, 1.0, foe_weapon="sword")
+        fwd = max((a.forward for _, a, _ in ticks), default=0.0)
+        info.append(f"{tier} shotgun v sword at 5 u: forward at most {fwd:.2f}")
+        if not ticks or fwd > 0.05:
+            fails.append(f"{tier} shotgun v sword at 5 u: forward {fwd:.2f} over {len(ticks)} ticks (want no step in on him)")
     # 5. names
     for raw, want in (("storm_flood_sword", "sword"), ("h2a_energy_sword_infected", "sword"),
                       ("storm_energy_sword", "sword"), ("storm_gravity_hammer", "gravity_hammer")):

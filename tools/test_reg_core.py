@@ -394,29 +394,34 @@ def check_h3_deployed():
 
 
 def check_flood_shotgun():
-    # Halo 4 Flood survivors meet a sword Flood with the shotgun (owner's game, trace 20261106-144807: they swapped to the
-    # magnum at 4-10 u, 76 times, and 41% of the Flood that reached a survivor found the magnum out); against a gunner
-    # the magnum still wins at Medium band (PvP unchanged)
+    # Halo 4 Flood survivors: the magnum on a sword Flood on his way in, the shotgun out before he is in its reach
+    # (owner's Cliffside, trace 20261106-144807: 41% of the Flood that reached a survivor found the magnum out, swapped
+    # to 1.3 s before; then at RUSH_R 10 u the owner's Wraparound 20261106-160121: the shotgun out from 10 u, 0 shots at
+    # 3-10 u, "now theyre retarded"). Against a gunner the magnum still wins at Medium band (PvP unchanged)
     M = get_map("h4_z05_cliffside")
     out = []
 
-    def held(tier, mine, foe_w, d):
+    def held(tier, mine, foe_w, d, locked=False):
         b = Bot(1, 0, make_profile(tier, "rusher", random.Random(1)), M, random.Random(1))
         b.game = "h4"
         me = PlayerState(1, 0, "human", Vec(20, 0, 1), weapon=mine, weapons=["shotgun", "magnum"])
         me.ammo, me.mag = [24, 60], [6, 12]
         foe = PlayerState(6, 1, "foe", Vec(20 + d, 0, 1), weapon=foe_w)
         b.per.beliefs[6] = Belief(foe.pos, Vec(), 10.0, True, "eyes")
-        b.switch_ok_at, b.notes = 0.0, []
+        b.switch_ok_at, b.notes = (11.5 if locked else 0.0), []      # (locked: swapped 0.5 s ago)
         w = b.choose_weapon(10.0, me, "fight", 6, Snapshot(10.0, [me, foe], mode="infection"))
         return mine if w < 0 else me.weapons[w]
 
     for tier in ("average", "top"):
-        for d in (4.5, 6.0, 9.0):
+        for d in (3.0, 4.5):
             if held(tier, "shotgun", "sword", d) != "shotgun":
                 out.append(f"flood_shotgun: {tier}, shotgun out, a sword Flood {d} u off: swapped to the magnum")
-        if held(tier, "magnum", "sword", 7.0) != "shotgun":
-            out.append(f"flood_shotgun: {tier}, magnum out, a sword Flood 7 u off: kept the magnum (want the shotgun)")
+        if held(tier, "shotgun", "sword", 9.0) != "magnum":
+            out.append(f"flood_shotgun: {tier}, shotgun out, a sword Flood 9 u off: kept the shotgun (want the magnum)")
+        if held(tier, "magnum", "sword", 8.0) != "magnum":
+            out.append(f"flood_shotgun: {tier}, magnum out, a sword Flood 8 u off: swapped (want the magnum on him)")
+        if held(tier, "magnum", "sword", 5.0, locked=True) != "shotgun":
+            out.append(f"flood_shotgun: {tier}, magnum out 0.5 s after a swap, a sword Flood 5 u off: kept the magnum")
         if held(tier, "shotgun", "magnum", 7.0) != "magnum":
             out.append(f"flood_shotgun: {tier}, shotgun out, a magnum man 7 u off: kept the shotgun (want the magnum)")
     return out
