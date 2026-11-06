@@ -749,6 +749,14 @@ def main():
                     print(f"  done in {variant_strategy.build(name):.0f} s", flush=True)
                 MAP = get_map(name)
                 T = map_terrain(MAP)
+                from brain import variants as _variants
+                if o.game == "reach" and not os.path.exists(os.path.join(_variants.ROOT, name, "mvar_objects.json")):
+                    # no .mvar file: its items are the canvas's placements, not what it has (#11): what lies in it
+                    from brain.forge import live_items
+                    found = live_items(live)
+                    print(f"map variant {name}: {len(found)} power items lying in it (was {len(MAP['items'])} of the "
+                          f"canvas's): {sorted({it['name'] for it in found})}", flush=True)
+                    MAP["items"] = found
                 print(f"map variant {name}: {MAP['variant']['count']} objects of its own, {len(MAP['live_blocks'])} "
                       f"pieces in the nav ({getattr(T, 'face_kinds', {})}), {len(MAP['shields'])} shields, nav window "
                       f"{MAP['window']}", flush=True)

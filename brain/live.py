@@ -1328,6 +1328,12 @@ class LiveReach(LiveH3):
             pos = struct.unpack_from("<3f", head, 0x44)
             if typ == 2 and parent == NONE and tag not in s._names and not s._was_held((salt << 16) | i):
                 s._learn(tag, pos)
+            if typ == 2 and tag not in s._names:
+                # no map placement under it: its own tag name (GitHub #11: a Forge creation's guns lie where the canvas
+                # has no placement, so all read "unknown" and none was ever in snap.ground_weapons for a bot to take)
+                own = s._own_name(tag, "weapons")
+                if own:
+                    s._names[tag] = WEAPON_ALIAS.get(own, own)
             if typ == 1 and parent == NONE and tag not in s._names:
                 s._learn_vehicle(tag, pos)
             elif typ == 1 and tag not in s._names:

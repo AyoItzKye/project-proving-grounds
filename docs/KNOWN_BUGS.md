@@ -1,4 +1,4 @@
-# Known bugs (0.2.2-s177)
+# Known bugs (0.2.2-s178)
 
 What I already know is broken or buggy in this version, so you don't have to report it (but if you find something worse, or a way to make it happen every time, a [bug report](https://github.com/AyoItzKye/project-proving-grounds/issues/new?template=bug_report.yml) still helps).
 
@@ -146,7 +146,7 @@ For everything that works, game by game, see the [bot status sheet](BOT_STATUS.p
 | [#8](https://github.com/AyoItzKye/project-proving-grounds/issues/8) | LiDAR Simulator stops early | Fixed in 0.2.2 | At Max speed a map was cut after 4 minutes; now it runs until mapped. |
 | [#9](https://github.com/AyoItzKye/project-proving-grounds/issues/9) | Halo 3 bots ignore trip mines | Open | Bots don't see Halo 3's trip mines and other placed hazards yet. |
 | [#10](https://github.com/AyoItzKye/project-proving-grounds/issues/10) | LiDAR Simulator bots start outside Forge creations | Fixed in 0.2.2 | They started on Forge World's own spawns; now inside the creation. |
-| [#11](https://github.com/AyoItzKye/project-proving-grounds/issues/11) | No weapon pickups on Forge creations | Open | Being looked at: needs a recorded match on a creation. |
+| [#11](https://github.com/AyoItzKye/project-proving-grounds/issues/11) | No weapon pickups on Forge creations | Fixed in 0.2.2 s178 | The guns on a creation read as unknown (bots only know guns by the map's own spots, and a creation's guns are not on Forge World's), and a creation without its map file kept Forge World's power weapon spots. Now they are named from the game itself. Tested on a Forge World creation: bots took the rockets, Spartan lasers, a needle rifle, a plasma launcher and a fuel rod. |
 | [#12](https://github.com/AyoItzKye/project-proving-grounds/issues/12) | Firefight | Partly fixed in 0.2.2 s177 | The BOTS tile and panel show in the Reach and ODST Firefight lobbies with their own list of up to 3 bots, and those bots join on your team and stay a few steps behind you (s165 promised this but the tile did not show and teammates wandered off). Still open: no respawn on DLC maps, swinging at teammates when there is nothing to fight, refilling ammo, driving, and Elite-side bots shooting allied AI. |
 
 *Last updated November 6, 2026.*

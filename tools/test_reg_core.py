@@ -297,6 +297,58 @@ def check_h2a_flag_use():
     return out
 
 
+def check_forge_items():
+    # a Forge creation with no .mvar file: its items are the guns lying in it, by the map's own tag names (#11); a gun
+    # in someone's hands and a gun the brain has no power rank for are not items
+    import struct
+    from brain.forge import live_items
+    from brain.live import LiveReach
+
+    class FakeLive:
+        _own_name, objects, _learn, _was_held = (LiveReach._own_name, LiveReach.objects, LiveReach._learn,
+                                                  LiveReach._was_held)
+
+        def __init__(s):
+            s._names, s.mem, s._placements = {}, {}, []
+            names = ["objects\\weapons\\support_high\\rocket_launcher\\rocket_launcher",
+                     "objects\\weapons\\rifle\\sniper_rifle\\sniper_rifle", "objects\\weapons\\rifle\\dmr\\dmr"]
+            s._tag_name_list = names
+            rows = [(0, 0xFFFFFFFF, (5.0, 6.0, 7.0)), (1, 0x00010002, (1.0, 1.0, 1.0)), (2, 0xFFFFFFFF, (2.0, 2.0, 2.0))]
+            ents = bytearray()
+            for k, (tag_ix, parent, pos) in enumerate(rows):
+                addr = 0x1000 + k * 0x100
+                ents += struct.pack("<HHB3xQQ", 0x1234, 0, 2, 0, addr)
+                head = bytearray(0x50)
+                struct.pack_into("<I", head, 0, 0xE0000000 | tag_ix)
+                struct.pack_into("<I", head, 0x14, parent)
+                struct.pack_into("<3f", head, 0x44, *pos)
+                s.mem[addr] = bytes(head)
+            s.mem[0x10] = bytes(ents)
+            s.g = s
+
+        def _array(s, slot):
+            return 0x10, 3, 0x18
+
+        def read(s, addr, n):
+            return s.mem[addr][:n]
+
+    live = FakeLive()
+    got = live_items(live)
+    out = []
+    if [(it["name"], tuple(round(c, 1) for c in (it["pos"].x, it["pos"].y, it["pos"].z))) for it in got] != \
+            [("rockets", (5.0, 6.0, 7.0))]:
+        out.append(f"forge_items: {[(it['name'], it['pos']) for it in got]} (want the loose rockets only)")
+    if live._names.get(0xE0000000) != "rockets":
+        out.append(f"forge_items: the live reader's name for the rockets' tag {live._names} (want rockets)")
+    # the ground weapons (snap.ground_weapons): a gun with no map placement under it is named by its own tag name, so
+    # a bot out of ammo can go for it (they read "unknown" and were left out)
+    fresh = FakeLive()
+    seen = sorted(n for h, t, n, p in fresh.objects((2,)))
+    if seen != ["dmr", "rockets", "sniper"]:
+        out.append(f"forge_items: loose guns off any placement read {seen} (want dmr, rockets, sniper)")
+    return out
+
+
 def check_core_carry():
     from brain import invasion
     M = get_map("reach_70_boneyard")
@@ -416,7 +468,7 @@ def check_release_gate():
 
 CHECKS = {"air_kill_zone": check_air_kill_zone, "air_clearance": check_air_clearance, "air_wall": check_air_wall,
           "banshee_take": check_banshee_take, "warthog_gunner": check_warthog_gunner, "ctf_carry": check_ctf_carry,
-          "h2a_flag_use": check_h2a_flag_use,
+          "h2a_flag_use": check_h2a_flag_use, "forge_items": check_forge_items,
           "core_carry": check_core_carry, "koth_company": check_koth_company, "zone_rules": check_zone_rules,
           "territories_posts": check_territories_posts, "release_gate": check_release_gate}
 

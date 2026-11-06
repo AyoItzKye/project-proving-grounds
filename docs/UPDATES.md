@@ -5,6 +5,15 @@ What changed in each version. Download the newest one from the [Releases page](h
 Click a version to see what changed since the one before it.
 
 <details open>
+<summary><b>0.2.2 s178</b> (November 6, 2026): weapon pickups on Forge creations</summary>
+
+### Fixed
+- **Halo: Reach Forge creations**: bots now see and pick up the weapons placed on a creation ([#11](https://github.com/AyoItzKye/project-proving-grounds/issues/11)). They used to ignore all of them.
+- **Halo: Reach**: a dropped gun that isn't on one of the map's weapon spots is now recognised too, so bots can pick it up when their own guns run dry.
+
+</details>
+
+<details>
 <summary><b>0.2.2 s177</b> (November 6, 2026): Firefight bots that actually follow you, Halo 2 Anniversary bomb and flag pickups</summary>
 
 ### Fixed
