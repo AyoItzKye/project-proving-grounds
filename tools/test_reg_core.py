@@ -393,6 +393,36 @@ def check_h3_deployed():
     return out
 
 
+def check_escort_stops():
+    # the map-free escort brain ends with its match (live Nov 6, installed s180: an Installation 04 escort brain lived on
+    # into the next match and drove its bots beside that match's brain; botcore ends play.py, not this child): reads that
+    # fail for 3 s end it, as live_bots
+    import time
+    import brain.live as bl
+    import escort_bots
+    import botctl
+
+    class Gone:
+        def __init__(s):
+            pass
+
+        def players(s):
+            raise RuntimeError("no Halo: Reach game thread")
+
+    saved = bl.LiveReach, botctl.shm, sys.argv, sys.stdout
+    bl.LiveReach, botctl.shm = Gone, lambda: None
+    sys.argv = ["escort_bots.py", "8", "--game", "reach"]
+    sys.stdout = open(os.devnull, "w")
+    t = time.time()
+    try:
+        escort_bots.main()
+    finally:
+        sys.stdout.close()
+        bl.LiveReach, botctl.shm, sys.argv, sys.stdout = saved
+    took = time.time() - t
+    return [] if took < 5.0 else [f"escort_stops: the escort brain ran {took:.1f} s with the game gone (want under 5)"]
+
+
 def check_ff_sides():
     # Reach Firefight's AI by side (GitHub #12 "bots on the elites side will kill AI allies"): the unit's side byte
     # +0x1CA, live Beachhead Versus Nov 6: Spartan players 1, Elite players 7, the Covenant 3. The Covenant go on the
@@ -702,7 +732,7 @@ def check_release_gate():
 CHECKS = {"air_kill_zone": check_air_kill_zone, "air_clearance": check_air_clearance, "air_wall": check_air_wall,
           "banshee_take": check_banshee_take, "warthog_gunner": check_warthog_gunner, "ctf_carry": check_ctf_carry,
           "h2a_flag_use": check_h2a_flag_use, "forge_items": check_forge_items, "h3_deployed": check_h3_deployed,
-          "ff_sides": check_ff_sides,
+          "ff_sides": check_ff_sides, "escort_stops": check_escort_stops,
           "mine_keep_clear": check_mine_keep_clear, "mine_route": check_mine_route, "dry_rearm": check_dry_rearm, "ff_dlc": check_ff_dlc, "melee_swing": check_melee_swing,
           "core_carry": check_core_carry, "koth_company": check_koth_company, "zone_rules": check_zone_rules,
           "territories_posts": check_territories_posts, "release_gate": check_release_gate}

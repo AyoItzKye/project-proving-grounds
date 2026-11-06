@@ -5,6 +5,14 @@ What changed in each version. Download the newest one from the [Releases page](h
 Click a version to see what changed since the one before it.
 
 <details open>
+<summary><b>0.2.2 s181</b> (November 6, 2026): Firefight on DLC maps, one brain per match</summary>
+
+### Fixed
+- **Firefight** ([#12](https://github.com/AyoItzKye/project-proving-grounds/issues/12)): after a match on Unearthed or Installation 04, the bots' brain for that match kept running into the next one and gave your bots a second set of orders. It now stops when its match ends.
+
+</details>
+
+<details>
 <summary><b>0.2.2 s180</b> (November 6, 2026): Firefight bots respawn, Installation 04</summary>
 
 ### Fixed
