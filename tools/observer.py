@@ -3,7 +3,7 @@
 It reads the brain's traces (logs/trace_<map>_<date>-<time>.jsonl, one per match while logs/trace_on
 exists, the newest 5 not saved and every saved one kept, each up to its last 15 minutes: the Recording settings,
 tools/recording.py; older and hand-named ones, saved ones in logs/evidence,
-simulator traces): every bot's position, facing, goal, fight reasons and overrides
+simulator traces; and every other copy of the mod's on this PC, recording.py other_logs): every bot's position, facing, goal, fight reasons and overrides
 each tick; every decision with its top scores, flags, director order and beliefs; every callout
 (brain/tracefmt.py). Two ways in:
 
@@ -40,25 +40,59 @@ LIVE_S = 15.0            # a trace written to this recently is a match being pla
 # ---------------------------------------------------------------- traces
 
 def trace_files():
-    """Every trace there is, newest first: [{file (relative to logs), label, map, bytes, mtime, live, kept}]. kept: a
-    match in the queue (tools/recording.py) saved or not; None for the rest (bug reports, imported, evidence: always
-    kept)."""
+    """Every trace there is, newest first: [{file, label, map, bytes, mtime, live, kept, copy}]. file: relative to
+    logs, or for another copy of the mod's games (an install and a working repo: tools/recording.py other_logs) its
+    full path, copy that copy's folder (None: this one's). kept: a match in the queue (tools/recording.py) saved or not;
+    None for the rest (bug reports, imported, evidence: always kept)."""
     import recording
-    out, saved = [], recording.saved(LOGS)
-    for path in glob.glob(os.path.join(LOGS, "trace_*.jsonl")) + glob.glob(os.path.join(LOGS, "evidence", "*.jsonl")) \
-            + glob.glob(os.path.join(LOGS, "sim_*.jsonl")) + glob.glob(os.path.join(LOGS, "bug_reports", "*", "trace.jsonl")) \
-            + glob.glob(os.path.join(LOGS, "qc_keep", "*.jsonl")) \
-            + glob.glob(os.path.join(LOGS, "imported", "*", "trace_*.jsonl")):   # (games imported from a shared zip)
-        st = os.stat(path)
-        rel = os.path.relpath(path, LOGS).replace("\\", "/")
-        label = match_label(path) or bug_label(path) or rel.replace(".jsonl", "")
-        if rel.startswith("imported/"):
-            label = "Imported: " + label
-        stamp = recording.stamp_of(path) if "/" not in rel else None
-        out.append(dict(file=rel, label=label, map=trace_map(path),
-                        bytes=st.st_size, mtime=st.st_mtime, live=time.time() - st.st_mtime < LIVE_S,
-                        kept=(stamp in saved) if stamp else None))
+    out = []
+    for logs in [LOGS] + recording.other_logs(LOGS):
+        own, saved = logs == LOGS, recording.saved(logs)
+        # bug reports belong to their game (the owner, Nov 6: "bug reports should not be in the same list as games"):
+        # each game lists its reports (bugs: [{t, time, text}]); a report's own copy of the recording shows only
+        # when the game's recording is gone (rotated out), as that game
+        reports = {os.path.basename(os.path.dirname(p)): p for p in glob.glob(os.path.join(logs, "bug_reports", "*", "trace.jsonl"))}
+        games = {os.path.basename(p)[len("trace_"):-len(".jsonl")] for p in glob.glob(os.path.join(logs, "trace_*.jsonl"))}
+        copies = [p for stem, p in reports.items() if stem not in games]
+        for path in glob.glob(os.path.join(logs, "trace_*.jsonl")) + glob.glob(os.path.join(logs, "evidence", "*.jsonl")) \
+                + glob.glob(os.path.join(logs, "sim_*.jsonl")) + copies \
+                + glob.glob(os.path.join(logs, "qc_keep", "*.jsonl")) \
+                + glob.glob(os.path.join(logs, "imported", "*", "trace_*.jsonl")):   # (games imported from a shared zip)
+            try:
+                st = os.stat(path)
+            except OSError:
+                continue                                  # (rotated out this second)
+            rel = os.path.relpath(path, logs).replace("\\", "/")
+            copy_of = os.path.basename(os.path.dirname(path)) if path in copies else None
+            stem = copy_of or (os.path.basename(path)[len("trace_"):-len(".jsonl")] if rel.startswith("trace_") else None)
+            bugs = game_bugs(reports[stem]) if stem in reports else []
+            label = match_label(path) or (match_label(f"trace_{copy_of}.jsonl") if copy_of else None) \
+                or rel.replace(".jsonl", "")
+            if rel.startswith("imported/"):
+                label = "Imported: " + label
+            stamp = recording.stamp_of(path) if "/" not in rel else None
+            out.append(dict(file=rel if own else path.replace("\\", "/"), label=label, map=trace_map(path),
+                            bytes=st.st_size, mtime=st.st_mtime, live=time.time() - st.st_mtime < LIVE_S,
+                            kept=(stamp in saved) if stamp else None, copy=None if own else os.path.dirname(logs),
+                            bugs=bugs))
     return sorted(out, key=lambda d: -d["mtime"])
+
+
+def game_bugs(report_trace):
+    """A game's bug reports (bug_reports/<game>/reports.json): [{t, time, text}], in match order."""
+    try:
+        rs = json.load(open(os.path.join(os.path.dirname(report_trace), "reports.json"), encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    out = []
+    for r in rs if isinstance(rs, list) else []:
+        try:
+            t = float(r.get("t"))
+        except (TypeError, ValueError):
+            continue
+        out.append(dict(t=t, time=time.strftime("%H:%M:%S", time.localtime(r.get("unix", 0))) if r.get("unix") else "",
+                        text=" ".join(str(r.get("description", "")).split())[:400]))
+    return sorted(out, key=lambda b: b["t"])
 
 
 def bug_label(path):
@@ -124,10 +158,15 @@ def trace_map(path):
     return None
 
 
+def listed(file):
+    """(game list entry, path) for a file from the page, only if it is one of ours (no other files), else (None, None)."""
+    d = next((d for d in trace_files() if d["file"] == file), None)
+    return (d, file if os.path.isabs(file) else os.path.join(LOGS, file)) if d else (None, None)
+
+
 def safe_trace(rel):
     """A trace path from the page, only if it is one of ours (no other files)."""
-    ok = {d["file"]: d for d in trace_files()}
-    return os.path.join(LOGS, rel) if rel in ok else None
+    return listed(rel)[1]
 
 
 class Trace:
@@ -492,7 +531,7 @@ def base(map_name):
 def you_source(path):
     """Your recording for a game: its Data collector file (same stamp, tools/collector.py), else the trace itself."""
     m = re.search(r"_(\d{8}-\d{6})\.jsonl$", path)
-    hits = glob.glob(os.path.join(LOGS, f"collect_*_{m.group(1)}.jsonl")) if m else []
+    hits = glob.glob(os.path.join(os.path.dirname(path), f"collect_*_{m.group(1)}.jsonl")) if m else []
     return hits[0] if hits else path
 
 
@@ -545,12 +584,13 @@ def serve(port, open_browser):
                     if where == "/settings":
                         got = recording.save_settings({k: int(body[k]) for k in recording.LIMITS if k in body})
                         return s.send(json.dumps(got).encode(), "application/json")
-                    path = safe_trace(body.get("file", ""))
-                    stamp = recording.stamp_of(path) if path and "/" not in body["file"] else None
+                    d, path = listed(body.get("file", ""))
+                    stamp = recording.stamp_of(path) if d and d["kept"] is not None else None
                     if not stamp:
                         return s.send(b'{"error": "only recorded matches can be kept"}', "application/json", 400)
-                    recording.keep(stamp, bool(body.get("keep")), LOGS)
-                    return s.send(json.dumps(dict(kept=stamp in recording.saved(LOGS))).encode(), "application/json")
+                    logs = os.path.dirname(path)                # (this copy's logs, or the copy's that recorded it)
+                    recording.keep(stamp, bool(body.get("keep")), logs)
+                    return s.send(json.dumps(dict(kept=stamp in recording.saved(logs))).encode(), "application/json")
                 except (ValueError, TypeError, KeyError, OSError) as e:
                     return s.send(json.dumps(dict(error=str(e))).encode(), "application/json", 400)
             if not 0 < n <= 1 << 30:
@@ -572,7 +612,11 @@ def serve(port, open_browser):
                 elif u.path == "/settings":                     # the Recording settings (tools/recording.py)
                     import recording
                     got = recording.settings()
-                    s.send(json.dumps(dict(games=got["games"], minutes=got["minutes"], limits=recording.LIMITS)).encode(),
+                    # (and where games are looked for, for the page's empty list: this copy's logs, recording on or
+                    # off (logs/trace_on, tools/setup.py), the other copies of the mod)
+                    s.send(json.dumps(dict(games=got["games"], minutes=got["minutes"], limits=recording.LIMITS,
+                                           logs=os.path.normpath(LOGS), on=os.path.exists(os.path.join(LOGS, "trace_on")),
+                                           copies=[os.path.dirname(x) for x in recording.other_logs(LOGS)])).encode(),
                            "application/json")
                 elif u.path == "/traces":
                     s.send(json.dumps(trace_files()).encode(), "application/json")
@@ -638,6 +682,8 @@ def serve(port, open_browser):
             appwindow.open_window(url)
         print(f"Observer already running: {url}", flush=True)
         return
+    import recording
+    recording.register()                                # (the other copies' Observers list this copy's games)
     print(f"Observer: {url}  (Ctrl+C to stop)", flush=True)
     if open_browser:
         appwindow.open_window(url)

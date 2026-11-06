@@ -149,7 +149,7 @@ class Gear:
             if k == "autosentry" and now >= d["next_shot"]:
                 d["next_shot"] = now + 0.25
                 foes = [e for e in s.sim.players if e.alive and e.team != d["team"] and dist(e.pos, d["pos"]) < r
-                        and s.sim.los(d["pos"], e.pos)]
+                        and s.sim.T.shot_los(d["pos"], e.pos)]
                 if foes:
                     src = next((q for q in s.sim.players if q.id == d["owner"]), foes[0])
                     s.sim.damage(min(foes, key=lambda e: dist(e.pos, d["pos"])), src, 0.04, False)

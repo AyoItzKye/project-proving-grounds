@@ -14,6 +14,8 @@ scripts becomes ProjectProvingGrounds-Linux-<version>.tar.gz (Linux and Steam De
 Needs: the .NET-free map tools build, Visual Studio's C++ build tools, Inno Setup 6 (ISCC.exe), internet for the
 embeddable Python and the packages the first time (cached in installer_build/cache).
 
+Nothing is built while tools/test_regressions.py fails (make_release.regress_gate runs first, every mode).
+
 usage: python -I build_installer.py [--skip-native]      (--skip-native: use the botcore.dll already built)
        python -I build_installer.py --linux-only       (only the Linux tar.gz, from the payload already staged)
 """
@@ -217,6 +219,7 @@ def linux_bundle():
 
 
 def main():
+    make_release.regress_gate()                      # (no build while a live-proven behavior is broken)
     if "--linux-only" in sys.argv:                   # (the tar.gz from the payload already staged)
         linux_bundle()
         return

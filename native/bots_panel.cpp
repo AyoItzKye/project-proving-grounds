@@ -16,6 +16,7 @@
 #undef small                                             // (rpcndr.h's: a ui::button parameter)
 #include "bots_panel.h"
 #include "model_view.h"
+#include "ui_layout.h"
 #include <ctype.h>
 #include <math.h>
 #include <stdio.h>
@@ -23,6 +24,9 @@
 #include <string.h>
 #include "third_party/imgui/imgui.h"
 #include "third_party/imgui/imgui_internal.h"             // (SetKeyOwner: the 3D view keeps its arrow keys)
+
+int hb_panel_firefight = 0;      // overlay.cpp: the lobby open is Firefight's (it holds 4 players: you and 3 bots)
+static int roster_cap() { return hb_panel_firefight ? 3 : HB_ROSTER_MAX; }
 
 // ------------------------------------------------------------------ tables
 static const char* TEAM_NAME[HB_TEAMS_MAX] = { "Red", "Blue", "Green", "Orange", "Purple", "Gold", "Brown", "Pink" };
@@ -576,7 +580,7 @@ int roster_on_team(const hb_roster& r, int team) {
 }
 
 bool roster_add(hb_roster& r, int team, int tier, int style, uint32_t seed) {
-    if (r.n >= HB_ROSTER_MAX) return false;
+    if (r.n >= roster_cap()) return false;
     hb_bot& b = r.bot[r.n];
     b.team = (uint8_t)team; b.tier = (uint8_t)tier; b.style = (uint8_t)style;
     r.n++;
@@ -599,8 +603,8 @@ void roster_fill(hb_roster& r, int teams, int per_team, int tier, int style, uin
     uint32_t s = seed | 1;
     r.n = 0;
     r.teams = teams < 2 ? 2 : teams > HB_TEAMS_MAX ? HB_TEAMS_MAX : teams;
-    for (int k = 0; k < per_team && r.n < HB_ROSTER_MAX; k++)          // team by team, a row at a time:
-        for (int t = 0; t < r.teams && r.n < HB_ROSTER_MAX; t++)       // the cap cuts every team evenly
+    for (int k = 0; k < per_team && r.n < roster_cap(); k++)          // team by team, a row at a time:
+        for (int t = 0; t < r.teams && r.n < roster_cap(); t++)       // the cap cuts every team evenly
             roster_add(r, t, tier == 4 ? mixed_tier(r.n) : tier == 5 ? 4 : tier, style, rnd(s));
 }
 
@@ -890,7 +894,7 @@ static void bot_row(bots_panel_env& e, int i, float w, bool& changed) {
             }
             ImGui::EndMenu();
         }
-        if (ImGui::MenuItem("Duplicate", "Ctrl+D", false, r.n < HB_ROSTER_MAX)) {
+        if (ImGui::MenuItem("Duplicate", "Ctrl+D", false, r.n < roster_cap())) {
             roster_add(r, b.team, b.tier, b.style, seed()); changed = true;
         }
         ImGui::Separator();
@@ -991,7 +995,7 @@ static void team_card(bots_panel_env& e, int t, ImVec2 size, bool& changed) {
         ImGui::EndDragDropTarget();
     }
     ImGui::SetCursorScreenPos(ImVec2(p.x + px(8), p.y + size.y - add_h - px(4)));
-    ImGui::BeginDisabled(r.n >= HB_ROSTER_MAX);
+    ImGui::BeginDisabled(r.n >= roster_cap());
     char add[32]; sprintf_s(add, "+  Add bot##add%d", t);
     if (button(add, GHOST, ImVec2(size.x - px(16), add_h), true)) {
         int tier = *e.difficulty < 4 ? (int)*e.difficulty : *e.difficulty == 5 ? 4 : mixed_tier(r.n);
@@ -1214,7 +1218,7 @@ static void inspector(bots_panel_env& e, bool& changed) {
     }
     muted(STYLE_ABOUT[b.style < 8 ? b.style : HB_STYLE_ANY]);
     ImGui::Dummy(ImVec2(0, px(4)));
-    ImGui::BeginDisabled(r.n >= HB_ROSTER_MAX);
+    ImGui::BeginDisabled(r.n >= roster_cap());
     if (button("Duplicate", SECONDARY, ImVec2((W - px(8)) * 0.5f, 0), true)) {
         roster_add(r, b.team, b.tier, b.style, seed()); g_sel = r.n - 1; changed = true;
     }
@@ -1244,7 +1248,7 @@ static void quick_setup(bots_panel_env& e, bool& changed) {
     if (maxt == 2) muted("Halo: CE team games have two teams.");
     ImGui::Dummy(ImVec2(0, px(4)));
     caption("Bots on each team");
-    int most = HB_ROSTER_MAX / qs_teams;
+    int most = hb_panel_firefight ? roster_cap() : roster_cap() / qs_teams;   // (Firefight: one team, yours)
     if (qs_per > most) qs_per = most;
     stepper("per", &qs_per, 1, most, qs_per == 1 ? "bot" : "bots");
     ImGui::Dummy(ImVec2(0, px(4)));
@@ -3193,7 +3197,9 @@ bool bots_panel(bots_panel_env& e) {
         scale_tooltip(e.scale_games ? (int)*e.scale_games : 5);
     ImGui::EndDisabled();
     char lim[96];
-    sprintf_s(lim, "%d of %d bots. The game holds 16 players.", r.n, HB_ROSTER_MAX);
+    if (hb_panel_firefight && r.n > 3) sprintf_s(lim, "Firefight holds 4 players: your first 3 bots join.");
+    else if (hb_panel_firefight) sprintf_s(lim, "%d of 3 bots. Firefight holds 4 players.", r.n);
+    else sprintf_s(lim, "%d of %d bots. The game holds 16 players.", r.n, HB_ROSTER_MAX);
     push(SMALL);
     float lw2 = ImGui::CalcTextSize(lim).x;
     pop();
@@ -3207,7 +3213,7 @@ bool bots_panel(bots_panel_env& e) {
         && !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId)) {
         int maxt = roster_max_teams(e.title);
         if (ImGui::IsKeyPressed(ImGuiKey_Delete)) { roster_remove(r, g_sel); g_sel = -1; changed = true; }
-        else if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_D) && r.n < HB_ROSTER_MAX) {
+        else if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_D) && r.n < roster_cap()) {
             hb_bot b = r.bot[g_sel]; roster_add(r, b.team, b.tier, b.style, seed()); g_sel = r.n - 1; changed = true;
         } else if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_RightArrow)) {
             move_bot(r, g_sel, (r.bot[g_sel].team + 1) % maxt); changed = true;
@@ -3235,15 +3241,22 @@ bool bug_report_ui(bug_report_env& e) {
     bool save = false;
     e.hovered = false;
     if (e.show_button && !*e.open) {
-        // right of MCC's pause menu column, the stock buttons' dark fill and blue frame; the key that opens it too
+        // in MCC's footer row (Back's line and height), right-aligned on its frame's margin (ui_layout.h), the stock
+        // buttons' dark fill and blue frame; the key that opens it too. Placed on MCC's back buffer, mapped to the window.
         ImDrawList* dl = ImGui::GetForegroundDrawList();
-        ImVec2 a(D.x - px(380), D.y * 0.80f), b(D.x - px(60), D.y * 0.80f + px(56));
+        float bw = e.bb_w > 0 ? e.bb_w : D.x, bh = e.bb_h > 0 ? e.bb_h : D.y, kx = D.x / bw, ky = D.y / bh;
+        float fs = size(BODY), ks = size(SMALL);
+        float need = font->CalcTextSizeA(fs, 1e9f, 0, "Report bot bug").x + px(20 + 24 + 44 + 14);
+        ui_rect r = bug_button_rect(bw, bh, need / kx);
+        ImVec2 a(r.x0 * kx, r.y0 * ky), b(r.x1 * kx, r.y1 * ky);
+        float h = b.y - a.y;
+        if (fs > h * 0.62f) fs = h * 0.62f;
+        if (ks > h * 0.5f) ks = h * 0.5f;
         bool hov = io.MousePos.x >= a.x && io.MousePos.x <= b.x && io.MousePos.y >= a.y && io.MousePos.y <= b.y;
         dl->AddRectFilled(a, b, hov ? IM_COL32(24, 52, 74, 235) : IM_COL32(10, 22, 33, 215));
         dl->AddRect(a, b, hov ? IM_COL32(150, 215, 250, 255) : IM_COL32(78, 132, 168, 230), 0, 0, hov ? 2.0f : 1.2f);
-        float fs = size(BODY), ks = size(SMALL);
-        dl->AddText(font, fs, ImVec2(a.x + px(20), a.y + (b.y - a.y - fs) * 0.5f), TEXT, "Report bot bug");
-        ImVec2 k0(b.x - px(62), a.y + px(15)), k1(b.x - px(18), b.y - px(15));
+        dl->AddText(font, fs, ImVec2(a.x + px(20), a.y + (h - fs) * 0.5f), TEXT, "Report bot bug");
+        ImVec2 k0(b.x - px(14) - px(44), a.y + h * 0.2f), k1(b.x - px(14), b.y - h * 0.2f);
         dl->AddRect(k0, k1, IM_COL32(170, 200, 215, 220), px(3), 0, 1.2f);
         ImVec2 kt = font->CalcTextSizeA(ks, 1e9f, 0, "F9");
         dl->AddText(font, ks, ImVec2((k0.x + k1.x - kt.x) * 0.5f, (k0.y + k1.y - kt.y) * 0.5f), TEXT2, "F9");

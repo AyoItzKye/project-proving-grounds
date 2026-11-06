@@ -61,9 +61,9 @@ def main():
             continue
         checked += 1
         short, past = o + d * (L - 0.4), o + d * (L + 0.6)
-        if not T._ray(feet, short, 0.0) or T._ray(feet, past, 0.0):
+        if not T._ray(feet, short, 0.0, "see") or T._ray(feet, past, 0.0, "see"):   # (the view line: windows pass)
             fails.append(f"1. a level look at yaw {math.degrees(yaw):.0f}: stops {L:.1f} u out; the brain's line of sight "
-                         f"short of it {T._ray(feet, short, 0.0)}, past it {T._ray(feet, past, 0.0)} (want clear, blocked)")
+                         f"short of it {T._ray(feet, short, 0.0, 'see')}, past it {T._ray(feet, past, 0.0, 'see')} (want clear, blocked)")
     if not checked:
         fails.append("1. no level look met anything to check against")
     # the map's edge: a made-up 10 x 10 u flat level; a look sloping down to meet its ground 3 u past the edge meets

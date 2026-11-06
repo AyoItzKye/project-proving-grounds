@@ -46,9 +46,12 @@ import numpy as np  # noqa: E402
 
 import jumpphys as J  # noqa: E402
 import lidar  # noqa: E402
-from lidar import BTN_JUMP, KIND_AIRSPACE, KIND_BOT, Hub, Recorder, Roomba, load, map_title, on_events, r2  # noqa: E402
+import lidar_rides  # noqa: E402
+from lidar_director import TARGET  # noqa: E402
+from lidar import BTN_CROUCH, BTN_JUMP, KIND_AIRSPACE, KIND_BOT, Hub, Recorder, Roomba, load, map_title, on_events, r2  # noqa: E402
 
 HZ = 20
+RIDE_P = lidar.RIDE_P            # share of Roomba goals that ride an untried lift or cannon (the simulator pushes them)
 PORT = 8798                      # (not lidar.PORT, the LiDAR Viewer's and a LiDAR match's)
 AIR_SPEED = 6.0                  # aircraft, units/s (ASSUMED: about a Banshee)
 AIR_SENSE = 2                    # voxels around an aircraft it paints (a 5x5x5 block)
@@ -56,6 +59,7 @@ AIR_NEAR = 3.0                   # airspace: columns within this of walked floor
 AIR_GAP = 2.5                    # air above a floor that has something over it (undersides are not in the data)
 GAMES = ["ce", "h2a", "h2", "h3", "odst", "reach", "h4"]
 MAX_FIELDS = 20                  # nav fields kept per map (each one is the size of the map)
+DONE_AFTER = 360.0               # sim s: a map at the director's coverage target ends from here (time to find jumps)
 
 
 class Body:
@@ -67,6 +71,9 @@ class Body:
     def step(s, T, ph, act, dt, rng):
         """Move by the bot's action. Returns None, "fall" (landed too hard) or "void"."""
         fwd, strafe, yaw, _, buttons = act
+        sh = getattr(T, "phantoms", None)            # in a gravity lift or a man cannon's push (tools/lidar_rides.py):
+        if sh and not getattr(s, "ride", None) and lidar_rides.push(sh, s.p, s.v, dt):
+            s.ground, s.air_t = False, 0.0           # pushed, in the air (air control and gravity below; a lift ride is not lost air)
         if getattr(s, "ride", None):                 # thrown by a man cannon: along the arc a real match recorded
             path, t, dur = s.ride
             t += dt
@@ -112,10 +119,13 @@ class Body:
                 k = min(1.0, J.AIR_ACCEL * dt / dv)
                 s.v[0] += dvx * k
                 s.v[1] += dvy * k
+        if buttons & BTN_CROUCH and not getattr(s, "tucked", False) and s.v[2] <= 0.0:
+            s.p[2] += lidar.CROUCH_TUCK.get(ph.game, 0.0)   # crouched in the air: feet up at the apex (a crouch-jump)
+            s.tucked = True
         out, impact = J.air_step(T, ph, s.p, s.v, dt)
         s.air_t = getattr(s, "air_t", 0.0) + dt
         if out == "land":
-            s.ground, s.air_t = True, 0.0
+            s.ground, s.air_t, s.tucked = True, 0.0, False
             return "fall" if impact >= ph.lethal_v else None
         return "void" if out == "void" or s.air_t > 8.0 else None   # 8 s without ground: lost
 
@@ -276,7 +286,7 @@ def merge_links(name, links):
     for l in links:
         m = next((x for x in have if x.get("kind", "jump") == l.get("kind", "jump")
                   and math.dist(x["take_off"], l["take_off"]) < 0.01 and math.dist(x["land"], l["land"]) < 0.01), None)
-        if m is None and l.get("found_by") == "sim":
+        if m is None and l.get("found_by") == "sim" and not l.get("crouch"):   # (crouch-jumps: lidar.CROUCH_TUCK)
             have.append({k: v for k, v in l.items() if not k.startswith("_")})
             new += 1
         elif m is not None:
@@ -305,20 +315,39 @@ def run_map(name, o, switch, k, n, log, ctl=None):
     jumps = sorted(real.get("jumps", []))
     rec.phys = J.Phys(game, jumps[len(jumps) // 2] if len(jumps) >= 20 else None)
     lidar.PROBE_P, lidar.HZ = 0.0, HZ               # a probe needs the game's own leniency: not here
-    lidar.RIDE_P = lidar.USE_P = 0.0                # nor can it throw or press: rides come from real matches
-    T.rides = [(l["take_off"], l["path"], l.get("air_s") or 1.5) for l in usable_links(rec.links) if l.get("ride")]
+    lidar.USE_P = 0.0                               # nor can it press switches
+    T.phantoms = lidar_rides.all_shapes(lidar_rides.load(name))   # lifts and man cannons push (their tags' numbers)
+    lidar.RIDE_P = RIDE_P if T.phantoms else 0.0    # (without them rides come from real matches)
+    T.rides = [(l["take_off"], l["path"], l.get("air_s") or 1.5) for l in usable_links(rec.links) if l.get("ride")
+               and l.get("found_by") != "map"]      # (recorded rides replay their path; map rides are flown)
+    rides = lidar_rides.ride_links(name, T, rec.phys) if T.phantoms else []
+    if rides:                                        # the nav routes through them at once
+        rec.links += rides
+        lidar.nav_learn(T, name, rec.links)
     hub = Hub(rec, "sim")
     switch.current = hub
     bounds = (T.x0, T.y0, T.x0 + T.nw * 0.25, T.y0 + T.nh * 0.25)
     # each spawn on the nearest reachable floor: a spawn whose own cell has no floor gave a NaN height
     # (Halo 3 Sandtrap, Reach Sword Base and Condemned failed the tour)
-    spawns = [T._center(*T._reachable_node(*T._node(p), p.z)) for mode in m["spawns"].values() for team in mode.values() for p in team]
+    # only spawn points inside the map's nav window: a Forge layout without its own .mvar read keeps its base map's
+    # spawns, all over the canvas, and bots started outside the layout (GitHub #10, "Bots spawn outside Forge World
+    # Creations while in LiDAR SIM"); out of the window they were clamped to its edge
+    wx0, wy0, wx1, wy1 = getattr(T, "window", (-1e9, -1e9, 1e9, 1e9))
+    inside = lambda p: wx0 + 1 <= p.x <= wx1 - 1 and wy0 + 1 <= p.y <= wy1 - 1
+    spawns = [T._center(*T._reachable_node(*T._node(p), p.z)) for mode in m["spawns"].values() for team in mode.values()
+              for p in team if inside(p)]
     spawns = [(c.x, c.y, c.z) for c in spawns if not math.isnan(c.z)]
-    if not spawns:                                   # no spawn points: any reachable floor
-        c = T._center(*map(int, np.argwhere(T.lwalk & T.reach)[0]))
-        spawns = [(c.x, c.y, c.z)]
+    if not spawns:                                   # no spawn points in it: reachable floor, the window's middle first
+        cells = np.argwhere(T.lwalk & T.reach)
+        mid = np.array([T.lz.shape[1] / 2, T.lz.shape[2] / 2])
+        picks = cells[np.argsort(np.abs(cells[:, 1:] - mid).sum(axis=1))[:16]]
+        spawns = [(c.x, c.y, c.z) for c in (T._center(*map(int, k)) for k in picks)]
     rng = random.Random(sum(map(ord, name)))
     walkers = [(Roomba(i, rng), Body(spawns[i % len(spawns)])) for i in range(o.walkers)]
+    from brain import oob                            # the map's kill zones: bots keep out as in a match, the director
+    vols = oob.volumes(name)                         # leaves them out of the floor to cover (brain/oob.py)
+    if vols:
+        T.set_oob([], 0, vols)
     if not getattr(o, "no_director", False):         # the LiDAR director (tools/lidar_director.py)
         from lidar_director import LidarDirector
         rec.director = LidarDirector(T, rec, [Vec(*p) for p in spawns])
@@ -333,7 +362,10 @@ def run_map(name, o, switch, k, n, log, ctl=None):
     if ctl is not None:
         ctl.started(name, T, getattr(rec, "director", None))
     speed, anchor, ran = None, (0.0, time.time()), 0.0       # pacing from the last speed change; real s run
-    while t < o.minutes * 60 and (ran < o.max_real or (ctl is not None and ctl.speed > 0)):
+    # (--max-real bounds a command-line batch only: in the Simulator window a map at Max speed was cut at 240 real s
+    # before its coverage target, GitHub issue #8 "LiDAR Sim cuts off prematurely"; the window's maps end by coverage
+    # and the quiet rule below, or the player's Stop)
+    while t < o.minutes * 60 and (ran < o.max_real or ctl is not None):
         if ctl is not None:
             if ctl.stop_now:
                 break
@@ -402,20 +434,30 @@ def run_map(name, o, switch, k, n, log, ctl=None):
             fn = sum(1 for key in rec.walk if key[3] in (lidar.KIND_BOT, lidar.KIND_SPREAD))
             if fn > floor_n + 5:
                 floor_n, last_new = fn, t
-            if t > 90 and t - last_new > 45 and all(c.idle == air.version for c in crafts):
+            dr = getattr(rec, "director", None)      # (with a director: only once it has nothing left to send bots to,
+            if t > 90 and t - last_new > 45 and all(c.idle == air.version for c in crafts) and \
+                    (dr is None or not dr.open_work()):  # coverage at its target or every patch left, objectives done)
                 break                                # nothing new for 45 s and the air is flown
+            if dr is not None and t >= DONE_AFTER and dr.done() and all(c.idle == air.version for c in crafts):
+                break                                # the director's target reached, objectives visited, air flown
         t += dt
         if speed:
             ahead = (t - anchor[0]) / speed - (time.time() - anchor[1])
             if ahead > 0:
                 time.sleep(min(ahead, 0.5))
         ran += time.time() - tick0
+    d = getattr(rec, "director", None)
+    if d is not None:                                # the coverage at the end (not the last plan's, up to 6 s old)
+        d.next_t = 0.0
+        d.plan(t, {rb.index: tuple(b.p) for rb, b in walkers if b.alive})
     rec.save(bot_seconds=t * len(walkers))
     new = merge_links(name, rec.links)
     want, flown = int(air.want.sum()), int((air.want & air.flown).sum())
     reach_cells = int((T.lwalk & T.reach).sum())
     line = (f"| {name} | {game} | {t / 60:.1f} | {floor_n} | {reach_cells} | {rec.calls['made']} | {rec.calls['missed']} | "
-            f"{new} | {deaths} | {falls} | {flown}/{want} ({air.v:.1f} u) | {ceiling:.1f} ({why}) | {time.time() - t0:.0f} s |")
+            f"{new} | {deaths} | {falls} | {flown}/{want} ({air.v:.1f} u) | {ceiling:.1f} ({why}) | {time.time() - t0:.0f} s | " +
+            (f"{100 * d.coverage:.1f}% | " + (f"{d.reached_at:.0f} s |" if d.reached_at is not None else "not reached |")
+             if d is not None else " | |"))
     print(line, flush=True)
     log.write(line + "\n")
     log.flush()
@@ -541,7 +583,8 @@ def main():
     ap.add_argument("maps", nargs="*")
     ap.add_argument("--all", action="store_true")
     ap.add_argument("--game")
-    ap.add_argument("--minutes", type=float, default=6.0)
+    ap.add_argument("--minutes", type=float, default=20.0, help="sim minutes at most (a map ends sooner once the "
+                    "director has nothing left to send bots to and no new floor came for 45 s)")
     ap.add_argument("--walkers", type=int, default=16)
     ap.add_argument("--aircraft", type=int, default=8)
     ap.add_argument("--speed", type=float, default=0.0)
@@ -574,7 +617,8 @@ def main():
     with open(os.path.join(ROOT, "logs", "lidar_sim.md"), "a") as log:
         log.write(f"\n## Run {time.strftime('%Y-%m-%d %H:%M')}: {len(names) or 'picked'} maps, {o.walkers} bots, {o.aircraft} aircraft\n\n"
                   "| map | game | sim min | floor cells painted | reachable cells (level data) | calls made | missed | "
-                  "new links | deaths | falls | air flown / to fly (voxel) | ceiling | real time |\n|" + "---|" * 13 + "\n")
+                  "new links | deaths | falls | air flown / to fly (voxel) | ceiling | real time | reachable floor covered "
+                  f"(kill zones out) | {100 * TARGET:.0f}% at |\n|" + "---|" * 15 + "\n")
         k = 0
         switch.last_seen = time.time()
         while True:

@@ -98,6 +98,7 @@ def loadout_value(guns, rank, game=None):
 
 
 VEHICLE_TRIP = 35.0          # goals farther than this make a free vehicle nearby worth taking (brain/vehicles.py)
+GROUND_RISE = 15.0           # u: a goal this far over the bot is no trip for a ground vehicle (Spire's core, 37 u up)
 GETAWAY_PARK_R = 3.0         # u: the getaway ride parks this near its spot (director.vehicle_jobs)
 RIDE_OUT_R = 10.0            # a rider this near his objective gets out (a runner at their flag: director.vehicle_jobs taxi)
 CALLED_WAIT_R = 15.0         # a driver waits (8 s at most) for a teammate called aboard while he is this near (crew_coming)
@@ -143,6 +144,10 @@ HEAR_RANGE = 30.0                      # gunfire this close is heard: about wher
 ON_THE_WAY = 2.0                       # u: Easy takes only guns this close, it never goes out of its way
 COVER_NEAR = 6.0                    # the farthest cover a top bot goes for in a losing fight (less for lower tiers)
 SHIELD_BACK = 10.0                  # guide 06: a popped shield is 7-10 s out of the fight; after that untouched, back
+ZONE_STEP_IN = 3.0   # u: a zone holder fighting this near its zone (on its floor) fights its way in (keep_in_zone)
+STAY_R, STAY_HOLD_R = 2.0, 0.6   # u: this near a loose objective it works by standing on it, a bot stays on it (stay_on),
+                                 # its fights kept within STAY_HOLD_R of it (the pickups came 0.07-0.59 u off; at 0.9 a fight drifted 1.3 u off)
+STAY_SCORE = 1.4     # staying on it: over all but a fight (a man in sight 1.5 +; it shoots from on it)
 DEFEND_R, ESCORT_R = 15.0, 12.0     # how far a defender strays from its post, an escort from our flag carrier (keep_role)
 DEFEND_HOLD = 6.0                   # a CTF defender closes on a man only this near its post (fight): from cover otherwise
 CLOSE_FIGHT_R = 8.0                 # a man in sight this close is fought whatever the role (decide)
@@ -153,6 +158,8 @@ HUNT_R = 12.0                       # an Invasion defender sent at the carrier /
 LOOK_CONE = math.radians(50)        # walking out of a fight, a deliberate look stays this close to the way it goes
 H2A_FEET = 0.38                     # H2A reports a body this far above its floor (tools/ground_offset.py: Lockout 0.38,
                                     # Zenith median 0.41); the nav's points lie on the floor
+FEET_GAMES = ("h2a_", "h4_")        # ... and Halo 4, the same engine (ground_offset.py, Nov 4: blood_cavern, creeper, blood_crash median
+                                    # 0.39-0.40; Halo 3, Reach, Halo 2 0.00-0.02): Bot.feet
 GRAVITY = 4.1                       # u/s^2 in Reach (the player's fall onto a Spire heat vent: 1.1 u/s faster
                                     # each 0.27 s)
 ESCORT_TRAIL = 3.0                 # an escort's spot: this far behind the carrier, on the side away from home
@@ -245,12 +252,23 @@ CHARGE = {"plasma_pistol": ("release", 0.9), "plasma_launcher": ("release", 1.6)
 # (Breakpoint 20261102-184132, a Banshee at 14-25 u, logs/tmp/pl_spells.py) held his reticle within 4 deg of it 2.4, 2.2
 # and 4.4 s before letting go, the last volley killed it. Charged and the reticle on it this long, then let go
 PL_LOCK_S, PL_LOCK_R, PL_SLIP = 2.2, 1.5, 0.3   # s, u (the reticle on a vehicle: within this of its middle), s
-# melee-only weapons fire when the man is within their reach: the sword lunges on a red reticle (guide 03:
-# ~22 ft Halo 2, ~15 ft Halo 3 and later), the hammer swings so the impact lands at ~8 ft
-LUNGE = {"sword": 1.6, "gravity_hammer": 1.1}
-# ... per game where known: a skilled player's Halo 3 sword kills came from first presses at 1.2-2.0 u (Construct, The
-# Pit: logs/tmp/swordlunge.py over his collect files); Halo 2's lunge is the long one (guide 03: ~22 ft)
-LUNGE_GAME = {"h3": {"sword": 1.8}, "h2": {"sword": 2.2}, "h2a": {"sword": 2.2}}
+# melee-only weapons attack with the trigger the moment the reticle turns red: the man within the weapon's autoaim range
+# and its autoaim angle of the crosshair (the game's own lunge test). OBSERVED in the kits' weapon tags (tool.exe
+# export-tag-to-xml): Reach, Halo 4, H2A swords (and Halo 4's Flood prongs, H2A's infected sword) autoaim range 2.25 u,
+# angle 6 deg; the gravity hammer (Reach, Halo 4) 1.35 u, 10 deg
+LUNGE = {"sword": 2.25, "gravity_hammer": 1.35}
+LUNGE_ANGLE = {"sword": math.radians(6.0), "gravity_hammer": math.radians(10.0)}
+LUNGE_BODY = 0.15     # u: half a Spartan's width, the part of him the red cone may touch (INFERRED: tags give width 0)
+# ... per game where the kit has no tags here: a skilled player's Halo 3 sword kills came from first presses at 1.2-2.0 u
+# (Construct, The Pit: logs/tmp/swordlunge.py over his collect files; H3EK's tags are packed); Halo 2's lunge is the
+# long one (guide 03: ~22 ft)
+LUNGE_GAME = {"h3": {"sword": 1.8}, "h2": {"sword": 2.2}}
+# games whose sword / hammer attack is the melee action (Reach's tags: "melee only"; Halo 4 Flood live: 138 trigger
+# presses no damage, with the melee bit 44 presses 9 kills; H2A INFERRED: Halo 4's engine)
+MELEE_TRIGGER = {"reach", "h4", "h2a"}
+SWORD_OPEN = 8.0     # u: past this a sword or hammer holder does not cross the open at a man aiming at it (sword_cover)
+CLASH_MELEE = (0.15, 0.7)   # s after its own sword press: a sword man still standing in reach is a clash (parried), and
+                            # the winner's quick melee follows (owner, issue #3); Easy never does it
 # the gap between sword presses while he is in reach: the player pressed every 0.15-0.22 s as he closed until one landed
 # (a press past the red reticle whiffs, the next one lunges); one press then 0.6 s of nothing missed live (The Pit
 # 199.95 s: the one press at 1.5 u, no damage, dead at 200.19)
@@ -277,6 +295,15 @@ CHAINGUN_HEAT = (13.5, 3.3)   # s: Reach's Warthog chaingun, fire to overheat an
 # 21.5), about every 6 s; past him it flies on straight and climbs to 20-28 u off, then turns back hard (13 to 4 u/s)
 PASS_START, PASS_OVER, PASS_EXTEND, PASS_OUT_S, PASS_START_H, PASS_START_MIN = 15.0, 6.0, 22.0, 6.0, 15.0, 12.0
 CANNON_R, FIRE2_R, FIRE2_HOLD, FIRE2_EVERY = 28.0, (12.0, 36.0), 2.4, 6.0
+AIR_GUN_R = 1.5       # u: an aircraft's guns fire with its nose this near his middle (Bot.air_pass)
+AIR_JINK, AIR_JINK_S = 0.4, 1.0   # rad, s: shot at in a run's way in (out of gun range) or way out, a swerve that long
+# an attack run's ground check (Bot.air_guard): its path along the nose AIR_PULL_S ahead at its speed, under AIR_RUN_FLOOR
+# over the floor there: pull out and end the run. (The old rule, 6.8 u over the highest floor within 6 u of four points
+# 2.5 s on, fired on 44% of a replayed Shrine Banshee's ticks and held every dive 16 u over him: tools/air_replay.py)
+AIR_PULL_S, AIR_RUN_FLOOR = 1.2, 1.5
+AIR_CEIL = 3.0       # u: off a run, floors this far over an aircraft still count as ones to climb over (Bot.air_guard)
+AIR_VTOL_CLIMB = 3.0  # u/s: a Falcon's / Hornet's climb on its vertical input (trace 20261105-201917: 3.0-3.2 u/s up)
+AIR_ROOF_M = 2.5     # u: an aircraft's middle stays this far under the map's roof (Terrain.air_roof; Bot.air_roof_guard)
 # (in Reach that right button is the Banshee's boost, not a weapon: his speed held 8.8 u/s, not held 4.3, every hold of
 # 1 s or more faster; logs/tmp/owner_rmb_speed.py.) Reach's fuel rod is cycled to like a secondary: 10 shots from 10-31
 # u (median 16.5), about every 17 s; the cycle to the shot 0.67 s, the shot to the cycle back 0.44 s
@@ -319,6 +346,19 @@ def reach(w, game=None):
         return LUNGE_GAME.get(game, {}).get(w, LUNGE[w])
     hi = WEAPON_RANGE.get(w, (5.0, 25.0))[1]
     return hi + SHOTGUN_SLACK if w in ("shotgun", "scattershot") else hi
+
+
+def red_reticle(me, at, w, game=None):
+    """A sword's or hammer's reticle is red on a man at `at`: within the weapon's reach (its autoaim range) and the view
+    (me.yaw, me.pitch) within its autoaim angle of his body (the angle plus his half width, or half height, at that
+    range)."""
+    d = dist(me.pos, at)
+    if w not in LUNGE or d > reach(w, game):
+        return False
+    ya, pa = angles_to(eye(me), at + Vec(0, 0, 0.35))
+    d = max(d, 0.3)
+    return (abs(wrap(ya - me.yaw)) <= LUNGE_ANGLE[w] + math.atan2(LUNGE_BODY, d)
+            and abs(pa - me.pitch) <= LUNGE_ANGLE[w] + math.atan2(0.35, d))
 # close-quarters weapons: preferred inside CLOSE over a rifle
 CQ = (AUTO - {"focus_rifle"}) | {"shotgun", "scattershot", "sword", "gravity_hammer", "excavator", "flamethrower",
                                   "boltshot"}   # (the focus rifle's held beam is a long-range gun: review F4)
@@ -430,10 +470,13 @@ class Perception:
             best = min(seeing or near, key=lambda e: dist(e.pos, me.pos), default=None)
             sloppy = best is not None
         if best is not None:
-            if best.id != getattr(s, "attacker_id", None) or now - getattr(s, "attacker_t", -9.0) > 1.0:
+            burst = best.id != getattr(s, "attacker_id", None) or now - getattr(s, "attacker_t", -9.0) > 1.0
+            if burst:
                 # a new shooter (or a new burst): a person notices who it is in about his reaction time, off to the
                 # side (Bot.shot_by_other; live Spire: half the Legendary bots turned in 0.0-0.11 s, the player 0.40)
                 s.attacker_notice = now + s.react_time(True) * (1.4 if sloppy else 1.0)
+                if not sloppy and best.weapon not in BLAST:
+                    s.shot_line = (best.pos, me.pos, now)   # a round's line to us, a burst once (Bot.plan: learned)
             s.attacker_id, s.attacker_t = best.id, now   # who is hurting us (decide: turn on him)
             if not sloppy:
                 # aiming straight at us as his shot landed: he has a line to us (Perception.update). Only for a first hit
@@ -907,7 +950,7 @@ class Bot:
                 q = arg
             else:
                 continue
-            if kind == "item" and dist(me.pos, q) < UPGRADE_ON_WAY and not core_rush:
+            if kind == "item" and dist(me.pos, q) < UPGRADE_ON_WAY and not core_rush and not s.out_of_held(me, snap, q):
                 continue              # a gun on its way (a step or two): taken whatever its post (an attacker too)
             if kind == "item" and not urgent and dist(me.pos, q) < POWER_NEAR and s.power_spawn(q):
                 continue              # a power weapon up near by (best_item: up by arrival): worth the step off its post
@@ -1034,7 +1077,7 @@ class Bot:
         # kept, a runner took the lane it first drew every life of the match (the director keeps a live runner's route),
         # one lane all game on the three-lane maps (Lockout, Island, Guardian)
         s.order = Order(s.order.role, s.order.point, s.order.target)
-        s.via_left = []
+        s.via_left, s.prong_passed = [], False      # (a blitz's prong again from the respawn: director.prong_via)
         s.per = Perception(s.p, s.rng)
         s.aim = Aim(s.p, s.rng)
         s.engaged_since = None
@@ -1083,11 +1126,25 @@ class Bot:
         if not me.alive:
             s.charge_since = s.on_since = None
             return act
+        if snap.mode == "race" and me.id in snap.race_next:
+            # Race (brain/modes.py Race): always this racer's own next gate, read every tick, at the wheel too (the
+            # director's role pass is every 2 s: a gate just touched would be driven back to)
+            g = snap.race_next[me.id]
+            if s.order.role != "runner" or s.order.point is None or dist(s.order.point, g) > 0.1:
+                s.order, s.via_left = Order("runner", g), []
+            s.drive_to = g
         prev = getattr(s, "last_pos", None)
         s.last_pos, s.last_weapon = me.pos, me.weapon      # for how this life ends (brain/loadouts.py)
         if prev is not None and (me.pos - prev).flat() > 4.0:
             s.came_through(now, me, prev)                  # out of a teleporter: watch its exit
-        s.grab_point = s.loose_point(me, snap)             # an objective lying loose for us to take (move_to)
+        # an objective lying loose for us to take, or ours lying dropped to return by standing on it (move_to's last steps)
+        s.grab_point = s.loose_point(me, snap)
+        ret = s.return_point(me, snap) if s.grab_point is None else None
+        if ret is not None:
+            s.grab_point = ret
+        g = s.grab_point if snap.mode != "race" and not me.has_flag and me.vehicle in (None, -1) else None
+        s.stay_at = g if g is not None and (me.pos - g).flat() < STAY_R and abs(me.pos.z - g.z) < 2.0 else None
+        s.walk_onto = ret if ret is not None else s.stay_at    # walked onto, not loitered round (plan, the objective)
         s.kit.perceive(s, now, me, snap)                   # flares, radar static, decoys, enemy abilities
         s.per.blind, s.per.jammed = now < s.kit.blind_until, now < s.kit.jammed_until
         # sides that change in a match (Halo 3 Juggernaut: a new juggernaut, everyone else allied against him;
@@ -1103,6 +1160,10 @@ class Bot:
             s.reports.append(("seen", e.id, e.pos, now, busy))
             if e.has_flag:
                 s.reports.append(("flag_carrier", e.id, e.pos, now, busy))
+        line = getattr(s.per, "shot_line", None)
+        if line is not None and line[2] == now and s.map is not None:
+            s.T().learn_shot_through(line[0], line[1])   # his round reached us through what the data calls a wall: a
+            s.per.shot_line = None                       # fence it does not name (Terrain.learn_shot_through)
         if now >= s.next_decide:
             s.next_decide = now + s.p.decide * s.rng.uniform(0.8, 1.3)
             was, s.goal = s.goal, s.decide(now, me, snap)
@@ -1110,12 +1171,13 @@ class Bot:
                 s.target_at = now              # a new target: held TARGET_HOLD s (pick_target)
         kind, arg = s.goal
         if isinstance(arg, Vec) and kind in ("objective", "item", "hunt", "hold"):
-            s.headway(now, me, (kind, arg))
+            s.headway(now, me, (kind, arg), snap)
         else:
             s.way_key = None        # fighting, driving: the clock starts again when we travel
         if me.vehicle != -1:
             s.drive(now, dt, me, snap, act, nav)
             s.air_guard(me, act, snap)
+            s.air_roof_guard(me, act, snap)
             s.fire_gate(now, me, act, snap)
             return act
         # on foot: the next seat is a new one, in the same vehicle too (H2A Bloodline s133: out of a Warthog's gun with
@@ -1211,10 +1273,17 @@ class Bot:
             # territory's middle with no input 44% of their objective time, standing 0.28 to the player's 0.13
             # (Spire); the core, a flag or a bomb is still run at and taken
             held = s.zone_at(snap, point) is not None or (snap.hill is not None and dist(point, snap.hill) < 0.5)
+            # (nor a defender going to the dropped core to return it, or one on an objective it stays on: stood on, not
+            # loitered round 2.5 u off; live Spire 20261105-143525, the core's defender 1.15-1.36 u off it)
+            wo = getattr(s, "walk_onto", None)
+            onto = wo is not None and isinstance(arg, Vec) and dist(arg, wo) < 1.0
             if kind == "hold" or (kind == "objective" and (s.order.role not in ("runner", "escort") or held)
-                                  and not me.has_flag and not (s.order.role == "hunter" and snap.mode == "ctf")):
+                                  and not me.has_flag and not (s.order.role == "hunter" and snap.mode == "ctf")
+                                  and not onto):
                 on_hill = snap.hill is not None and dist(point, snap.hill) < 0.5      # (the hill holder stays inside it)
                 wander = 0.6 * snap.hill_r if on_hill else (4.0 if snap.mode == "slayer" else 2.5)
+                if snap.mode == "infection" and not snap.obj_zones:
+                    wander = 1.0       # in the hold's room (director: a few entrances), not out of its door
                 # a zone to stand in (Invasion territories, Territories, havens): inside its own size. Boneyard's are
                 # boxes about 0.9 u from the centre to the edge; 2.5 u of loitering kept attackers outside (live)
                 zr = s.zone_at(snap, point)
@@ -1283,7 +1352,8 @@ class Bot:
             if kind == "hold":
                 act.crouch = s.p.crouchy > 0.5 and dist(me.pos, point) < 1.5
             if (kind == "objective" and snap.mode != "slayer" and s.p.tactics > 0.15 and now >= s.grenade_ready_at
-                    and not me.has_flag and s.rng.random() < OBJ_NADE * dt * s.p.grenades):
+                    and not me.has_flag and me.weapon not in LUNGE      # (a Flood: 15 throws into its run, live Adrift)
+                    and s.rng.random() < OBJ_NADE * dt * s.p.grenades):
                 # a grenade at the objective as it goes in: at a man believed there (seen, heard or called out in the
                 # last 3 s, 8-20 u off) who is about where it looks, with no teammate by him (Invasion territories, a
                 # flag room: people throw first, the player 2.37 a minute; Legendary 0.56 on Spire)
@@ -1338,7 +1408,14 @@ class Bot:
             s.last_wpn, s.wpn_changed = me.weapon, now
         # (only a read that just turned: a gun the map's names do not cover reads "unknown" all along, and a runner with
         # one stood on their flag 40 s never pressing Use, live Boardwalk: no red flag run all match)
-        if me.has_flag or (on_flag and me.weapon in ("unknown", "flag") and now - s.wpn_changed < 1.0):
+        # the Invasion core just left our hands: the weapon read shows a gun again before the carrier read clears (0.4-0.6 s)
+        # and the quiets below held the re-take 1.5 s more (live Boneyard B12 527.3 s: the carrier fought 0.3 u off the
+        # dropped core and died without taking it back; it lay loose 120 s)
+        core_out = (snap.mode == "invasion" and me.weapon not in ("unknown", "flag")
+                    and s.wpn_changed > getattr(s, "use_quiet_until", 0.0) - 1.5)
+        if core_out:
+            s.flag_quiet_until = 0.0
+        elif me.has_flag or (on_flag and me.weapon in ("unknown", "flag") and now - s.wpn_changed < 1.0):
             # it is in our hands: the weapon read shows it the tick it happens, the flag read 0.4-0.6 s later. Until
             # then no Use and no weapon switch: in Reach either one drops the flag and the held Use took it again, the
             # gun in hand flipping flag / rifle every tick
@@ -1347,26 +1424,58 @@ class Bot:
             # on an enemy flag: take it whatever the goal (a fight on their stand too)
             s.take(me, act, next(f.pos for t, f in snap.flags.items()
                                  if t != me.team and f.state != "carried" and dist(me.pos, f.pos) < 1.2))
-        if me.has_flag or (snap.mode == "invasion" and snap.inv_phase == 3 and me.weapon == "unknown"
-                           and now - s.wpn_changed < 1.0):     # (just turned: an unnamed gun is "unknown" all along)
+        if (me.has_flag and not core_out) or (snap.mode == "invasion" and snap.inv_phase == 3 and me.weapon == "unknown"
+                                              and now - s.wpn_changed < 1.0):   # (just turned: an unnamed gun is "unknown")
             s.use_quiet_until = now + 1.5   # just carrying: no Use on a read that lags behind the carry (the core in hand
                                             # reads "unknown" 0.5 s before the carrier read: Use dropped it)
+        elif core_out:
+            s.use_quiet_until = 0.0
         spot = None if me.has_flag else s.on_loose_objective(me, snap)
         if spot is not None and now >= getattr(s, "use_quiet_until", 0.0):
             s.take(me, act, spot)  # on a bomb / stockpile flag / the Invasion core: take it (live: stood on the core)
-        if me.has_flag:           # carrying: no gun, but the flag or ball swings: hit a man at arm's length (one press a swing)
+        # carrying: no gun, but the flag or ball swings: hit a man at arm's length (one press a swing). Not the Invasion
+        # core: a melee press drops it (live: 18 of 18 carrier melees on Spire, 2 of 2 on Boneyard ended the carry within
+        # 1 s, logs/tmp/invasion_regress/melee_drop.py; Breakpoint's bomb 0 of 12, CTF flags 0 of 42)
+        if me.has_flag and not (snap.mode == "invasion" and not snap.inv_bomb):
             close = [k for k in s.per.visible_enemies() if dist(me.pos, s.per.beliefs[k].pos) < MELEE_R]
             if close and now >= getattr(s, "melee_at", 0.0):
                 b = s.per.beliefs[min(close, key=lambda k: dist(me.pos, s.per.beliefs[k].pos))]
                 act.yaw, act.pitch = angles_to(eye(me), b.pos + Vec(0, 0, 0.35))
                 act.melee, s.melee_at = True, now + s.rng.uniform(0.6, 0.9)
                 s.notes.append("carrier melee")
+        if snap.mode == "race" and kind in ("fight", "retreat") and me.id in snap.race_next and me.vehicle in (None, -1):
+            # a racer shoots on its way and does not stop to duel or hide (RACE-01; live Rat Race, 16 players: 9-21
+            # kills and 0 laps each in 3 min): the walk goes on to its gate, the aim and trigger stay on the man
+            walk = Action(yaw=act.yaw, pitch=act.pitch)
+            s.move_to(me, snap.race_next[me.id], walk, nav)
+            h, m = walk.yaw + math.atan2(walk.strafe, walk.forward), min(1.0, math.hypot(walk.forward, walk.strafe))
+            act.forward, act.strafe, act.jump = m * math.cos(h - act.yaw), m * math.sin(h - act.yaw), act.jump or walk.jump
+            s.notes.append("race: shooting on the way")
+        elif kind == "fight" and snap.mode == "invasion" and s.pressing(me, snap) and me.vehicle in (None, -1) \
+                and not me.has_flag and isinstance(arg, int) and arg in s.per.beliefs:
+            # an attacker on the clock shoots on its way to the territory / the core, as the racer does: the aim and
+            # trigger on the man, the walk to the objective. Only for a man 6 u off or more, and not inside its zone
+            # (keep_in_zone holds it there). The owner's Spire Invasion 20261105-233940 at 297.9 s ("THESE SPARTANS ARE
+            # JUST CONCERNED WITH FIGHTING NOT THE OBJECTIVE"): phase 2's attackers stood 15-30 u off their territory
+            # half the time, 7% in 6 u of it, and picked a fight there 27% of the time (a goal of objective never shoots)
+            pt = s.order.point if s.order.point is not None else s.objective_point(me)
+            zr = s.zone_at(snap, pt) if pt is not None else None
+            if pt is not None and dist(me.pos, s.per.beliefs[arg].pos) > 6.0 and dist(me.pos, pt) > (zr or 2.0):
+                walk = Action(yaw=act.yaw, pitch=act.pitch)
+                s.move_to(me, pt, walk, nav)
+                h, m = walk.yaw + math.atan2(walk.strafe, walk.forward), min(1.0, math.hypot(walk.forward, walk.strafe))
+                act.forward, act.strafe, act.jump = m * math.cos(h - act.yaw), m * math.sin(h - act.yaw), act.jump or walk.jump
+                s.notes.append("invasion: shooting on the way")
         used = s.kit.act(s, now, dt, me, snap, act)       # equipment / ability, and steering clear of mines
         if used:
             s.notes.append(used)
         s.give_way(me, snap, act)
         s.crouch_spots(me, act)
         s.own_grenade(now, me, act)
+        if kind == "fight":
+            # (after the kit's dash, the give-way and the grenade step: live B15 holders still left 1.4-2.4 u fighting
+            # with the clamp in the fight alone; the evade and the give-way stepped them out after it)
+            s.keep_in_zone(me, snap, act)
         s.obstacle_guard(now, me, act, snap)
         press = getattr(s.kit, "press", None)
         if act.equipment and press is not None and press[0] == "sprint" and abs(act.strafe) > 0.1:
@@ -1803,6 +1912,8 @@ class Bot:
             if me.weapon in SNIPERS and s.p.tactics > 0.15 and dist(me.pos, b.pos) < 25.0:
                 # gun sense: a sniper holds its lane and lets him show, it does not walk round the corner into him
                 want *= 0.4
+            if snap.mode == "infection" and s.order.role == "defender":
+                want *= 0.2      # Infection: a survivor in its hold, an infected at its corner: let him come (issue #3)
             scores[("hunt", b.pos)] = max(scores.get(("hunt", b.pos), 0.0), want)   # (never under the close-dot check's)
             hit = [b for b in known if b.source == "hit" and now - b.t < 2.0]
             if hit:   # being shot by someone we have not seen: turn and find him (everyone does)
@@ -1856,6 +1967,13 @@ class Bot:
         s.vehicle_mission(now, me, snap, scores)
         s.keep_role(scores, me, snap, seen)
         s.break_stalemates(now, me, snap, scores)
+        if snap.mode == "race":
+            # Race scores laps, not kills (RACE-01): the gate first; far fights, hunts and guns lying about only on the
+            # way (a man close in is still fought, below). Live Rat Race: bots chose fights in 50-90% of their
+            # decisions and the objective in 1-25%, 4 gates taken by 16 players in 44 s
+            for k in scores:
+                if k[0] in ("fight", "hunt", "item", "hold"):
+                    scores[k] *= 0.3
         if not me.has_flag and scores:
             # a man in sight within CLOSE_FIGHT_R is fought whatever the post (live Spire Invasion: an attacker and a
             # defender walked 14 s side by side at 0.4 u to the same territory, each scoring its post 2.0 / 1.8 over
@@ -1870,7 +1988,18 @@ class Bot:
                 if d < (3.0 if grab else CLOSE_FIGHT_R) and regroup is None:   # (alone against two: regroup_point)
                     top = max(v for k, v in scores.items() if k[0] != "retreat" or d < 3.0)
                     scores[key] = max(scores[key], top + 0.25)
+        infected = False
+        if snap.mode == "infection":
+            from .modes import zombie_team
+            infected = zombie_team(snap) == me.team
+            if infected:
+                # the infected take no guns, seats or rests: they hunt (owner, Nov 4: Halo 3's zombies "weren't
+                # aggressive enough"; his Deadlock game: their decisions went to items 49%, retreats 6%, vehicles 4%,
+                # where Halo 4's Flood, with pickups off there, hunted; 1.0 conversions a zombie-minute to 1.5-2.5)
+                for k in [k for k in scores if k[0] in ("item", "vehicle", "retreat", "hold")]:
+                    del scores[k]
         s.board_check(me, snap, scores)
+        s.stay_on(scores, me, snap, seen)
         bans = getattr(s, "goal_ban", {})
         grab = getattr(s, "grab_point", None)
         for k in [k for k in scores if k[0] in ("objective", "item", "hunt", "hold") and bans.get(s._goal_key(k), 0) > now]:
@@ -1883,6 +2012,13 @@ class Bot:
                 if alt is not None:
                     scores[("objective", alt)] = 0.5 + 0.7 * s.p.objective
         # what the bot weighed and why (tools/observer.py): the scores and the facts behind them
+        mv = next((x for x in snap.vehicles if x["handle"] == me.vehicle), None) if me.vehicle not in (None, -1) else None
+        if (mv is not None and getattr(s, "seat", None) == "driver"
+                and (vehicles.spec(mv["kind"]) or {}).get("move") == "air"):
+            # a pilot does not fly off for a gun it cannot take from the seat or away from the man it should hunt: live
+            # (Shrine 20261104-154714, bot 9's Banshee) item and retreat were 1221 of its 2852 choices, the fight 331
+            for k in [k for k in scores if k[0] in ("item", "retreat")]:
+                del scores[k]
         s.last_scores = scores
         s.last_flags = dict(post=round(post, 2), seen=len(seen), friends=friends, avoid=avoid, cracked=cracked,
                             recharge=now < getattr(s, "recharge_until", 0.0), hit=hit_recent)
@@ -1895,7 +2031,8 @@ class Bot:
         # the director called it onto a gun or a seat (a honk): it goes unless the fight is close. Any fight used to
         # win: live, Boneyard, two bots called to a Warthog's gun traded shots 25 u away and never got there
         close_fight = best[0] == "fight" and best[1] in s.per.beliefs and dist(me.pos, s.per.beliefs[best[1]].pos) < 8.0
-        urgent = s.urgent(me, snap)            # (the core at stake: on foot, by the lift and the drops)
+        # (the core at stake: on foot, by the lift and the drops; on a loose objective: no seat, no ride, stay_on)
+        urgent = s.urgent(me, snap) or getattr(s, "stay_at", None) is not None
         if s.order.role in ("ride", "board", "drive") and not close_fight and not urgent:
             # (drive: the team's pick for a role, director.crew_orders, from up to its CREW_REACH)
             v = next((v for v in snap.vehicles if v["handle"] == s.order.target), None)
@@ -1922,17 +2059,30 @@ class Bot:
                 s.vehicle_until = max(getattr(s, "vehicle_until", 0.0), now + 4.0)
                 return ("vehicle", v["handle"])
             s.errand = None
-        if (far and dist(me.pos, far) > VEHICLE_TRIP and not me.has_flag and best[0] != "fight" and not urgent
+        # (a race is a whole lap of gates 15-50 u apart: every racer rides, RACE-01)
+        # (not for a gate 12 u off: out of its Ghost under a gate on a ledge, a racer walks up, it does not get back in)
+        trip = dist(me.pos, far) if far else 0.0
+        trip = 40.0 if snap.mode == "race" and (trip > 12.0 or s.game == "reach") else trip   # (Reach: riding only counts)
+        if (far and trip > VEHICLE_TRIP and not me.has_flag and best[0] != "fight" and not urgent and not infected
                 and now >= getattr(s, "vehicle_retry_at", 0.0)):
             # any vehicle the table knows (brain/vehicles.py), by its value, nearness and the trip's length
-            pick = max((v for v in snap.vehicles if vehicles.usable(v, now, s.duds()) and not s.veh_banned(v, now)),
-                       key=lambda v: vehicles.ride_score(v, me, far, dist(me.pos, far)), default=None)
-            if (pick and vehicles.ride_score(pick, me, far, dist(me.pos, far)) > 0.15
-                    and s.rng.random() < 0.3 + 0.6 * s.p.map_iq):
+            # (not on wheels to a goal far over it: live Spire 20261105-060020 phase 3, five attackers took turns in
+            # the Warthog at the spire's foot for the core 37 u up, 300-1,200 rows each "waiting for crew", no pickup)
+            pick = max((v for v in snap.vehicles if vehicles.usable(v, now, s.duds()) and not s.veh_banned(v, now)
+                        and s.trip_ok(v, me, far)),
+                       key=lambda v: vehicles.ride_score(v, me, far, trip), default=None)
+            if (pick and vehicles.ride_score(pick, me, far, trip) > 0.15
+                    and (snap.mode == "race" or s.rng.random() < 0.3 + 0.6 * s.p.map_iq)):
                 s.drive_to = far               # where the trip goes
                 s.vehicle_until = now + 8.0
                 return ("vehicle", pick["handle"])
         return best
+
+    @staticmethod
+    def trip_ok(v, me, goal):
+        """Vehicle v can make a trip to goal: an aircraft anywhere, a ground vehicle not to a goal GROUND_RISE over the
+        bot (Spire's core on the spire's top, 37 u up)."""
+        return goal.z - me.pos.z <= GROUND_RISE or (vehicles.spec(v["kind"]) or {}).get("move") == "air"
 
     def board_check(s, me, snap, scores):
         """Boarding: Halo 2 on, Normal and up on foot, an enemy-driven ground vehicle (BOARDABLE) within BOARD_TRY_R that
@@ -2018,10 +2168,89 @@ class Bot:
         best = min(zones, key=lambda zr: dist(zr[0], point), default=None)
         return best[1] if best is not None and dist(best[0], point) < best[1] + 0.5 else None
 
+    def held_zone(s, snap):
+        """(centre, radius) of the zone this bot's post is to be held from inside (an Invasion attacker's territory, an
+        Infection zone, the hill), else None: the zones the post leash keeps it in (role "defender")."""
+        if getattr(s, "stay_at", None) is not None:
+            return s.stay_at, STAY_HOLD_R             # on a loose objective it works by standing on it (stay_on)
+        o = s.order
+        if o.role != "defender" or o.point is None:
+            return None
+        if snap.mode == "invasion" and snap.inv_attackers == s.team and snap.inv_phase in (1, 2):
+            zones = list(zip(snap.inv_zones, snap.inv_zone_r))
+        elif snap.mode == "infection":
+            # (not Territories: both teams' holders fought inside the same zone and it stayed contested, the sim's
+            # Boneyard 4 takes against 9 without, 32 points against 109: logs/tmp/invasion_regress/zonesim.py)
+            zones = [(z, r) for z, r, _ in snap.obj_zones]
+        elif snap.mode == "king" and snap.hill is not None:
+            zones = [(snap.hill, snap.hill_r or DEFEND_R)]
+        else:
+            return None
+        best = min(zones, key=lambda zr: dist(zr[0], o.point), default=None)
+        return best if best is not None and dist(best[0], o.point) < 3.0 else None
+
+    def out_of_held(s, me, snap, q):
+        """In the zone it holds (held_zone) and q outside it: a gun there is no step 'on its way' (keep_role's
+        UPGRADE_ON_WAY). Live Boneyard B22 R1: the Elites' 12.0 s uncontested hold of the south territory ended with the
+        lone holder stepping 1.4 u out for a gun lying 1.8 u off (B14 R1 the same)."""
+        z = s.held_zone(snap)
+        if z is None:
+            return False
+        c, r = z
+        return (me.pos - c).flat() <= r + 0.3 and abs(me.pos.z - c.z) < 2.0 and (q - c).flat() > r
+
+    def keep_in_zone(s, me, snap, act):
+        """A zone holder in its zone fights from inside it: the fight's steps (band, strafe, juke, chase) lose their
+        outward part past 0.7 of the zone's size, and past 0.85 of it it steps back in. Live Boneyard B9-B12, the
+        attackers' phase 1 holds: 13 of 18 ended with the holder 1.2-2.7 u out of a box 0.86 u to its edge fighting
+        (logs/tmp/invasion_regress/holdends.py), none held the 20 s a capture takes. Within ZONE_STEP_IN of it on its
+        floor, the line in clear, it fights its way in: the steps toward or away from the man become steps into the zone,
+        the strafe kept (B13 R1: the Elites' fights on the platform 1-4 u off the territories, 7.5 s in in 270 s)."""
+        z = s.held_zone(snap)
+        if z is None or me.vehicle != -1:
+            return
+        c, r = z
+        ox, oy = me.pos.x - c.x, me.pos.y - c.y
+        d = math.hypot(ox, oy)
+        h, m = act.yaw + math.atan2(act.strafe, act.forward), min(1.0, math.hypot(act.forward, act.strafe))
+        vx, vy = m * math.cos(h), m * math.sin(h)
+        ux, uy = (ox / d, oy / d) if d > 1e-3 else (0.0, 0.0)
+        out = vx * ux + vy * uy
+        # (the step in: an Invasion territory or a loose objective it stays on; a hill's taker waits outside for company,
+        # KOTH-STATIC-10, stage. A core's or flag's origin sits up to 0.8 u over the feet: Spire 20261105-143525)
+        stay = getattr(s, "stay_at", None) is not None
+        if (snap.mode == "invasion" or stay) and r + 0.3 < d <= r + ZONE_STEP_IN and \
+                abs(me.pos.z - c.z) < (1.2 if stay else 0.6) and \
+                s.T().clearance(s.feet(me), math.atan2(-uy, -ux), far=d) >= d - r:
+            vx, vy = vx - out * ux - 0.9 * ux, vy - out * uy - 0.9 * uy
+            n = math.hypot(vx, vy)
+            cy, sy = math.cos(act.yaw), math.sin(act.yaw)
+            act.forward, act.strafe = (vx * cy + vy * sy) / max(1.0, n), (-vx * sy + vy * cy) / max(1.0, n)
+            act.sprint = False
+            s.note("fight: stepping into the zone")
+            return
+        if d > r + 0.3 or abs(me.pos.z - c.z) > 2.0:
+            return                                   # not in it: the post brings it in
+        if d > 0.7 * r and out > 0.0:
+            vx, vy = vx - out * ux, vy - out * uy
+        if d > 0.85 * r:
+            vx, vy = vx - 0.6 * ux, vy - 0.6 * uy
+        n = math.hypot(vx, vy)
+        if n > 1.0:
+            vx, vy = vx / n, vy / n
+        if (vx, vy) != (m * math.cos(h), m * math.sin(h)):
+            cy, sy = math.cos(act.yaw), math.sin(act.yaw)
+            act.forward, act.strafe = vx * cy + vy * sy, -vx * sy + vy * cy
+            act.sprint = False
+            s.note("fight: in the zone")
+
     @staticmethod
     def loose_point(me, snap):
         """Where an objective this bot may take lies loose (the Invasion core or Breakpoint's bomb for the attackers,
-        Assault's bomb, a Stockpile flag not in our goal), the nearest; None."""
+        Assault's bomb, a Stockpile flag not in our goal), the nearest; None. Race: this racer's next gate (walked onto
+        all the way, move_to's last steps: live Rat Race, bots stopped 1.1-1.6 u off a gate the brain counts at 1.05)."""
+        if snap.mode == "race":
+            return snap.race_next.get(me.id)
         if snap.mode == "invasion":
             # (Breakpoint's armed bomb: the defenders' to walk onto and disarm, never the attackers' to take again)
             ok = ((snap.inv_attackers == me.team) != snap.inv_armed) and snap.inv_core is not None                 and snap.inv_core_carrier is None
@@ -2037,6 +2266,37 @@ class Bot:
         return min(free, key=lambda q: dist(q, me.pos), default=None)
 
     @staticmethod
+    def return_point(me, snap):
+        """Where an objective of the other side's to take lies dropped for this bot to return by standing on it: the
+        Invasion core or Breakpoint's bomb off its stand (a defender's: Reach takes it home after the variant's Core
+        Return Time on it, 30 s on the owner's Tempest), our CTF flag dropped; None."""
+        if snap.mode == "invasion":
+            ok = (snap.inv_attackers != me.team and not snap.inv_armed and snap.inv_core is not None
+                  and snap.inv_core_carrier is None and snap.inv_stand is not None
+                  and (snap.inv_core - snap.inv_stand).flat() > 1.5)
+            return snap.inv_core if ok else None
+        f = (snap.flags or {}).get(me.team) if snap.mode == "ctf" else None
+        return f.pos if f is not None and f.state == "dropped" else None
+
+    def stay_on(s, scores, me, snap, seen):
+        """On a loose objective it works by standing on it (stay_at: within STAY_R of grab_point, on foot): the core or
+        a bomb to take or disarm, the core or our flag to return. It stays on it until it is done: the walk onto it
+        (STAY_SCORE) over every post, gun, hunt, ride and reposition; a fight is fought from on it (held_zone:
+        keep_in_zone holds its steps within STAY_HOLD_R). It leaves only to save its life: shield gone, body under
+        half, a man in sight (a retreat then still counts). Live Spire 20261105-143525: the core lay loose 129 s 9.6 u
+        short of the delivery point, never returned; 26 defender visits within 2 u of it, the median 1.8 s, each ended
+        by a new post, a gun, a fight 2-6 u off or a reposition after a kill (tools/test_core_stay.py)."""
+        q = getattr(s, "stay_at", None)
+        if q is None:
+            return
+        dying = bool(seen) and me.health < 0.5 and (me.shield < 0.05 or snap.shieldless)
+        # (never under what its objective scored already: a runner at the stand weighs it 2+ over a new fight)
+        job = max([STAY_SCORE] + [v for k, v in scores.items() if k[0] == "objective"])
+        for k in [k for k in scores if not (k[0] == "fight" or (k[0] == "retreat" and dying))]:
+            del scores[k]
+        scores[("objective", q)] = job
+
+    @staticmethod
     def on_loose_objective(me, snap, reach=0.9):
         # (0.9: the pickups came 0.07-0.59 u off the objective, Breakpoint's bomb and Spire's core; from 1.6, kept since
         # Breakpoint's pedestal held attackers 1.38-1.66 u off it, Use only swapped their guns for the one lying by
@@ -2044,7 +2304,7 @@ class Bot:
         # close is move_to's last steps)
         """Where the objective it stands on and may take lies (None: not on one): loose_point's within reach (Use on an
         armed bomb on our goal disarms it). Picking up is take()."""
-        q = Bot.loose_point(me, snap)
+        q = Bot.loose_point(me, snap) if snap.mode != "race" else None     # (a gate is run through: nothing to take)
         return q if q is not None and dist(me.pos, q) < reach else None
 
     @staticmethod
@@ -2133,6 +2393,7 @@ class Bot:
             return min(seen, key=lambda k: dist(me.pos, s.per.beliefs[k].pos)) if seen else None
         head, fwd_gun = s.heading(me, v), seat == "driver" and kind in s.FORWARD_GUNS
         own = snap.flags.get(me.team) if snap.flags else None
+        air = (vehicles.spec(kind) or {}).get("move") == "air" and seat == "driver"
         best, top = None, 0.0
         for k in seen:
             b, p = s.per.beliefs[k], snap.player(k)
@@ -2143,6 +2404,8 @@ class Bot:
             obj = (2.0 if p.has_flag or (snap.mode == "invasion" and snap.inv_core_carrier == k) else
                    1.5 if snap.hill is not None and dist(b.pos, snap.hill) < max(snap.hill_r, 1.0) else
                    1.3 if own is not None and dist(b.pos, own.home) < 3.3 else 1.0)
+            if air:                              # an aircraft's bolts and bombs splash: men bunched up go first
+                obj *= 1.0 + 0.15 * sum(1 for j in seen if j != k and dist(s.per.beliefs[j].pos, b.pos) < 4.0)
             sc = vehicles.target_score(
                 s.game, kind, gun, seat, vehicles.kind_of(pv["kind"]) if pv is not None else None,
                 killer=p.weapon in VEHICLE_KILLERS, objective=obj,
@@ -2166,6 +2429,7 @@ class Bot:
         vehicle with a gun of its own commits only with him within its nose's RAM_THETA (or on its run at him already);
         one without a gun turns onto him. Never Easy."""
         if (s.p.tier == "novice" or not st.get("splatter") or foe is None or b is None or dist(me.pos, b.pos) >= 18.0
+                or snap.mode == "race"                  # (a racer keeps its line: RACE-01, no ramming)
                 or (foe.equipment == "armor_lock" and foe.ability_on)):
             return False
         kind = vehicles.kind_of(v["kind"]) if v is not None else None
@@ -2297,6 +2561,17 @@ class Bot:
                 return True                          # running to it
         return False
 
+    def hold_for_crew(s, now, me, act, air):
+        """Stopped for crew to get in (crew_coming, a called gunner, a pickup). An aircraft sets down where it is: no
+        throttle, nose level, a Falcon's lift down, and air_guard's landing rules (no pull-up off the floors near it).
+        Live Spire 20261105-143525, 1031-1040 s: a Falcon waiting for the teammate called to its gun hovered 5-7 u over
+        him as he walked under it (the floors rule climbed it off the ground by the spire's foot), and he never got in.
+        Its take-off afterwards starts again from the ground (air_guard: air_held)."""
+        act.forward = act.strafe = 0.0
+        if air:
+            act.pitch, act.vertical = 0.0, -1.0
+            s.landing, s.air_dest, s.air_held = True, me.pos, now
+
     def drive(s, now, dt, me, snap, act, nav):
         """In a vehicle. Its seat: from who was in it when this bot got in (empty: the driver's seat, the door it walked
         up to; one in: the gun where the vehicle has one; else a passenger seat; a turret's only seat is its gun).
@@ -2401,7 +2676,7 @@ class Bot:
                 s.note("vehicle: home with the flag, out")
                 return
             goal = s.objective_point(me) if s.order.point is not None and not me.has_flag else None
-            if (goal is not None and now - s.seat_since > 1.5 and (me.pos - goal).flat() < RIDE_OUT_R
+            if (goal is not None and now - s.seat_since > 1.5 and (me.pos - goal).flat() < RIDE_OUT_R and snap.mode != "race"
                     and (s.order.role == "runner" or (not gunner and s.order.role in ("escort", "mid", "hunter")))):
                 act.action, act.fire = True, False
                 s.note("vehicle: there, out")
@@ -2479,23 +2754,23 @@ class Bot:
             s.att = ["park", None, round(me.pos.x, 1), round(me.pos.y, 1)]
             s.note("vehicle: getaway, waiting for the carrier")
             return
-        elif getattr(s, "vjob", None) == "pickup" and (me.pos - target).flat() < 6.0:
+        air = sp is not None and sp["move"] == "air"
+        if getattr(s, "vjob", None) == "pickup" and s.order.role != "ferry" and (me.pos - target).flat() < 6.0:
             # by the teammate it came for (director.gunner_pickup): stopped for him to take the gun
-            act.forward = act.strafe = 0.0
+            s.hold_for_crew(now, me, act, air)
             s.att = ["park", None, round(me.pos.x, 1), round(me.pos.y, 1)]
             s.note("vehicle: picking up a gunner")
             return
-        air = sp is not None and sp["move"] == "air"
         wants_gunner = sp is not None and sp["gun"] == "gunner"
         # Easy uses a vehicle to get somewhere: no waiting for crew, no fight tactics (no runs, bombs, circling,
         # ramming); it drives its trip and shoots what it meets in front of it (meet, below)
         easy = s.p.tier == "novice"
         if wants_gunner and v is not None and v.get("riders", 0) == 1 and now - s.seat_since < 6.0 \
                 and s.order.role in ("ride", "ferry", "driver_wait") and not easy:
-            act.forward = act.strafe = 0.0      # the gunner is coming (the director called one): wait for him
+            s.hold_for_crew(now, me, act, air)  # the gunner is coming (the director called one): wait for him
             return
         if v is not None and not easy and s.crew_coming(now, me, v, sp, snap, seen):
-            act.forward = act.strafe = 0.0      # a teammate is coming for a free seat: wait for him
+            s.hold_for_crew(now, me, act, air)  # a teammate is coming for a free seat: wait for him
             s.note("vehicle: waiting for crew")
             return
         st = vehicles.strategy(v["kind"]) if v is not None else dict(role="strafe", rng=(8.0, 25.0))
@@ -2574,7 +2849,7 @@ class Bot:
                 act.forward = 1.0 if d > hi else 0.5 if d > lo else -0.4
                 act.strafe = s.strafe_dir * (0.8 if d <= hi else 0.4) * max(0.5, s.p.strafe)
             Ta = s.air_terrain() if air else None
-            low = (getattr(Ta, "air_heights", None) or (AIR_LOW, AIR_HIGH))[0] if air else AIR_LOW
+            low = s.air_heights(Ta)[0] if air else AIR_LOW
             # an aircraft, or a man high over his floor: air to air at his height (straight at him), not a low run
             if (air and not passes and dist(me.pos, b.pos) > 12
                     and Ta.height_over(b.pos.x, b.pos.y, b.pos.z) < low + 1.5):
@@ -2659,7 +2934,9 @@ class Bot:
                 # (no flying learned here: a skilled player's median height in this kind, vehicles.CLEARANCE
                 # travel)
                 cl = vehicles.clearance(vehicles.kind_of(v["kind"])) if v else vehicles.clearance("banshee")
-                want = learned[1] if learned else (AIR_HIGH if getattr(T, "fly_cells", {}).get("high") else cl["travel"])
+                # (nothing learned: over this map's own buildings and hills, Terrain.air_levels, never under people's
+                # travel height in this kind)
+                want = learned[1] if learned else max(cl["travel"], T.air_levels()[1])
                 want = max(want, cl["over"])                      # (never under his low point at speed)
                 # where it goes stands higher than the floor under it (Spire's top beside its 30 u drop): in over it, 4
                 # u above its level, before setting down (live match 230700: a Falcon held 4-12 u under the top's level
@@ -2677,7 +2954,7 @@ class Bot:
                 # a Falcon climbs on its vertical input: pitch and throttle left a landed one where it was (live,
                 # tools/falcon_probe.py; +1 climbed it, 0 sank it, +0.5 held it). Travelling at the learned height, in a
                 # fight at the strafing one, down to land by where it goes
-                goal = want if not seen else (getattr(T, "air_heights", None) or (AIR_LOW, AIR_HIGH))[0]
+                goal = want if not seen else s.air_heights(T)[0]
                 act.vertical = ((-1.0 if h > 0.3 else 0.0) if goal <= 0.0 else 1.0 if goal - h > 1.0 else
                                 -1.0 if goal - h < -1.5 else 0.5)
         # get out at the destination or when stuck (rocks, walls the foot path squeezes past); a pilot only low down
@@ -2711,7 +2988,12 @@ class Bot:
         # sat 100 s under the spire, live match 220515, its driver's goal the core)
         under = not air and target.z - me.pos.z > 8.0 and (target - me.pos).flat() < 15.0
         end = (getattr(s, "ground_end", False) or under) and dist(me.pos, target) >= 6
-        arrived = (dist(me.pos, target) < 6 or end) and s.order.role != "ferry"
+        # (a racer drives through its gate: the next one takes over when the game counts it; out only where its ground
+        # ends short of the gate, or under a gate up on a ledge: live Blood Gulch, Ghosts circled 1.8-2 u across and
+        # 2.5 u under gate 3 for 30 s and more, never out)
+        race_out = snap.mode == "race" and s.game != "reach" and (getattr(s, "ground_end", False) or (
+            target.z - me.pos.z > 1.5 and (target - me.pos).flat() < 6.0))
+        arrived = ((dist(me.pos, target) < 6 and snap.mode != "race") or end or race_out) and s.order.role != "ferry"
         s.ground_end = False
         # (a runner at the wheel gets out at their flag, whatever it boarded as: live Avalanche 070402, runners took a
         # Mongoose, Warthog or Wraith as the team's crew, then drove 1-3 u under the flag platform, 4 u below it, for
@@ -2760,7 +3042,13 @@ class Bot:
                     return
                 s.drive_to = s.patrol_point(me)  # (drive_pos kept: a wedged vehicle still counts as stuck)
                 return
-            s.exit_tries = getattr(s, "exit_tries", 0) + 1
+            # a try counts once a second: CE's exit plays 0.9 s in the seat, and its 9 presses meanwhile were 3 "failed"
+            # tries, the 30 s block (live Blood Gulch Race: back in a Warthog by the rock 13 s later, wedged, no exit)
+            if now - getattr(s, "exit_try_t", -9.0) >= 1.0:
+                s.exit_tries, s.exit_try_t = getattr(s, "exit_tries", 0) + 1, now
+            elif s.game in ("ce", "h2"):          # (one press a second there: the exit under way, stopped)
+                act.action, act.forward, act.fire = False, 0.0, False
+                return
             if s.exit_tries >= 3:                # (the third try still in the seat: 30 s of driving before the next)
                 s.exit_tries, s.exit_block_until = 0, now + 30.0
             act.action, act.forward, act.fire = True, 0.0, False
@@ -2769,9 +3057,10 @@ class Bot:
             s.reversed_n = 0
             s.drive_to = None if not stuck else target
             s.drive_pos = None
-            if end:   # as far as vehicles go on this trip: on foot from here, not back to the next vehicle for the same
-                # trip (live Boneyard: out 10 u from the Elite spawn twice, each time back to another one)
-                s.vehicle_retry_at = max(getattr(s, "vehicle_retry_at", 0.0), now + 30.0)
+            if end or race_out:   # as far as vehicles go on this trip: on foot from here, not back to the next vehicle
+                # for the same trip (live Boneyard: out 10 u from the Elite spawn twice, each time back to another one;
+                # Blood Gulch Race: out under the rock's gate, its walk round to the climb 12 u off, back in a Warthog)
+                s.vehicle_retry_at = max(getattr(s, "vehicle_retry_at", 0.0), now + (60.0 if race_out else 30.0))
 
     def air_pass(s, now, me, tid, b, aim_at, act):
         """A Banshee's attack runs (PASS_* above, the player's flying): "in", the nose on him (it flies where it looks:
@@ -2782,7 +3071,7 @@ class Bot:
         Never hovering in place (the old side-to-side gun run read as glitching)."""
         Ta = s.air_terrain()
         h = Ta.height_over(me.pos.x, me.pos.y, me.pos.z)
-        travel = (getattr(Ta, "air_heights", None) or (AIR_LOW, AIR_HIGH))[1]
+        travel = s.air_heights(Ta)[1]
         flat = (b.pos - me.pos).flat()
         run = getattr(s, "air_run", None)
         if run is None or run[1] != tid:
@@ -2797,19 +3086,42 @@ class Bot:
         if run[0] == "out" and (far or now - run[2] > PASS_OUT_S):
             run[:] = ["in", tid, now, me.yaw]                  # far and high enough: the turn back into the next run
         act.strafe = 0.0
+        # shot at (its shield or body down since the last tick): a jink, a side swerve held AIR_JINK_S, outside its own
+        # firing (and Reach's boost with it, its decoded right button); a straight line is what gets a Banshee killed
+        vit = me.shield + me.health
+        if vit < getattr(s, "air_vit", vit) - 0.02 and now >= getattr(s, "air_jink", (0.0,))[0]:
+            s.air_jink = (now + AIR_JINK_S, s.rng.choice((-1.0, 1.0)))
+        s.air_vit = vit
+        jink = getattr(s, "air_jink", (0.0, 0.0))
+        jinking = now < jink[0] and (run[0] == "out" or dist(me.pos, b.pos) > CANNON_R)
         if run[0] == "out":
             act.yaw, act.pitch, act.forward = run[3], (0.6 if h < start_h else 0.0), 1.0
             act.fire = False
             act.fire2 = now < getattr(s, "fire2_until", 0.0)   # (a press already going is held through)
+            if jinking:
+                act.yaw += AIR_JINK * jink[1]
+                act.fire2 = act.fire2 or s.game == "reach"
+                s.note("air: shot at, jinking")
             s.boost(act)
             s.att = ["pass", tid, round(b.pos.x, 1), round(b.pos.y, 1)]
             return
         act.forward = 0.5 if now - run[2] < 1.0 else 1.0
-        ahead = Ta.height_over(me.pos.x + 8.0 * math.cos(act.yaw), me.pos.y + 8.0 * math.sin(act.yaw), me.pos.z)
-        if min(h, ahead) < 4.0:
-            act.pitch = max(act.pitch, 0.15)                   # (never into the ground, here or a second on: it pulls up)
-        on = s.aim.on_target(me, aim_at)
+        # (the ground on the way in: air_guard's look along the dive pulls out of it and ends the run; the flat 4 u floor
+        # that held the nose up here kept every dive off him). Out of gun range it holds the run's height and dives
+        # once in range: nosed straight at him from 60 u it glided down into the rising ground between and the pull-out
+        # ended the run before a shot (tools/air_replay.py, Shrine)
+        if dist(me.pos, b.pos) > CANNON_R and h < start_h:
+            act.pitch = max(act.pitch, min(0.4, (start_h - h) * 0.08))
+        if jinking:
+            act.yaw += AIR_JINK * jink[1]
+            act.fire2 = act.fire2 or s.game == "reach"
+            s.note("air: shot at, jinking")
+        # the nose on him within AIR_GUN_R (the cannons' bolts and their aim assist), not only the hand gun's man-sized
+        # window: live (Shrine 20261104-154714, bot 9's Banshee) 428 run ticks under 28 u fired 43
+        ya, pa = angles_to(eye(me), aim_at)
         d = dist(me.pos, b.pos)
+        r = math.atan2(AIR_GUN_R, max(d, 1.0))
+        on = s.aim.on_target(me, aim_at) or (abs(wrap(ya - act.yaw)) < r and abs(pa - act.pitch) < r)
         act.fire = on and d < CANNON_R
         lo, hi = FIRE2_R
         if now < getattr(s, "fire2_until", 0.0):
@@ -3132,7 +3444,11 @@ class Bot:
         rush = me.weapon in LUNGE and d > 0.5
         # a CTF defender fights from its post: it does not close on a man outside the area round it, nor chase one who
         # broke sight out there. One carrying our flag is chased
-        hold = (s.order.role == "defender" and snap.mode == "ctf" and s.order.point is not None
+        # (Infection too: survivors hold their room; not the infected: an ambush ends when the prey shows. Held, Flood at
+        # their corners stood 8 u from a survivor they fought, never closing: the owner's Ragnarok game 590.6 s, "this
+        # guy should have been dead long ago")
+        hold = (s.order.role == "defender" and s.order.point is not None
+                and (snap.mode == "ctf" or (snap.mode == "infection" and me.weapon not in LUNGE))
                 and dist(b.pos, s.order.point) > DEFEND_HOLD and not (target is not None and target.has_flag))
         s.pushing = s.push_in(me, b, target, snap, d, lo) if not hold else False
         if s.pushing:
@@ -3145,18 +3461,25 @@ class Bot:
             s.pushing = False      # away and shoot the head on his way in; audit JUG-02: hunters out of hammer reach)
         if hold:
             fwd = min(fwd, 0.0)
+        # seen through a window that stops rounds (Terrain.shot_los): no shot from here, so go round as for a man out
+        # of sight (standing to trade aim through bullet-proof glass is no fight)
+        glassed = now - s.glassed[tid] if tid in getattr(s, "glassed", {}) else 0.0
+        away = max(unseen, glassed)
         if hold and unseen > 0.5:
             s.move_to(me, s.order.point, act, nav)      # back to the post, not after him
-        elif unseen > 0.5 and s.p.tactics > 0.15 and not (me.weapon in SNIPERS and d < 25.0):
+        elif away > 0.5 and s.p.tactics > 0.15 and not (me.weapon in SNIPERS and d < 25.0):
             # (a sniper does not chase round the corner: it holds the lane he comes back into, gun sense) he broke line
             # of sight: chase by the nav to where he went (a little along his last velocity); the straight run at the
             # wall he went behind lost him in 54% of live Lockdown fights (tools/fight_ends.py --map). A novice still
             # runs straight at where he was
             s.move_to(me, b.pos + b.vel * min(1.0, unseen), act, nav)
+            if glassed > 0.5:
+                s.note("seen through glass: go round")
         elif rush and not hold:
             # the sword or hammer in hand: run him down by the nav (a straight line stopped at Construct's ledges, 144
-            # "edge stop"s in one fight), aiming a little ahead of where he goes
-            s.move_to(me, b.pos + b.vel * 0.4, act, nav)
+            # "edge stop"s in one fight), aiming a little ahead of where he goes. Not across the open at a far man who
+            # has us in his sights (sword_cover)
+            s.move_to(me, s.sword_cover(now, me, b, target, d) or b.pos + b.vel * 0.4, act, nav)
         else:
             s.steer(me, me.pos + to * (10 * fwd) if fwd else me.pos, act, fwd != 0)
         nav_strafe = act.strafe               # (the nav's own side steering: a rush keeps it, below)
@@ -3260,10 +3583,10 @@ class Bot:
             s.notes.append("inside the blast, nothing else: trade")
         blocked = bool(blast) and (d < blast or mates_near) and not trade
         if w in LUNGE:
-            # the sword lunges, the hammer swings: only with him in reach (red reticle), and then at once with him in
-            # front, the game's lunge locks on; not by the aim plan's crosshair
-            ahead = abs(wrap(math.atan2(b.pos.y - me.pos.y, b.pos.x - me.pos.x) - me.yaw)) < 0.6
-            on = seen_now and clear and d <= reach(w, s.game) and ahead and (
+            # the sword lunges, the hammer swings: the moment the reticle is red (red_reticle: in the weapon's autoaim
+            # range and cone), then the game's lunge locks on. Not before: a press off the red cone (0.6 rad of the view
+            # before, 34 deg) swung at the air and the next swing came too late (owner, issue #3)
+            on = seen_now and clear and red_reticle(me, b.pos, w, s.game) and (
                 target is None or s.kit.can_shoot(now, me, target, snap))
         if (w in ("shotgun", "scattershot") and d > reach(w)
                 and s.p.tactics > 0.15):
@@ -3344,7 +3667,7 @@ class Bot:
             s.grenade_ready_at = now + s.rng.uniform(3, 7)
             s.notes.append("grenade: keep the pressure")
         spot = s.kit.grenade_spot(now, me, target, snap) if target is not None else None
-        if spot is not None and 1.5 < d < 20 and now >= s.grenade_ready_at and not mates_near:
+        if spot is not None and 1.5 < d < 20 and now >= s.grenade_ready_at and not mates_near and w not in LUNGE:
             # beside an armor lock (the splash lands as it ends), into the heal field he stands in,
             # at a hardlight user's feet (guide 08)
             act.yaw, act.pitch = angles_to(eye(me), spot)
@@ -3357,13 +3680,33 @@ class Bot:
             # the sword and the hammer attack with the trigger (the hammer's swing, the sword's lunge); the melee button
             # is only a bash
             act.melee = False
-        if act.melee and target is not None and not s.dry(me) and me.shield < target.shield - 0.5 and s.p.tier == "novice":
+            # and no grenade: one at the man it runs at kept it off its own blast's spot (own_grenade, NADE_CLEAR 4.5 u,
+            # 3 s), the "bubble" round him (owner, issue #3; Cyberdyne 20261031-014033: 191 of 909 sword-in-hand fight
+            # rows within 4.5 u were "grenade: clear of my own", 171 of them walking away from him)
+            act.grenade = False
+            if act.fire and w == "sword" and now - getattr(s, "lunge_t", -9.0) > CLASH_MELEE[1]:
+                s.lunge_t = now                 # the first press of this exchange
+            # a sword clash (both lunged, both parried): the one still standing follows with a quick melee, once. Not
+            # Easy (owner)
+            since = now - getattr(s, "lunge_t", -9.0)
+            if (w == "sword" and s.p.tier != "novice" and target is not None and target.alive and target.weapon == "sword"
+                    and CLASH_MELEE[0] <= since <= CLASH_MELEE[1] and getattr(s, "clash_for", None) != s.lunge_t
+                    and seen_now and (b.pos - me.pos).flat() < MELEE_R + 0.3 and abs(b.pos.z - me.pos.z) < 1.3):
+                act.melee, act.fire, s.shot_now, s.clash_for = True, False, False, s.lunge_t
+                s.notes.append("sword clash: melee")
+        if w in LUNGE and act.fire and s.game in MELEE_TRIGGER:
+            # Reach: a "melee only" weapon (its tag's flag) attacks through the melee action, the trigger alone did
+            # nothing (live Boardwalk Infection: 1160 trigger presses in reach, no damage; with the melee bit the first
+            # press lunged 1.47 u from 2.2 u and killed)
+            act.melee = True
+        if (act.melee and w not in LUNGE and target is not None and not s.dry(me) and me.shield < target.shield - 0.5
+                and s.p.tier == "novice"):
             act.melee = False      # no melee trade on the lower shield (guide 01 Melee): shoot, back off. Easy only since
         # (by the melee's own reach, floor distance: by 3D distance a man 1.5 u off and 1.2 u under left it unset while
         # the melee was on, and a novice's tick failed, tools/test_modes.py)
         near = (b.pos - me.pos).flat() < 1.6 and abs(b.pos.z - me.pos.z) < 1.3
         s.close_since = (getattr(s, "close_since", None) or now) if near else None
-        if act.melee and s.p.tier == "novice" and not s.dry(me) and now - s.close_since < 1.5:
+        if act.melee and w not in LUNGE and s.p.tier == "novice" and not s.dry(me) and now - s.close_since < 1.5:
             act.melee = False      # Easy is slow to swing: it keeps shooting the man in its face
         if act.melee:
             # one press per swing, the swing plays out before the next (guide 01: two melees kill a full
@@ -3372,6 +3715,10 @@ class Bot:
                 act.melee = False
             else:
                 s.melee_at = now + s.rng.uniform(0.6, 0.9)
+        if (w in LUNGE and on) or act.melee:
+            # the red reticle's target in the action (shared.h HB_TARGET_SHIFT), as a player's own input carries it: the
+            # game's sword / hammer / melee lunge locks on from it; botcore had cleared it, and no bot press lunged
+            act.lunge_at = tid
         # the fight's own reasons (tools/observer.py): on target or not, how long unseen, chasing by
         # the nav, held fire for a splash weapon, out of ammo
         s.fx = dict(d=round(d, 1), on=bool(on), hold=bool(hold), unseen=round(min(unseen, 99.0), 1),
@@ -3476,6 +3823,26 @@ class Bot:
         if me.weapon in ("shotgun", "scattershot"):
             return False
         return d < reach(target.weapon, s.game) + 1.5
+
+    def sword_cover(s, now, me, b, target, d):
+        """A sword or hammer is a close-quarters weapon (owner, issue #3: "don't run across an open field at someone far
+        away"): Normal and up, a man past SWORD_OPEN with a gun who looks at us is waited for in cover from him (the
+        nearest within COVER_NEAR), as an ambush; None: run at him (close, he looks away, no cover, a blitz on)."""
+        # (only from a gun that reaches us there: Reach Boardwalk Infection, live, a zombie hid 4 minutes 28-33 u from
+        # survivors whose shotguns watched it)
+        if (s.p.tier == "novice" or d <= SWORD_OPEN or target is None or target.weapon in LUNGE
+                or reach(target.weapon, s.game) < d
+                or getattr(s, "blitz_until", 0.0) > now or not aims_at(target, me, 0.35)):
+            return None
+        held = getattr(s, "sword_hide", None)
+        if held is not None and now < held[1] and dist(held[0], me.pos) < COVER_NEAR + 2.0:
+            return held[0]
+        spot = s.cover_from(me, [b.pos])
+        if spot is None or dist(spot, me.pos) > COVER_NEAR:
+            return None
+        s.sword_hide = (spot, now + 2.0)
+        s.note("sword: to cover, not across the open")
+        return spot
 
     def push_in(s, me, b, target, snap, d, lo):
         """Close the distance, Normal and up: with a gun better up close (an automatic, a shotgun), or on a man whose
@@ -3639,12 +4006,19 @@ class Bot:
     def _goal_key(goal):
         return goal[0], round(goal[1].x), round(goal[1].y)
 
-    def headway(s, now, me, goal):
+    def headway(s, now, me, goal, snap=None):
         """A human who has not got any closer to where he is going for 6 s (an item behind a teleporter frame, a
         post the level data puts in a gap he cannot fit) gives up on it for 30 s and does something else. Never a
         carrier's run: with it banned he roamed with the flag (Halo 3 Multi Flag: both carriers dropped their run
-        within 6 s and wandered; six pickups, no capture)."""
+        within 6 s and wandered; six pickups, no capture). Never a zone it is to stand in (an Invasion territory, a
+        Territories zone, a hill): the fight on the way stalls the walk, and the post swapped for one 3-9 u beside it
+        (alt_post) kept attackers off the territory (live Spire 20261105-005649, phase 2: 2,100 of the attackers'
+        decisions on such spots against 2,300 on the territory, 5 s inside it in 240 s, the phase lost)."""
         if me.has_flag:
+            return
+        if goal[0] == "objective" and snap is not None and (
+                s.zone_at(snap, goal[1]) is not None
+                or (snap.mode == "king" and snap.hill is not None and dist(goal[1], snap.hill) < (snap.hill_r or 2.5) + 0.5)):
             return
         grab = getattr(s, "grab_point", None)
         if grab is not None and goal[0] == "objective" and dist(goal[1], grab) < 1.0:
@@ -3818,7 +4192,9 @@ class Bot:
         move = act.yaw + math.atan2(act.strafe, act.forward)
         best = None
         for p in snap.players:
-            if p.id == me.id or not p.alive or p.vehicle != -1 or abs(p.pos.z - me.pos.z) > 0.8:
+            # teammates only: an enemy in the way is the fight (bent round every man within 1.3 u, a sword or melee
+            # rush turned off the man it ran at, 23-90 deg: the "bubble round the target", owner, issue #3)
+            if p.id == me.id or not p.alive or p.vehicle != -1 or abs(p.pos.z - me.pos.z) > 0.8 or p.team != me.team:
                 continue
             d = (p.pos - me.pos).flat()
             rel = wrap(math.atan2(p.pos.y - me.pos.y, p.pos.x - me.pos.x) - move)
@@ -3829,9 +4205,9 @@ class Bot:
             if getattr(s, "_terrain", None) is None:
                 from .maps import terrain
                 s._terrain = terrain(s.map)
-            side = me.pos + Vec(math.cos(bent), math.sin(bent), 0) * 0.6
+            side = s.feet(me) + Vec(math.cos(bent), math.sin(bent), 0) * 0.6
             l, j, i = s._terrain._node(side)
-            if not (s._terrain.lwalk[l, j, i] and abs(s._terrain.lz[l, j, i] - me.pos.z) < 0.6):
+            if not (s._terrain.lwalk[l, j, i] and abs(s._terrain.lz[l, j, i] - side.z) < 0.6):
                 if not best[2]:
                     return   # he stands still: queuing never ends (live, Boneyard: four attackers stood
                              # behind each other at a crate for minutes); walk on, he gets nudged
@@ -3850,6 +4226,7 @@ class Bot:
     LEARN_IN_FIGHT = False          # stuck pushes during a fight teach spots (A/B: tools/sim_variant.py)
 
     REDIRECT_D = 0.55                   # a wall closer than this along the way we walk: step around it
+    RUNUP_GIVE_UP = 5.0                 # s: a person's run-up not reached by then, the take-off within 2.5 u: from there
 
     def redirect(s, now, me, act):
         """The 'crosshair distance' (Terrain.clearance) along the way this bot walks: a wall right ahead turns the
@@ -3862,14 +4239,14 @@ class Bot:
             from .maps import terrain
             T = s._terrain = terrain(s.map)
         walk = act.yaw + math.atan2(act.strafe, act.forward)        # (strafe +1 = left)
-        ahead = T.clearance(me.pos, walk, 1.5)
+        ahead = T.clearance(s.feet(me), walk, 1.5)
         if ahead >= s.REDIRECT_D:
             return
         att = getattr(s, "att", None)                               # the nav's next point is short of the wall: a
         if att and att[0] == "path" and math.hypot(att[2] - me.pos.x, att[3] - me.pos.y) < ahead + 0.2:
             return                                                  # corner it turns at, not a wall in the way
         for off in (0.52, -0.52, 1.05, -1.05):
-            if T.clearance(me.pos, walk + off, 1.5) >= 1.2:
+            if T.clearance(s.feet(me), walk + off, 1.5) >= 1.2:
                 rel = walk + off - act.yaw
                 act.forward, act.strafe = math.cos(rel), math.sin(rel)
                 s.note("wall ahead: stepping around")
@@ -3878,7 +4255,7 @@ class Bot:
     def blocked_way(s, T, me, snap, yaw):
         """What stops a step along yaw: "wall" (a wall or placed object nearer than REDIRECT_D, Terrain.clearance),
         "vehicle" (one within 1.5 u ahead and 0.9 u to the side: the level data has none), else None."""
-        if T.clearance(me.pos, yaw, 1.0) < s.REDIRECT_D:
+        if T.clearance(s.feet(me), yaw, 1.0) < s.REDIRECT_D:
             return "wall"
         c, sn = math.cos(yaw), math.sin(yaw)
         for v in getattr(snap, "vehicles", ()) or ():
@@ -3949,7 +4326,7 @@ class Bot:
         if not act.jump or s.planned_jump or me.vehicle != -1 or abs(act.forward) + abs(act.strafe) < 0.3:
             return
         move = act.yaw + math.atan2(act.strafe, act.forward)
-        if s.T().clearance(me.pos, move, 0.8, height=EYE, waist=False) < 0.6:
+        if s.T().clearance(s.feet(me), move, 0.8, height=EYE, waist=False) < 0.6:
             act.jump = False
             s.note("wall ahead: no jump")
 
@@ -4006,7 +4383,8 @@ class Bot:
         up_ok = lambda yaw: T.fly_clear(me.pos, yaw, 1.5, dzs=(1.0, 2.0, 3.0), floor=me.pos.z - 0.5, start=0.0) >= 1.5
         kind = vehicles.kind_of(v["kind"])
         cl = vehicles.clearance(kind)
-        t_in = now - getattr(s, "seat_since", now)
+        # (seconds since it got in, or since it last sat waiting for crew: hold_for_crew)
+        t_in = now - max(getattr(s, "seat_since", now), getattr(s, "air_held", -1e9))
         style, lift = vehicles.TAKE_OFF.get(kind, ("forward", 0.5))
         if not landing and style == "up" and me.pos.z - floor < lift and t_in < 12.0:
             # the player's Falcon take-off: straight up first, then off
@@ -4070,7 +4448,10 @@ class Bot:
                 # fired on 41% (Sidewinder) and 16% (Spire) of their fast free-flight rows, 35-46% of those 1+ s out
                 # (logs/tmp/airprobe_replay.py); a person flying low climbs and swerves at speed
                 ease = 0.3 if d < 3.0 else 0.6 if d < me.vel.flat() else 1.0
-                if up_ok(move) and T.fly_clear(me.pos + Vec(0, 0, 3.0), move, look, floor=floor, avoid=avoid) > d + 1.0:
+                # (not over the map's roof: climbing over the spire top's crown into its soft kill, a replayed Falcon
+                # pressed 20 s at it held under the roof, never turning: air_roof_guard)
+                if (up_ok(move) and T.fly_clear(me.pos + Vec(0, 0, 3.0), move, look, floor=floor, avoid=avoid) > d + 1.0
+                        and me.pos.z + 3.0 <= T.air_roof(me.pos.x, me.pos.y) - AIR_ROOF_M):
                     climb()
                     act.forward, act.strafe = max(-ease, min(ease, act.forward)), act.strafe * 0.5
                     s.note("air: wall ahead, climbing over")
@@ -4094,13 +4475,17 @@ class Bot:
                         else:
                             act.yaw, act.forward = w, min(act.forward, ease + 0.2)
                         s.note("air: wall ahead, turning to open air")
-        if me.vel.flat() < 3.0 or landing:
+        if landing:
             return
+        # (the height rules below hold when slow too: under 3 u/s they were skipped and a replayed H2A Hornet crept
+        # 0.5 u over Bloodline's floor for 5 s, tools/air_replay.py; the side push needs its heading from its speed)
+        slow = me.vel.flat() < 3.0
         # its room at the sides (vehicles.CLEARANCE near, the player's: a Banshee 8.4 u, a Falcon 4.6 u, a Sabre 25 u
         # off anything 9 times in 10): the nearest thing beside it inside that pushes it off, the more the nearer
         head = math.atan2(me.vel.y, me.vel.x)
         dmin, off = min((T.fly_clear(me.pos, head + o, cl["near"], floor=floor, avoid=avoid), o) for o in AIR_SIDES)
-        if dmin < cl["near"]:
+        diving = (getattr(s, "att", None) or [None])[0] == "run"
+        if not slow and dmin < cl["near"] * (0.5 if diving else 1.0):   # (on a run only what is close: it swung the nose off him)
             push, away = 1.0 - dmin / cl["near"], head + off + math.pi
             if vtol:
                 act.forward = max(-1.0, min(1.0, act.forward + 0.6 * push * math.cos(away - act.yaw)))
@@ -4108,17 +4493,94 @@ class Bot:
             else:
                 act.yaw += max(-0.6, min(0.6, wrap(away - act.yaw))) * 0.5 * push
             s.note("air: too near something, easing off")
+        if (getattr(s, "att", None) or [None])[0] in ("run", "pass"):
+            # an attack run (air_pass): only the ground on its own path counts, AIR_PULL_S along the nose at its speed
+            # (a dive goes down to him; the travel rule below held it 6.8 u over every roof near its line)
+            spd, cp = max(me.vel.length(), 4.0), math.cos(act.pitch)
+            for k in range(1, int(AIR_PULL_S / 0.2) + 1):
+                f = k * 0.2 * spd
+                p = Vec(me.pos.x + math.cos(act.yaw) * cp * f, me.pos.y + math.sin(act.yaw) * cp * f,
+                        me.pos.z + math.sin(act.pitch) * f)
+                if T.height_over(p.x, p.y, p.z) < AIR_RUN_FLOOR:
+                    act.pitch = max(act.pitch, 0.35)
+                    run = getattr(s, "air_run", None)
+                    if run is not None and run[0] == "in":
+                        run[:] = ["out", run[1], now, act.yaw]   # the run ends: on, climbing
+                    s.note("air: the ground on the run, pulling out")
+                    break
+            return
+        # a face on its way within AIR_LOOK_MAX (a wall up to a deck over it: the spire under its top) is climbed to the
+        # deck's height and its over before it gets there; a VTOL, which climbs AIR_VTOL_CLIMB u/s whatever its speed,
+        # slows so that it makes it. Live 20261105-201917 at 310.5 s the Falcon to the core went level into the spire's
+        # side at 13.7 u/s, 9 u under its top (060020, 151837 the same spot): the probe and the floor rule each saw the
+        # face a second out, too late at 3 u/s up. (A deck with open air under it on its line is a ceiling: no face.)
+        # VTOLs travelling only: a Banshee climbs on its nose at its speed (Spire's replayed Banshee: no strike on the
+        # side either way), and its pocket escapes are the stall recovery's (test_air_stuck: out in 8.6 s with this on)
+        way = head
+        face = T.fly_clear(me.pos, way, AIR_LOOK_MAX, floor=floor, avoid=avoid) if vtol and not slow else AIR_LOOK_MAX
+        if face < AIR_LOOK_MAX:
+            # (only decks it can fly over under the map's roof: the spire top's middle block, 3 u under Spire's safe box
+            # top, is a wall the probe's rule takes it round; the ring deck round it is the top to climb to)
+            fx, fy = me.pos.x + math.cos(way) * (face + 1.5), me.pos.y + math.sin(way) * (face + 1.5)
+            deck = T.top_near(fx, fy, 2.0, zmax=T.air_roof(fx, fy) - AIR_ROOF_M - cl["over"] + 1.0)
+            need = deck + cl["over"] - me.pos.z if math.isfinite(deck) and deck > me.pos.z else 0.0
+            if need > 0.0:
+                climb()
+                if vtol:
+                    ok = face * AIR_VTOL_CLIMB / (need + 2.0)   # the speed its climb makes the deck at (2 u spare: it slows late)
+                    if me.vel.flat() > ok:
+                        k = max(0.25, ok / max(me.vel.flat(), 1.0))
+                        act.forward, act.strafe = act.forward * k, act.strafe * k
+                s.note("air: a face ahead, climbing to its top first")
         # over every floor it will pass in its look ahead by the player's height (CLEARANCE over: 6.8 u in a Banshee,
         # 4.7 in a Falcon, 18.5 in a Sabre; was 2 u over the floors within 6 u, here and 6 u on)
         reach = min(AIR_LOOK_MAX, max(6.0, cl["ttc"] * me.vel.flat()))
-        top = max(T.top_near(me.pos.x + math.cos(act.yaw) * reach * f, me.pos.y + math.sin(act.yaw) * reach * f, 6.0)
-                  for f in (0.0, 1 / 3, 2 / 3, 1.0))
-        if me.pos.z < top + cl["over"]:
+        # ... on its own line (2 u of it, not 6: every roof beside the line held it), and the throttle eased only when it
+        # is about to touch one. Replayed (Shrine Banshee, tools/air_replay.py) the old 6 u rule fired on 40% of its
+        # ticks, half throttle each time
+        # (floors up to AIR_CEIL over it only: one higher is a ceiling over it, the fly_clear probe's. Exile's crashed
+        # ship 5 u over a replayed Banshee read as a floor to climb over: it pulled up into it on 70% of its ticks)
+        # (where it is, only the floor under it: a slope 2 u beside it, just over it, held a replayed Exile Banshee
+        # climbing along the slope at half throttle for 20 s; what is beside it is the side push's)
+        # (but a deck high over it with a wall under it on its line is no ceiling: the face it would fly into. Spire's
+        # top read as a ceiling and every Falcon to the core flew level into the spire's side at -31, 9 u under it,
+        # live 20261105-201917 at 310.5 s (and 060020, 151837); 21316aa's zmax. Its line at its height clear only to
+        # short of the point: that point's floors count at any height. Nor one under where it is going (air_dest): the
+        # spire top's deck overhangs its side, open under it at the craft's height, and a replayed Falcon to the core
+        # under it struck its rim with its body)
+        line = T.fly_clear(me.pos, act.yaw, reach + 2.0, floor=floor, avoid=avoid)
+        dest = getattr(s, "air_dest", None)
+        cap = max(me.pos.z + AIR_CEIL, dest.z + 1.0 if dest is not None else -math.inf)
+        top = max([me.pos.z - T.height_over(me.pos.x, me.pos.y, me.pos.z)] +
+                  [T.top_near(me.pos.x + math.cos(act.yaw) * reach * f, me.pos.y + math.sin(act.yaw) * reach * f, 2.0,
+                              zmax=None if line < reach * f + 2.0 else cap) for f in (1 / 3, 2 / 3, 1.0)])
+        if me.pos.z < top + (1.0 if slow else cl["over"]):   # (slow: a Falcon hovers low for its gunners)
             act.pitch = max(act.pitch, 0.35)
-            act.forward = min(act.forward, 0.5)
+            if me.pos.z < top + 1.0:
+                act.forward = min(act.forward, 0.5)
             if sp.get("vtol"):
                 act.vertical = 1.0
             s.note("air: a structure by us, pull up")
+
+    def air_roof_guard(s, me, act, snap):
+        """The last word on an aircraft's height: never over the map's roof (Terrain.air_roof: the safe zone's top, a
+        kill volume's bottom) less AIR_ROOF_M. Over it: nose down, a VTOL sinks; within 1.5 u of it: no climb (a VTOL
+        holds). After air_guard, whose climbs (a wall ahead, a structure by us) took Spire's Falcons over the safe box
+        into the soft kill."""
+        v = next((x for x in snap.vehicles if x["handle"] == me.vehicle), None)
+        sp = vehicles.spec(v["kind"]) if v else None
+        if not sp or sp["move"] != "air" or getattr(s, "seat", "driver") != "driver" or not hasattr(s.T(), "air_roof"):
+            return
+        lim = s.T().air_roof(me.pos.x, me.pos.y) - AIR_ROOF_M
+        if me.pos.z > lim:
+            act.pitch = min(act.pitch, -0.3)
+            if sp.get("vtol"):
+                act.vertical = -1.0
+            s.note("air: the map's roof over us, down")
+        elif me.pos.z > lim - 1.5:
+            act.pitch = min(act.pitch, 0.0)
+            if sp.get("vtol"):
+                act.vertical = min(getattr(act, "vertical", 0.5), 0.5)
 
     LINE_FRESH = 0.0         # s: only this tick's line counts (Perception looks at every enemy in view every tick)
 
@@ -4131,6 +4593,16 @@ class Bot:
         e = snap.player(tid) if isinstance(tid, int) else None
         if e is None:
             return True
+        # sight passes windows and fences, a round only fences and glass that breaks (Terrain.sees / shot_los,
+        # maps/<map>/wall_kinds.json): a man seen behind bullet-proof glass gets no shot (s.glassed: since when). Only a
+        # window between: where the level data has a solid wall too, Perception's line stands (the man shooting us, a
+        # test's world), as before the wall kinds
+        glassed = s.__dict__.setdefault("glassed", {})
+        T = s.T() if s.map is not None else None
+        if getattr(T, "see_clear", None) is not None and T.sees(me.pos, e.pos) and not T.shot_los(me.pos, e.pos):
+            glassed.setdefault(tid, now)
+            return False
+        glassed.pop(tid, None)
         a, b = me.pos + Vec(0, 0, EYE), e.pos + Vec(0, 0, CROUCH_CHEST if crouched(e) else CHEST)
         ab = b - a
         L2 = ab.x * ab.x + ab.y * ab.y + ab.z * ab.z
@@ -4166,6 +4638,46 @@ class Bot:
         act.fire = s.shot_now = False
         s.note("no clear line: hold fire")
 
+    BOXED_S, BOXED_R = 12.0, 2.0   # s walking without leaving 1.2 u of a spot, walls on every side within BOXED_R u
+
+    def boxed_in(s, now, me, act):
+        """Walls on every side within BOXED_R (the 'crosshair distance' in 16 directions) and BOXED_S s walking without
+        leaving 1.2 u of one spot: a sealed pocket, no way out on foot. A person throws a grenade at his feet (the
+        respawn is the way out); again every 4 s while he lives. Live Boneyard 20261105-044042: the game respawned two
+        defenders INSIDE a closed 2.2 x 2.5 u crate at (254.7, 88.4, -4.0) (the BSP's walls all round, its lid 2 u up),
+        217 s and 22 s there, never out alive (round end). True when it threw."""
+        if me.vehicle != -1:
+            return False
+        if now < getattr(s, "box_hold", 0.0):           # the throw under way: the button held, the view where it went
+            act.forward = act.strafe = 0.0
+            act.yaw, act.pitch, act.grenade = s.box_aim[0], s.box_aim[1], True
+            return True
+        if getattr(s, "box_pos", None) is None or dist(me.pos, s.box_pos) > 1.2:
+            s.box_pos, s.box_since = me.pos, now
+            return False
+        if now - s.box_since < s.BOXED_S or now < getattr(s, "box_nade_t", -9.0) + 4.0:
+            return False
+        T = getattr(s, "_terrain", None)
+        if T is None:
+            from .maps import terrain
+            T = s._terrain = terrain(s.map)
+        cl = [(T.clearance(me.pos, k * math.pi / 8, far=3.0), k * math.pi / 8) for k in range(16)]
+        if max(c for c, _ in cl) >= s.BOXED_R:
+            s.box_since = now                  # open somewhere: stuck, not sealed (the wiggle's job); look again later
+            return False
+        # each try another throw, held 0.3 s: at the feet, at the nearest wall level (it bounces back), up at the lid.
+        # Live B20 (Spartan 2 respawned into the crate at 124.1 s, there 190+ s): 21 one-tick presses aimed at the floor
+        # (sent as pitch -1.13), not one frag went off (shield 1.0 all along, carnage: 0 suicides)
+        k = getattr(s, "box_tries", 0)
+        s.box_tries = k + 1
+        wall = min(cl)[1]
+        s.box_aim = ((act.yaw, -1.45), (wall, 0.0), (act.yaw, 0.9))[k % 3]
+        s.box_hold, s.box_nade_t = now + 0.3, now
+        act.forward = act.strafe = 0.0
+        act.yaw, act.pitch, act.grenade = s.box_aim[0], s.box_aim[1], True
+        s.note(("boxed in: a grenade at my feet", "boxed in: a grenade off the wall", "boxed in: a grenade at the lid")[k % 3])
+        return True
+
     def unstuck(s, now, me, act, snap=None):
         """If we keep trying to move but go nowhere, wiggle out in a random direction (with a
         jump) for a moment. Every shipped bot needs this; a stuck bot reads as a bot. Stuck with
@@ -4179,6 +4691,8 @@ class Bot:
         if now < getattr(s, "final_step_until", 0.0) and getattr(s, "grab_point", None) is not None:
             s.stuck_since, s.stuck_pos = None, None          # onto an objective: move_to hops at it itself (random
             return                                           # wiggles turned the bots off Spire's core stand)
+        if s.boxed_in(now, me, act):
+            return
         s.redirect(now, me, act)
         if getattr(s, "backoff_until", 0.0) > now:      # a man standing in us: step back off him
             rel = s.backoff_dir - act.yaw
@@ -4203,7 +4717,10 @@ class Bot:
             # or steps back off the man; the random wiggle is for being wedged (the player's Reach game:
             # 282 of 388 stuck episodes on scenery were mid-fight, 109 more were body blocks)
             s.fight_bumps = getattr(s, "fight_bumps", 0) + 1
+            # (with a sword or hammer only a teammate: the enemy against us is the man to hit, not to step back from; a
+            # sword run pushing into him backed off 0.5 s, owner, issue #3: "pushed back by a bubble")
             blocker = min((p for p in (snap.players if snap else []) if p.id != me.id and p.alive
+                           and (p.team == me.team or me.weapon not in LUNGE)
                            and dist(p.pos, me.pos) < 1.3), key=lambda p: dist(p.pos, me.pos), default=None)
             if blocker is not None:
                 s.backoff_dir = math.atan2(me.pos.y - blocker.pos.y, me.pos.x - blocker.pos.x)
@@ -4231,7 +4748,7 @@ class Bot:
                     s._terrain = terrain(s.map)
                 ahead = me.pos + Vec(math.cos(move), math.sin(move), 0) * 0.5
                 wp = getattr(s, "wp", None)
-                if wp is not None and wp.z < me.pos.z - 0.5 and (wp - me.pos).flat() < 1.5:
+                if wp is not None and wp.z < s.feet(me).z - 0.5 and (wp - me.pos).flat() < 1.5:
                     # stuck stepping down to the nav's next point: the landing is the spot (its cost on the level we
                     # stand on left the drop as cheap as before: Sidewinder's flag rooms, live, 25+ stalls at (25.6,
                     # -30.6, -0.8) and its mirror over a drop through a beam onto a 0.25 u strip at -2.4 no person
@@ -4293,6 +4810,15 @@ class Bot:
             land = getattr(s, "jump_land", None)
             drop = max(0.0, me.pos.z - land.z) if land is not None else 0.0
             s.jump_until = now + 1.2 + math.sqrt(2.0 * drop / 4.0)
+        land = getattr(s, "jump_land", None)
+        if (now < getattr(s, "jump_until", 0.0) and not getattr(s, "planned_jump", False) and land is not None
+                and abs(me.pos.z - land.z) < 0.35 and (me.pos - land).flat() < 1.0
+                and T.ground_ok(me.pos.x, me.pos.y, me.pos.z, drop=0.6 + me.pos.z - s.feet(me).z)):
+            # landed: on the floor at the landing and the nav offers no jump now. The window held on 1.2 s past the end
+            # of a person's walked route (every step of it a planned jump) and steered the bot back to the route's last
+            # point as it walked on: live Boneyard B11-B14, the Elites' way up the plank to the -6 walkway at
+            # (249.2, 90.6), the stick back and forth every 0.3 s (logs/tmp/invasion_regress/replay_think.py)
+            s.jump_until = 0.0
         if now < getattr(s, "jump_until", 0.0):
             over = not T.ground_ok(me.pos.x, me.pos.y, me.pos.z, drop=4.0)
             # committed: on for the landing over the gap and over floor on the way (a slope it touches first); move_to,
@@ -4311,7 +4837,7 @@ class Bot:
                                        # core: 1491 "edge stop"s 2.7 u from it, live)
         # H2A reports the position 0.38 above the floor (tools/ground_offset.py; the others 0): with
         # drop 0.6 bots on solid floor read airborne and strafed off Lockout's edges in fights
-        grounded = T.ground_ok(me.pos.x, me.pos.y, me.pos.z, drop=1.0 if s.map["name"].startswith("h2a_") else 0.6)
+        grounded = T.ground_ok(me.pos.x, me.pos.y, me.pos.z, drop=0.6 + me.pos.z - s.feet(me).z)
         # not falling for 0.4 s is floor, in the level data or not (Boneyard, live: two bots stood 418 s and 81 s at z
         # -5.25 off their spawn platform's edge, "air steer back" every tick pushing them at the last mapped ground and
         # cancelling every jump the unstuck wiggle asked for)
@@ -4348,7 +4874,7 @@ class Bot:
         to = (wp - me.pos) if wp is not None else None
         # the drop to it from the feet: H2A's body height made flat floor a step down, and the guard below skipped on
         # 20,044 of ~33,000 walking ticks (Zenith CTF)
-        drop = me.pos.z - (H2A_FEET if s.map["name"].startswith("h2a_") else 0.0) - wp.z if wp is not None else 0.0
+        drop = s.feet(me).z - wp.z if wp is not None else 0.0
         if (wp is not None and not act.jump and moving and MAX_RISE < drop <= MAX_DROP + 0.3
                 and to.flat() < 2.0 and T.ground_ok(wp.x, wp.y, wp.z + 0.3, drop=0.6)
                 and (to.flat() < 0.15 or (mx * to.x + my * to.y) / (n * to.flat()) > 0.82)):
@@ -4795,9 +5321,49 @@ class Bot:
         s.note(f"jump: short of its landing ({n})")
 
     def jump_blocked(s, nxt):
-        """Whether a jump (a JumpVec, by its take-off) fell short twice for this bot in the last 60 s (judge_jump)."""
-        f = getattr(s, "jump_fails", {}).get((round(nxt.sx, 1), round(nxt.sy, 1)))
+        """Whether a jump (a JumpVec, by its take-off) fell short twice for this bot in the last 60 s (judge_jump), or a
+        people's route (a RouteVec, by its first point) ended short of its end twice (judge_route)."""
+        at = (nxt.path[0][0], nxt.path[0][1]) if hasattr(nxt, "path") else (nxt.sx, nxt.sy)
+        f = getattr(s, "jump_fails", {}).get((round(at[0], 1), round(at[1], 1)))
         return f is not None and f[0] >= 2 and getattr(s, "now", 0.0) < f[1]
+
+    def judge_route(s, me):
+        """A people's route just left (done, too slow, or pushed off): over 1 u from its end on the flat or 0.8 u under
+        it is short, counted as a short jump is (judge_jump). Live Boneyard 20261105-031842: attackers walked the ramp
+        route under phase 1's territories along the floor under it, z -10 for an end at -6, again and again."""
+        key, end = getattr(s, "route_key", None), getattr(s, "route_end", None)
+        s.route_key = s.route_end = None
+        if key is None or ((me.pos - end).flat() <= 1.0 and me.pos.z > end.z - 0.8):
+            return
+        fails = s.__dict__.setdefault("jump_fails", {})
+        n = fails.get(key, (0, 0.0))[0] + 1
+        fails[key] = (n, getattr(s, "now", 0.0) + 60.0)
+        s.note(f"route: short of its end ({n})")
+
+    def off_lost_floor(s, me, nxt):
+        """Standing on a floor the nav lacks (a ledge or piece its cell lost to the floors under it): the nav's next point
+        is right under the bot, so the walk stops dead (live Boneyard 20261105-015943: an attacker stood 110 s at
+        (279.45, 110.52, -5.87), the cell's floors -9.89 / -8.48, its next point there at -8.48). Where to step off: the
+        nearest spot round it with a nav floor at its own height; None when the next point is not under it."""
+        if hasattr(nxt, "sx") or (nxt - me.pos).flat() > 0.3 or me.pos.z - nxt.z < 1.2:
+            return None
+        T = s.T()
+        j, i = T._cell(me.pos)
+        if any(abs(float(z) - me.pos.z) < 0.6 for z in T.lz[:, j, i] if z == z):
+            # its own floor is in the nav: the point under it is a drop the nav planned, not a lost floor (live
+            # Boneyard 20261105-064324, the issue #4 stairs (256.9, 106.1, -5.0): "step off" 368 times against "step
+            # down" 199 over the tread's edge to the -6.15 floor, 31.9 s; four more spells there 12-14 s)
+            return None
+        for r in (0.75, 1.5, 2.25):
+            for k in range(8):
+                a = k * math.pi / 4
+                x, y = me.pos.x + math.cos(a) * r, me.pos.y + math.sin(a) * r
+                if not T.inside(x, y):
+                    continue
+                j, i = T._cell(Vec(x, y, me.pos.z))
+                if any(abs(float(z) - me.pos.z) < 0.6 for z in T.lz[:, j, i] if z == z):
+                    return Vec(x, y, me.pos.z)
+        return None
 
     def ride_lift(s, me, act):
         """On a gravity lift ride (s.lift_ride: base, landing, start): into the column's middle and stay there while it
@@ -4809,7 +5375,23 @@ class Bot:
         now = getattr(s, "now", 0.0)
         landed = me.pos.z >= land.z - 0.6 and (me.pos - land).flat() < 1.2
         failed = now - t0 > 3.0 and me.pos.z < base.z + 1.0 and (me.pos - base).flat() > 2.5
-        if landed or failed or now - t0 > 12.0:
+        # never into the column 3 s on and no higher than where the ride began: the way in is barred from here (a
+        # people's ride from Construct's middle floor 3 u over the well: a bot pushed at its rim 20+ s, ride after ride,
+        # the unstuck wiggle off for a ride; sim A/B Nov 4). This bot leaves that take-off for 60 s (jump_blocked)
+        z0, key = getattr(s, "lift_from", (me.pos.z, None))
+        # (beside the column or on a floor over its base: the ledge round Construct's wells is 0.9 u off the middle)
+        stalled = now - t0 > 3.0 and me.pos.z < z0 + 1.0 and ((me.pos - base).flat() > 0.6 or me.pos.z > base.z + 1.5)
+        if stalled and key is not None:
+            # every people's take-off into this column from about this height (Construct: 3-4 a lift off the middle
+            # floor, 3 s lost at each in turn)
+            fails = s.__dict__.setdefault("jump_fails", {})
+            fails[key] = (2, now + 60.0)
+            for _, _, k, _ in getattr(s.T(), "hjumps", ()):
+                to = k["take_off"]
+                if math.hypot(to[0] - base.x, to[1] - base.y) < 3.0 and abs(to[2] - z0) < 1.0:
+                    fails[(round(to[0], 1), round(to[1], 1))] = (2, now + 60.0)
+            s.note("lift: no way into the column from here")
+        if landed or failed or stalled or now - t0 > 12.0:
             s.lift_ride = None
             return False
         if me.pos.z > land.z + 0.3:
@@ -4839,15 +5421,41 @@ class Bot:
                 s.note("elephant: up the ramp, along the bay")
                 return
         route = getattr(s, "route", None)
+        lu = getattr(s, "route_lineup", None)
+        if route and lu is not None:             # back to the run-up first (below), then in along the person's way
+            if (me.pos - lu).flat() > 0.35 and getattr(s, "now", 0.0) < s.route_until:
+                s.steer(me, lu, act, True, arrive=0.02)
+                s.planned_jump, s.jump_land = True, lu
+                return
+            s.route_lineup = None
+            route = s.route = [q for q in route if (q[0] - lu).flat() > 0.01] or route
         if route:                                # inside a route people use: follow it as they did it
             near = min(range(len(route)), key=lambda k: (me.pos - route[k][0]).flat())
+            jump = any(q[1] & ROUTE_JUMP for q in route[:near])   # (a take-off it came at from beside: jump here)
             del route[:near]                     # pushed ahead (or skipped a point): carry on from here
-            jump = False
             while len(route) > 1 and (me.pos - route[0][0]).flat() < 0.4:
                 jump |= bool(route.pop(0)[1] & ROUTE_JUMP)   # a take-off people jumped from: jump here
+            full = getattr(s, "route_full", None)
+            if jump and full and len(full) > 1 and getattr(s, "lineups", 0) < 2:
+                # the hop goes along the person's way at the take-off, not across it: coming at it from the side (B15
+                # Elite 7 at 52.8 s from the east, the hop north-west off the plank's side onto the floor under it;
+                # 9 such "short of its end" a Boneyard match, then the route banned and the bots wiggling at the
+                # plank's lip) it goes back to the person's run-up and runs in again (twice at most)
+                k = next((k for k, q in enumerate(full) if q[1] & ROUTE_JUMP), None)
+                if k is not None and k + 1 < len(full):
+                    a, b = full[k][0], full[k + 1][0]
+                    way_h, mv = math.atan2(b.y - a.y, b.x - a.x), me.vel
+                    if mv.flat() > 0.8 and abs(wrap(math.atan2(mv.y, mv.x) - way_h)) > 0.7:
+                        s.route, s.lineups, jump = list(full), getattr(s, "lineups", 0) + 1, False
+                        s.route_lineup, s.route_until = full[0][0], getattr(s, "now", 0.0) + 6.0
+                        s.note("route: lining up at its run-up")
+                        s.steer(me, full[0][0], act, True, arrive=0.02)
+                        s.planned_jump, s.jump_land = True, full[0][0]
+                        return
             if ((len(route) == 1 and (me.pos - route[0][0]).flat() < 0.4) or getattr(s, "now", 0.0) > s.route_until
                     or (me.pos - route[0][0]).flat() > 3.0):   # done, too slow, or a fight took us away
                 s.route = None
+                s.judge_route(me)
             else:
                 s.follow_route(me, act, jump)
                 return
@@ -4954,6 +5562,15 @@ class Bot:
         rg = getattr(s, "round_goal", None)                 # (walking round a held exit to here: no people's jumps)
         people = rg is None or getattr(s, "now", 0.0) >= s.round_until or (point - rg).flat() > 3.0
         way = dict(jump=s.p.jump >= 0.5 and people, human=people, safe=me.has_flag)   # (a carrier: round big drops)
+        now_ = getattr(s, "now", 0.0)
+        if people and any(f[0] >= 2 and now_ < f[1] and math.hypot(k[0] - me.pos.x, k[1] - me.pos.y) < 6.0
+                          for k, f in getattr(s, "jump_fails", {}).items()):
+            # a person's jump or route banned here (jump_blocked): the walking way all round it, not only where the
+            # nav offers the route. Asked with people's ways from a step off the route's start, the nav sent the bot
+            # back to its run-up, where the ban sent it to the walking way's lip, and so on: live Boneyard B21, Elite 9
+            # 24.6-104.7 s at the plank's foot (251, 82, -10), its next point flipping run-up / lip every 0.3-0.5 s
+            # (replay_think: the writer is move_to's own nav)
+            way = dict(safe=me.has_flag)
         tr = getattr(s, "tele_round", None)                 # (walking round a held teleporter exit: no teleporters)
         if tr is not None and getattr(s, "now", 0.0) < tr[0] and (point - tr[1]).flat() <= 3.0:
             way["no_tele"] = True
@@ -4965,8 +5582,14 @@ class Bot:
             act.forward = act.strafe = 0.0
             s.nav_cmd = (0.0, 0.0)
             return
-        if hasattr(nxt, "sx") and s.jump_blocked(nxt):
-            nxt = nav(me.pos, point, safe=me.has_flag)          # a jump it fell short of twice: another way, for now
+        if (hasattr(nxt, "sx") or hasattr(nxt, "path")) and s.jump_blocked(nxt):
+            nxt = nav(me.pos, point, safe=me.has_flag)          # a jump (a route) it fell short of twice: another way
+        off = s.off_lost_floor(me, nxt)
+        if off is not None:
+            s.steer(me, off, act, True)
+            s.nav_cmd = (act.forward, act.strafe)
+            s.note("floor not in the nav: step off")
+            return
         held = hasattr(nxt, "sx") and s.exit_held(me, nxt, point)
         pad = not held and s.pad_held(me, point, **way)
         if held == "round":
@@ -4979,13 +5602,16 @@ class Bot:
             return
         if hasattr(nxt, "path"):                 # the way into a route: take it
             s.route = [(Vec(*q[:3]), q[3]) for q in nxt.path]
+            s.route_full, s.lineups, s.route_lineup = list(s.route), 0, None
             s.route_until = getattr(s, "now", 0.0) + 3.0 + sum((a[0] - b[0]).flat() for a, b in zip(s.route, s.route[1:])) / 0.8
+            s.route_key, s.route_end = (round(nxt.path[0][0], 1), round(nxt.path[0][1], 1)), s.route[-1][0]   # judge_route
             s.follow_route(me, act, False)
             return
         if hasattr(nxt, "sx"):                   # a jump: run to the take-off spot, jump, land
             lift = s.lift_base(nxt, me)
             if lift is not None:                 # a person's ride up a gravity lift: ride it
                 s.lift_ride = (lift, Vec(nxt.x, nxt.y, nxt.z), getattr(s, "now", 0.0))
+                s.lift_from = (me.pos.z, (round(nxt.sx, 1), round(nxt.sy, 1)))   # (ride_lift: stalled at the rim)
                 s.ride_lift(me, act)
                 return
             start = Vec(nxt.sx, nxt.sy, me.pos.z)
@@ -5018,8 +5644,19 @@ class Bot:
                         s.nav_cmd, s.runup_t = (act.forward, act.strafe), getattr(s, "now", 0.0)
                         return
                 if not s.runup_done and (rel.flat() < (0.35 if me.has_flag else 0.3)
-                                         or (me.has_flag and along >= 0.0 and side < 0.35)):
+                                         or (me.has_flag and along >= 0.0 and side < 0.35)
+                                         or (0.3 <= along <= lane.flat() and side < 0.75)):
+                    # (anyone already on the run's line past the run-up runs on from there: live Boneyard B14 / B18
+                    # phase 3, attackers going back 2.8 u to the person's run-up on the narrow walkway to the drop at
+                    # (265.67, 89.63), giving way to each other, 5.5 s a pass, 1,250+ rows a match there; replay_think)
                     s.runup_done = True              # (a carrier: passing it within 0.35 u, not circling back to it)
+                if not s.runup_done and now - s.runup_t0 > s.RUNUP_GIVE_UP and (me.pos - start).flat() < 2.5:
+                    # not at the run-up in RUNUP_GIVE_UP s, the take-off this near on its level: from here (live
+                    # Boneyard 20261105-033712 / 035632, the drop to the core: 3-6 attackers at a time bunched on the
+                    # way to the person's run-up 2.8 u behind the take-off, queued on each other, 17,000-24,000 rows of
+                    # phase 3 there, none dropped)
+                    s.runup_done = True
+                    s.note("run-up not reached: from here")
                 if not s.runup_done:
                     # straight at the run-up; still more than half a unit off after 3 s: by the walk graph
                     # (straight from the floor below pushed 28 times into the ledge under it, Lockout)
@@ -5284,6 +5921,22 @@ class Bot:
             from .maps import terrain
             s._terrain = terrain(s.map)
         return s._terrain
+
+    def feet(s, me):
+        """Where its feet are: the position less the game's height over the floor (FEET_GAMES). The level-data probes
+        measure from the floor: in Halo 4 the chest ray of clearance ran 0.78 u over the floor, over a Spartan's head
+        (low walls, rails and crates unseen), and flat floor read as a step down (the edge guard off on 52% of
+        Halo 4's walking ticks, the owner's ca_blood_cavern games, vs 7-17% in Halo 3 / Reach / Halo 2). s.feet_off: the
+        simulator's bodies stand on the floor (brain/sim.py sets 0)."""
+        off = getattr(s, "feet_off", None)
+        if off is None:
+            off = H2A_FEET if s.map["name"].startswith(FEET_GAMES) else 0.0
+        return Vec(me.pos.x, me.pos.y, me.pos.z - off) if off else me.pos
+
+    def air_heights(s, T):
+        """(attack-run, travel) heights over the ground: people's flying on this map (rides.json) if learned, else the
+        map's own shape (Terrain.air_levels): nothing to paint by hand."""
+        return getattr(T, "air_heights", None) or T.air_levels()
 
     def air_terrain(s):
         """The map's terrain for a pilot (painted airspace, ground height), built once."""

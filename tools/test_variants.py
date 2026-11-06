@@ -96,11 +96,15 @@ def main():
         fails.append(f"window {T.w} x {T.h} cells in {tw:.1f} s, the whole level {F.w} x {F.h} in {tf:.1f} s")
     x0, y0, x1, y1 = T.window
     same = tot = 0
+    # (the level's own walk test: the low ceiling rule reads each build's people's walks, the layout's for the window,
+    # the canvas's for the whole level, Terrain._low_ceiling; those cells are compared before it)
+    lw = lambda R: R.lwalk | (R._low_ceiling(R.walls[::R.nstep, ::R.nstep]) & ~R._walled(R.walls[::R.nstep, ::R.nstep]))
+    TW, FW = lw(T), lw(F)
     for x in np.arange(x0 + 10, x1 - 10, 2.0):
         for y in np.arange(y0 + 10, y1 - 10, 2.0):
             a_, b_ = T._cell(Vec(x, y, 0)), F._cell(Vec(x, y, 0))
-            za = sorted(round(float(z), 3) for z, w in zip(T.lz[:, a_[0], a_[1]], T.lwalk[:, a_[0], a_[1]]) if w)
-            zb = sorted(round(float(z), 3) for z, w in zip(F.lz[:, b_[0], b_[1]], F.lwalk[:, b_[0], b_[1]]) if w)
+            za = sorted(round(float(z), 3) for z, w in zip(T.lz[:, a_[0], a_[1]], TW[:, a_[0], a_[1]]) if w)
+            zb = sorted(round(float(z), 3) for z, w in zip(F.lz[:, b_[0], b_[1]], FW[:, b_[0], b_[1]]) if w)
             same, tot = same + (za == zb), tot + 1
     if same != tot:
         fails.append(f"walkable floors in the window: {same} of {tot} cells as the whole level's")

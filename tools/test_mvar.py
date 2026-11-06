@@ -21,6 +21,7 @@ usage: python -I test_mvar.py      -> "mvar OK"
 """
 import glob
 import json
+import math
 import os
 import shutil
 import sys
@@ -109,7 +110,9 @@ def builtin(fails):
         if f is None:
             fails.append(f"{name}.mvar missing")
             continue
-        a = layout(mvar.scenario_objects(mvar.read(f)))
+        objs = mvar.scenario_objects(mvar.read(f))
+        a = layout(objs)
+        flipped = [Vec(*q["pos"]) for q in objs["netgame_flags"] if (q.get("up") or (0, 0, 1))[2] < 0]
         b = layout(json.load(open(os.path.join(ROOT, "maps", base, "objects.json"), encoding="utf-8")))
         key = lambda L: (L["attackers"], {k: sorted((round(p.x), round(p.y)) for p in ps)
                                           for k, ps in L["phases"].items()},
@@ -117,6 +120,19 @@ def builtin(fails):
                          None if L["bomb"] is None else (round(L["bomb"].x), round(L["bomb"].y)))
         if a is None or key(a) != key(b):
             fails.append(f"{name}: file setup {a and key(a)} != scenario {key(b)}")
+            continue
+        # its walls lie as the scenario's: the same line through the same spot (the file's yaw is about an axis that
+        # flips with up's tilt; read as the world heading, Spire's core shield door crossed the core's stand)
+        turn = lambda w: math.degrees(math.atan2(w["b"].y - w["a"].y, w["b"].x - w["a"].x)) % 180
+        for w in b["barriers"]:
+            m = [x for x in a["barriers"] if x["name"] == w["name"] and (x["pos"] - w["pos"]).flat() < 0.3]
+            upside = any((q - w["pos"]).flat() < 0.3 for q in flipped)   # (Spire's big doors hang upside down: the
+            if m and not upside and abs((turn(m[0]) - turn(w) + 90) % 180 - 90) > 5:   # file is right, live axes)
+                fails.append(f"{name}: {w['name']} at ({w['pos'].x:.1f}, {w['pos'].y:.1f}) turned "
+                             f"{turn(m[0]):.0f} deg, the scenario's {turn(w):.0f}")
+        hung = [x for x in a["barriers"] if any((q - x["pos"]).flat() < 0.3 for q in flipped) and x["z1"] > x["pos"].z + 0.1]
+        if hung:                                  # an upside-down piece reaches down from its spot
+            fails.append(f"{name}: upside-down walls reaching up: {[(x['name'], round(x['z0'], 1)) for x in hung]}")
     print(f"  {len(files)} built-in Reach map variants read")
     return files
 

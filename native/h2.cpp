@@ -166,6 +166,20 @@ static void __fastcall h_update(uint8_t* actions) {
                 // (+0x38) cleared above, fails the action check (FUN_1807586b0 in the players update) and the bot's
                 // last action replays (as Halo 3: ghidra/h2_aim_gate.c)
                 memset(act + 0x44, 0, 0x18);
+                // the red reticle's target (shared.h hb_target), where the action's network decoder carries a player's
+                // (FUN_1808abf70 / FUN_1807583d0, ghidra/h2_actdec.c, h2_aimdec.c): +0x34 "melee-target-unit", the
+                // autoaim block +0x38 "target-object", +0x3C "model-target", +0x40 "target-player", +0x50 flags,
+                // +0x54 "primary-autoaim-level". As Halo 3's (live: no bot sword lunged until it was set). The values
+                // a player's input writes are not seen live in Halo 2 yet (INFERRED: H3's, level 1.0)
+                int tgt = hb_target(a.buttons);
+                if (tgt >= 0 && tgt < HB_MAX_PLAYERS && h2_live(tgt)) {
+                    uint32_t th = *(uint32_t*)(h2_player(tgt) + 0x2C);
+                    if (th != 0xFFFFFFFFu && h2_object(th)) {
+                        *(uint32_t*)(act + 0x34) = th;
+                        *(uint32_t*)(act + 0x38) = th;
+                        *(float*)(act + 0x54) = 1.0f;
+                    }
+                }
                 hb_set_zoom(2, act, H2_ACTION, a.buttons);          // the scope level it wants (-1 none)
                 // the bot's own weapon set, from the field Halo 2's unit control (FUN_1808f5800, ghidra/h2_unit_input.c)
                 // checks and the game's own input copies (unit +0x228); +0x224 let a switch through only by chance

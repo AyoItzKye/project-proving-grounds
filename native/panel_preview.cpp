@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "bots_panel.h"
+#include "ui_layout.h"
 #include "model_view.h"
 #include "shared.h"
 #include "third_party/imgui/imgui.h"
@@ -254,7 +255,7 @@ int main(int argc, char** argv) {
     io.IniFilename = nullptr;
     io.DisplaySize = ImVec2((float)W, (float)H);
     io.DeltaTime = 1.0f / 60.0f;
-    float scale = H / 1080.0f;
+    float scale = mcc_content((float)W, (float)H).s;   // (as botcore: MCC's fitted menu page, ui_layout.h)
     ImFont* f = io.Fonts->AddFontFromFileTTF("C:\\Windows\\Fonts\\bahnschrift.ttf", 21.0f * scale);
     if (!f) f = io.Fonts->AddFontDefault();
     io.FontDefault = f;

@@ -34,7 +34,7 @@ struct bots_panel_env {
     uint32_t* lidar_players;    // players in all in LiDAR mode (2..16)
     uint32_t* collector;        // records the player each match for the Observer (tools/collector.py); may be null
     int title;                  // the lobby's game: 1 CE, 2 H2, 3 H3, 5 Reach, 6 H2A, 7 H4
-    float scale;                // display height / 1080
+    float scale;                // px per 1080p unit: MCC's fitted menu page (ui_layout.h mcc_content)
     ImFont *f_title, *f_head, *f_body, *f_small;
     bool* open;
     // makes a texture from RGBA pixels for the profile view's pictures (game logos, bot looks); null: no pictures
@@ -107,12 +107,13 @@ void roster_write(FILE* f, const hb_roster& r);
 // The bug report over a match: with MCC's pause menu up, a "Report bot bug" button; it (or F9) opens the report window.
 // overlay.cpp saves what was typed (logs/bug_reports/<time>/report.json); the brain adds the match recording.
 struct bug_report_env {
-    float scale;                // display height / 1080
+    float scale;                // px per 1080p unit: MCC's fitted menu page (ui_layout.h mcc_content)
     ImFont* font;
     bool show_button;           // the pause menu is up
     bool* open;                 // the report window
     char* text; int text_n;     // the description being typed
     bool hovered;               // out: the mouse is on the button or the window (its clicks are ours)
+    float bb_w, bb_h;           // MCC's back buffer (its menus are laid out on it; 0 = the window's size)
 };
 // Draws the button and the window (between ImGui::NewFrame and Render); true when Save report was pressed.
 bool bug_report_ui(bug_report_env& e);

@@ -68,9 +68,16 @@ PICKUP_GAMES = {"ce", "h2"}      # bots can pick weapons up here (H2: botcore se
                                  # H2A / H4 need the interaction fields decoded (OWNER_PICKUPS log)
 KIND_BOT, KIND_HUMAN, KIND_AIR, KIND_CROUCH, KIND_SPREAD, KIND_WALL, KIND_AIRSPACE = 0, 1, 2, 3, 4, 5, 6
 KIND_RAMP = 7                    # also on floor marked on a placed piece's walkable slope (Recorder.on_ramp)
+KIND_WINDOW, KIND_FENCE = 8, 9   # walls you see through (glass) / see and shoot through (fences): tools/lidar_walls.py
 POCKET_P = 0.3                   # share of Roomba goals that are a called jump (Roomba.pocket)
 CALL_XY, CALL_Z = 0.5, 0.2       # a called jump counts only landing this close to the call
 POCKET_LIMIT = 120.0             # called-jump search: path cost from the bot (big maps stay quick)
+# crouch-jump: crouching in the air lifts the feet by the biped's standing minus crouching height (OBSERVED, the kits'
+# player bipeds, physics "height standing" / "height crouching": H3 masterchief 0.725 / 0.5, ODST odst_recon 0.61 /
+# 0.45, Reach spartans 0.65 / 0.5, H4 spartans_midnight 0.65 / 0.5, H2A storm_masterchief 0.725 / 0.5; their "jump
+# velocity" 3.08 / 2.6 / 2.3 / 2.36 / 2.34 matches jumpphys); it adds no height (docs/research/05 1.3). CE and Halo 2
+# not read (H2EK's export has other field names): no crouch-jump calls there.
+CROUCH_TUCK = {"h3": 0.225, "odst": 0.16, "reach": 0.15, "h4": 0.15, "h2a": 0.225}
 RIDE_P = 0.15                    # share of Roomba goals that ride an untested man cannon or lift (in matches)
 USE_P = 0.1                      # share that go and press an untried switch (games where Use works for bots)
 RIDE_TRIES = 3                   # a launcher that threw nobody this many times is left alone
@@ -291,25 +298,53 @@ class Recorder:
         s.deaths, s.jumps, s.events = [], [], []
         s.spread_done = set()                       # half-unit spots already painted around
         s.cover_spots = {(round(c[0] * 4), round(c[1] * 4), round(c[2] * 2)): c for c in s.stored.get("cover", [])}
-        s.glass = load_glass(map_name)              # see-through faces (H2A / H4 / ODST): not cover
+        s.glass = load_glass(map_name)              # see-through faces (windows): not cover
+        s.fence = load_glass(map_name, "fence")     # see- and shoot-through faces (fences): not cover
         s.fall_grid = {}                             # (round x, round y) -> [z]: spots bots fell from
         for d in s.stored_deaths:
             if d.get("cause") == "fall":
-                s.add_fall(d["stood"])
+                s.add_fall(d["stood"], d.get("pos"))
         s.count_run, s.saved_deaths, s.saved_walk = count_run, 0, {}
         s.weapons = s.stored.get("weapons", [])     # [{name, pos, seen, picked}]: where weapons lie
         s.ground = []                               # weapons lying now: [(handle, name, pos)] (main loop)
         s.pickup_ok = True                          # can bots pick weapons up in this game?
         s.lock = threading.Lock()
 
-    def add_fall(s, p):
-        s.fall_grid.setdefault((round(p[0]), round(p[1])), []).append(tuple(p[:3]))
+    def add_fall(s, p, to=None):
+        """A spot a bot fell from, and which way (to: where it died; the flat direction, or none)."""
+        ux = uy = 0.0
+        if to is not None:
+            n = math.hypot(to[0] - p[0], to[1] - p[1])
+            if n > 0.1:
+                ux, uy = (to[0] - p[0]) / n, (to[1] - p[1]) / n
+        # a walk off an edge, or not: the level data has floor on that way from the spot -> the bot left the ground
+        # some other way (a lift, a jump, a push): no edge for walkers there (live Construct: 2,512 of 2,895 refused
+        # steps had floor ahead, behind spots bots were thrown from by a lift or jumped from into the pit)
+        walk = True
+        if (ux or uy) and s.T is not None:
+            try:
+                import jumpphys
+                walk = jumpphys.walk_step(jumpphys.prepare(s.T), list(p[:3]), p[0] + ux * 0.4, p[1] + uy * 0.4)[0] != "ok"
+            except Exception:
+                walk = True
+        s.fall_grid.setdefault((round(p[0]), round(p[1])), []).append((p[0], p[1], p[2], ux, uy, walk))
 
-    def near_fall(s, x, y, z, r=0.8):
-        """A spot a bot fell from within r (and 1.5 in height)? (A 1-unit grid keeps this cheap.)"""
+    def near_fall(s, x, y, z, r=0.8, frm=None):
+        """A spot a bot fell from within r (and 1.5 in height)? (A 1-unit grid keeps this cheap.) frm: the walker's
+        position: then only a step the way that bot fell counts (one coming nearer, for a fall with no direction): with
+        "any step near it" bots near Construct's 35 learned pit falls froze, half the bot time idle (live Nov 4)."""
         gx, gy = round(x), round(y)
-        return any(abs(fx - x) < r and abs(fy - y) < r and abs(fz - z) < 1.5
-                   for dx in (-1, 0, 1) for dy in (-1, 0, 1) for fx, fy, fz in s.fall_grid.get((gx + dx, gy + dy), ()))
+
+        def toward(fx, fy, ux, uy):                  # (a walker's step that heads the way that bot fell, or nearer)
+            if frm is None:
+                return True
+            sx, sy = x - frm[0], y - frm[1]
+            if ux or uy:
+                return sx * ux + sy * uy > 0.3 * math.hypot(sx, sy)
+            return math.hypot(fx - x, fy - y) < math.hypot(fx - frm[0], fy - frm[1]) - 0.05
+        return any(abs(f[0] - x) < r and abs(f[1] - y) < r and abs(f[2] - z) < 1.5 and
+                   (frm is None or f[5]) and toward(f[0], f[1], *f[3:5])
+                   for dx in (-1, 0, 1) for dy in (-1, 0, 1) for f in s.fall_grid.get((gx + dx, gy + dy), ()))
 
     def mark(s, p, kind):
         k = (round(p[0] / CELL), round(p[1] / CELL), round(p[2] / ZSTEP), kind)
@@ -387,8 +422,10 @@ class Recorder:
                     continue
                 if s.wall_out(T, jj, ii, dj, di, z):
                     wx, wy = T.x0 + (ii + 0.5) * NAV_CELL, T.y0 + (jj + 0.5) * NAV_CELL
-                    if s.is_glass(wx, wy, z):
-                        continue                     # breakable: no cover behind it
+                    see = s.see_through(wx, wy, z)
+                    if see is not None:
+                        s.mark((wx, wy, z), see)     # a window or a fence: a wall, but no cover behind it
+                        continue
                     s.mark((wx, wy, z), KIND_WALL)
                     c = T._center(l, j, i)
                     s.cover_spots.setdefault((round(c.x * 4), round(c.y * 4), round(c.z * 2)),
@@ -425,7 +462,10 @@ class Recorder:
         (Terrain.learn_stuck: on its second report)."""
         ahead = (p[0] + d[0] * 0.35, p[1] + d[1] * 0.35, p[2])
         with s.lock:
-            if not s.is_glass(*ahead):
+            see = s.see_through(*ahead)
+            if see is not None:
+                s.mark(ahead, see)
+            else:
                 s.mark(ahead, KIND_WALL)
                 s.cover_spots.setdefault((round(p[0] * 4), round(p[1] * 4), round(p[2] * 2)),
                                          [round(p[0], 2), round(p[1], 2), round(p[2], 2), round(d[0], 2), round(d[1], 2)])
@@ -447,12 +487,23 @@ class Recorder:
             link["human" if who == "human" else "bot_ok"] += 1
             return link
 
-    def is_glass(s, x, y, z):
-        """A see-through face (glass) here at chest to head height above floor z?"""
-        for zlo, zhi in s.glass.get((round(x * 4), round(y * 4)), ()):
-            if zlo <= z + 1.0 and zhi >= z + 0.3:
-                return True
+    def is_glass(s, x, y, z, table=None):
+        """A see-through face (glass) here at chest to head height above floor z? (within a quarter unit: a nav cell's
+        centre is up to that far off the face)"""
+        table = s.glass if table is None else table
+        kx, ky = round(x * 4), round(y * 4)
+        for dx in (0, -1, 1):
+            for dy in (0, -1, 1):
+                for zlo, zhi in table.get((kx + dx, ky + dy), ()):
+                    if zlo <= z + 1.0 and zhi >= z + 0.3:
+                        return True
         return False
+
+    def see_through(s, x, y, z):
+        """KIND_FENCE / KIND_WINDOW for a fence / window face here (chest to head height over floor z), else None."""
+        if s.is_glass(x, y, z, getattr(s, "fence", {})):
+            return KIND_FENCE
+        return KIND_WINDOW if s.is_glass(x, y, z) else None
 
     def explored(s, x, y, z):
         return any((int(x // COVER) + dx, int(y // COVER) + dy, int(z // 1.0) + dz) in s.cover
@@ -577,7 +628,7 @@ class Recorder:
             d = dict(t=round(t, 1), who=who, **info)
             s.deaths.append(d)
             if d["cause"] == "fall":
-                s.add_fall(d["stood"])
+                s.add_fall(d["stood"], d.get("pos"))
             return d
 
     def save(s, bot_seconds=0.0, human_seconds=0.0):
@@ -590,7 +641,10 @@ class Recorder:
             s.saved_walk = dict(s.walk)
             deaths, jumps, run = s.deaths[s.saved_deaths:], s.jumps, s.count_run
             # (a copy of each weapon record: dict() of the list failed every save on a map with weapons, since 7f95635)
-            links, weapons, cover = json.loads(json.dumps(s.links)), [dict(w) for w in s.weapons], sorted(s.cover_spots.values())
+            # (not the map's rides, tools/lidar_rides.py, rebuilt each run; not crouch-jumps bots found: the fighting
+            # brain does not crouch in the air yet, and a plain try of one falls short)
+            keep = [l for l in s.links if l.get("found_by") != "map" and not (l.get("crouch") and not l.get("human"))]
+            links, weapons, cover = json.loads(json.dumps(keep)), [dict(w) for w in s.weapons], sorted(s.cover_spots.values())
             s.count_run, s.saved_deaths, s.jumps = False, len(s.deaths), []
         with s.__dict__.setdefault("save_lock", threading.Lock()):
             old = load(s.path)
@@ -612,6 +666,8 @@ class Recorder:
             objectives = s.objectives.saved() if getattr(s, "objectives", None) is not None else old.get("objectives")
             if objectives:                           # every gametype objective place, reached or not (Objectives)
                 out["objectives"] = objectives
+            if getattr(s, "director", None) is not None and s.director.history:   # this run's coverage, what is left
+                out["coverage"] = s.director.report()
             os.makedirs(os.path.dirname(s.path), exist_ok=True)
             tmp = s.path + ".tmp"
             with open(tmp, "w") as f:
@@ -755,8 +811,11 @@ def map_list():
                                                  human_links=sum(1 for l in data.get("links", []) if l.get("human")),
                                                  cells=sum(1 for w in walk if len(w) == 5 and w[3] not in (KIND_AIR, KIND_AIRSPACE)),
                                                  updated=round(stamp)))
-                if _SCAN_INFO[p][1]["cells"] or _SCAN_INFO[p][1]["links"]:
-                    item[key] = _SCAN_INFO[p][1]
+                info = _SCAN_INFO[p][1]
+                # (the simulator also writes its jumps into lidar.json: a lidar.json with no floor and only bots'
+                # links is the simulator's, not a scan from matches; the view opens the simulator's scan for it)
+                if info["cells"] or (info["human_links"] if key == "scan" else info["links"]):
+                    item[key] = info
         out.append(item)
     return out
 
@@ -970,13 +1029,33 @@ class Objectives:
         return f"objectives: {r} of {n} places reached, {off} not reachable on the nav from the spawns"
 
 
-def load_glass(map_name):
-    """maps/<map>/glass.json (tools/glass_mask.py): quarter-unit cells -> [(z low, z high)] of
-    see-through faces. Empty when the map has none or it was not built. (A map variant: its base map's.)"""
-    d = load(os.path.join(ROOT, "maps", map_name.partition("/")[0], "glass.json"))
+def wall_kinds_view(map_name):
+    """The map's windows and fences for the view (maps/<map>/wall_kinds.json, tools/lidar_walls.py): {kind: [[x, y, z low,
+    z high]]} in units, upright faces and flat decks alike (a breaking window in "window_breaks")."""
+    d = load(os.path.join(ROOT, "maps", map_name.partition("/")[0], "wall_kinds.json"))
+    out = dict(window=[], window_breaks=[], fence=[])
+    for k in ("window", "window_floor", "fence", "fence_floor"):
+        for r in d.get(k, []):
+            kind = "fence" if k.startswith("fence") else "window_breaks" if len(r) > 4 and r[4] else "window"
+            out[kind].append([r[0] / 4, r[1] / 4, r[2], r[3]])
+    for r in load(os.path.join(ROOT, "maps", map_name.partition("/")[0], "walls_learned.json")) or []:
+        out["fence"].append([r[0] / 4, r[1] / 4, r[2], r[3]])   # (rounds went through there: Terrain.learn_shot_through)
+    out["source"] = d.get("source", [])
+    return out
+
+
+def load_glass(map_name, kind="window"):
+    """Quarter-unit cells -> [(z low, z high)] of see-through faces: windows (maps/<map>/glass.json, tools/glass_mask.py,
+    and wall_kinds.json's windows, tools/lidar_walls.py) or kind "fence" (wall_kinds.json's fences and the walls rounds
+    went through in matches, walls_learned.json). Empty when the map has none or they were not built. (A map variant:
+    its base map's.)"""
+    base = os.path.join(ROOT, "maps", map_name.partition("/")[0])
+    cells = load(os.path.join(base, "glass.json")).get("cells", []) if kind == "window" else []
     out = {}
-    for x, y, zlo, zhi in d.get("cells", []):
-        out.setdefault((x, y), []).append((zlo, zhi))
+    learned = load(os.path.join(base, "walls_learned.json")) if kind == "fence" else []
+    learned = [r for r in learned if not r[4]] if isinstance(learned, list) else []   # (walls rounds went through)
+    for r in list(cells) + list(load(os.path.join(base, "wall_kinds.json")).get(kind, [])) + learned:
+        out.setdefault((r[0], r[1]), []).append((r[2], r[3]))
     return out
 
 
@@ -993,6 +1072,33 @@ def self_safe(T, ph, a, ux, uy, back, turn):
     out, _, _, _, impact = jumpphys.fly(T, ph, (a[0] - ux * back, a[1] - uy * back, a[2]),
                                         (ux * c - uy * s) * ph.run, (ux * s + uy * c) * ph.run, dt=1.0 / HZ)
     return out == "land" and impact < ph.lethal_v
+
+
+def _lands_near(flight, p):
+    """A fly_tuck flight came down alive-ish on the floor p was (0.6 u flat, 0.3 u up or down)."""
+    out, q = flight[0], flight[1]
+    return out == "land" and math.dist(q[:2], p[:2]) < 0.6 and abs(q[2] - p[2]) < 0.3
+
+
+def fly_tuck(T, ph, p, vx, vy, tuck, dt=1 / 30, max_t=6.0):
+    """jumpphys.fly with the feet lifted by tuck at the apex (crouch held in the air: CROUCH_TUCK); tuck 0 is a plain
+    jump. (outcome, where it ended, highest z, seconds, impact speed)."""
+    import jumpphys
+    if not tuck:
+        return jumpphys.fly(T, ph, p, vx, vy, dt=dt, max_t=max_t)
+    jumpphys.prepare(T)
+    p, v = list(p), [vx, vy, ph.v0]
+    top, t, done = p[2], 0.0, False
+    while t < max_t:
+        if not done and v[2] <= 0.0:
+            p[2] += tuck
+            done = True
+        out, impact = jumpphys.air_step(T, ph, p, v, dt)
+        t += dt
+        top = max(top, p[2])
+        if out != "air":
+            return out, p, top, t, impact
+    return "air", p, top, t, 0.0
 
 
 def route_path(samples):
@@ -1277,7 +1383,13 @@ def nav_learn(T, map_name, links):
     """Give the nav every usable link now (people's new jumps and routes, during the run) and
     the places they make reachable (goals snap to reachable floor)."""
     from brain.maps import get_map, usable_links
-    T.add_human_links(usable_links(links))
+    from brain.core import Vec
+    use = usable_links(links)
+    oob = getattr(T, "oob", None)
+    if oob is not None:                              # not a jump or ride that lands in a kill zone (Zealot's lift rides
+        use = [l for l in use if not (l.get("land") and T.inside(l["land"][0], l["land"][1])   # onto the soft kill
+                                      and oob[T._node(Vec(*l["land"][:3]))])]                    # walkway: bots died there)
+    T.add_human_links(use)
     m = get_map(map_name)
     T.set_spawns([p for mode in m["spawns"].values() for team in mode.values() for p in team])
 
@@ -1318,10 +1430,11 @@ class Roomba:
         s.next_way, s.way_wp, s.straight = 0.0, None, False   # straight: a probe goal, no nav
         s.weapon, s.tried = None, {}          # the weapon going for: (handle, name, pos, until); handle -> retry time
         s.bump, s.pushed, s.heading = None, False, 0.0   # a push that stopped: (time, pos, heading)
+        s.skip_links = {}                     # (take-off x, y, landing x, y) -> until: a jump this bot gave up on
 
     # --- safety: the spots bots fell from, and the level data's deadly drops (not where people walk)
-    def deadly(s, x, y, z, rec, T):
-        if rec.near_fall(x, y, z):
+    def deadly(s, x, y, z, rec, T, frm=None):
+        if rec.near_fall(x, y, z, frm=frm):
             return True
         if rec.walked(x, y, z):
             return False
@@ -1356,8 +1469,14 @@ class Roomba:
     def pick(s, now, pos, rec, T, bounds):
         """A new goal: with level data the frontier, or now and then (PROBE_P) a probe; without
         (or nothing left to explore) the best of 24 random points 6-24 units away (unexplored,
-        reachable in a straight line, near)."""
-        best, s.straight = None, False
+        reachable in a straight line, near). A bot standing in a kill or soft kill zone first walks out of it."""
+        best, s.straight, s.escaping = None, False, False
+        out = s.escape(pos, T, getattr(getattr(rec, "director", None), "_safe", None))
+        if out is not None:
+            s.escaping = True                          # (live Zealot: rides landed bots on the soft kill walkway, where
+            s.target, s.target_t, s.next_way = out, now, 0.0   # the frontier, kept off kill-zone floor, found nothing
+            rec.targets[s.index] = out                # and the wander walked them along it to die, 13 in 5 min)
+            return
         if T is not None and rec.shot_recipes and s.rng.random() < SHOT_P:
             go = s.shot_trial(pos, rec, T)
             if go is not None:                       # a recorded shot (F7): stand there, shoot that
@@ -1387,19 +1506,24 @@ class Roomba:
         d = getattr(rec, "director", None)           # the LiDAR director's job for this bot (tools/lidar_director.py)
         job = d.job(s.index, pos) if d is not None and T is not None and best is None else None
         if job and job[0] == "call" and rec.phys is not None:
-            call = s.pocket(pos, rec, T)             # at the take-off side of an island: call the jump onto it
+            call = s.pocket(pos, rec, T, aim=job[1])   # at the take-off side of an island: call the jump onto it
             if call is not None:
                 s.trial, s.phase, s.trial_t, s.crawl_path, s.trial_s = call, "go", now, None, 30.0
                 s.target, s.target_t, s.next_way = tuple(call["land"]), now, 0.0
                 rec.targets[s.index] = s.target
                 return
         elif job:
-            best = job[1]                            # its region (or an island's take-off side)
+            best = job[1]                            # a spot or an objective (or an island's take-off side)
         if T is not None and best is None and now >= getattr(s, "no_frontier_until", 0.0):
             best = s.frontier(pos, rec, T)
-            if best is None:                         # all painted within reach: wander a while before searching again
+            s.dry = 0 if best is not None else getattr(s, "dry", 0) + 1
+            if best is None and d is not None and s.dry >= 2:   # all painted within reach twice, a 10 s wander
+                best = d.fallback(s.index, pos)      # between: the director's patch farther off (at the first time
+                # it walked off at once: the wander paints floor its frontier skips, Tower / Snowbound lost 5-8%)
+            if best is None:                         # nothing: wander a while before searching again
                 s.no_frontier_until = now + 10.0
         best_v = -1e9
+        from brain.core import Vec
         for _ in range(0 if best else 24):
             a, r = s.rng.uniform(-math.pi, math.pi), s.rng.uniform(6, 24)
             x, y = pos[0] + math.cos(a) * r, pos[1] + math.sin(a) * r
@@ -1407,7 +1531,7 @@ class Roomba:
                 continue
             if s.blocked and now < s.blocked[1] and math.cos(a - s.blocked[0]) > 0.5:
                 continue                             # the way it just met a wall (above)
-            if not s.line_ok(pos, x, y, rec, T):
+            if not s.line_ok(pos, x, y, rec, T) or (T is not None and T.out_of_bounds(Vec(x, y, pos[2]))):
                 continue
             v = (0.0 if rec.explored(x, y, pos[2]) else 10.0) - r * 0.15 + s.rng.uniform(0, 2)
             if v > best_v:
@@ -1415,6 +1539,29 @@ class Roomba:
         s.target = best or (pos[0] + s.rng.uniform(-6, 6), pos[1] + s.rng.uniform(-6, 6), pos[2])
         s.target_t, s.next_way = now, 0.0
         rec.targets[s.index] = s.target
+
+    def escape(s, pos, T, safe=None):
+        """The nearest floor out of the kill zones (Terrain.oob) when the bot stands in one, by walking (40 u of path at
+        most), on the floor the spawns reach without crossing a kill zone when known (safe: the director's; out to the
+        floor behind the zone, Zealot's walkway led on to the decks and the bots died at its far lip); None when it does
+        not stand in one (or no way out is near)."""
+        if T is None or getattr(T, "oob", None) is None:
+            return None
+        from brain.core import Vec
+        if not T.out_of_bounds(Vec(*pos)):
+            return None
+        import numpy as np
+        from scipy.sparse.csgraph import dijkstra
+        l, j, i = T._node(Vec(*pos))
+        d = dijkstra(getattr(T, "graph_h", T.graph), directed=True, indices=(l * T.nh + j) * T.nw + i, limit=40.0)
+        ok = np.isfinite(d) & ~T.oob.ravel() & T.lwalk.ravel()
+        if safe is not None and safe.shape == T.lwalk.shape and (ok & safe.ravel()).any():
+            ok &= safe.ravel()
+        if not ok.any():
+            return None
+        n = int(np.argmin(np.where(ok, d, np.inf)))
+        c = T._center(*np.unravel_index(n, T.lwalk.shape))
+        return (c.x, c.y, c.z)
 
     def frontier(s, pos, rec, T):
         """The nearest (by path) floor nobody has painted that this bot can get to, over the
@@ -1426,14 +1573,22 @@ class Roomba:
         from brain.core import Vec
         from brain.terrain import NAV_CELL
         l, j, i = T._node(Vec(*pos))
-        g = getattr(T, "graph_h", T.graph)
+        director = getattr(rec, "director", None)
+        # the nav graph with no step onto kill-zone floor (the director's): graph_h's paths cross soft kill zones (their
+        # barrier cost is on the reversed graphs only), so live Zealot's bots went for the unpainted decks behind one
+        # and 48 died on its walkway
+        g = getattr(director, "safe_graph", None)
+        g = g if g is not None and g.shape == getattr(T, "graph_h", T.graph).shape else getattr(T, "graph_h", T.graph)
         others = [t for k, t in rec.targets.items() if k != s.index]
         pick = np.random.default_rng(s.rng.randrange(1 << 30))
+        extra = getattr(director, "open_nodes", None)    # the director's open patches: every one of their nodes
         for limit in (40.0, 150.0):                  # (none within 150 of path: wander, search again later)
             d = dijkstra(g, directed=True, indices=(l * T.nh + j) * T.nw + i, limit=limit)
             cand = np.nonzero(np.isfinite(d) & (d > 3.0))[0]
             if len(cand) > 2500:                     # ponytail: a sample, not every node; plenty to find a gap
                 cand = cand[pick.choice(len(cand), 2500, replace=False)]
+            if extra is not None and len(extra):     # (a sample misses small patches: those are why patches stayed)
+                cand = np.union1d(cand, extra[np.isfinite(d[extra]) & (d[extra] > 3.0)])
             ll, rest = np.divmod(cand, T.nh * T.nw)
             jj, ii = np.divmod(rest, T.nw)
             xs, ys, zs = T.x0 + (ii + 0.5) * NAV_CELL, T.y0 + (jj + 0.5) * NAV_CELL, T.lz[ll, jj, ii]
@@ -1441,8 +1596,7 @@ class Roomba:
             for tx, ty, _ in others:
                 ok &= np.hypot(xs - tx, ys - ty) >= 8.0
             score = -d[cand] + pick.uniform(0, 6, len(cand))
-            director = getattr(rec, "director", None)     # the LiDAR director's region for this bot, preferred
-            if director is not None:
+            if director is not None:                 # the LiDAR director's patch for this bot, preferred
                 score = score + director.region_bias(s.index, ll, jj, ii)
             for n in np.nonzero(ok)[0][np.argsort(-score[ok])][:20]:
                 x, y, z = float(xs[n]), float(ys[n]), float(zs[n])
@@ -1510,6 +1664,9 @@ class Roomba:
         if now - s.fly_t > 12.0 + CONFIRM_S:        # never came down alive
             s.tried_feat(l, rec)
             return None
+        st = l.get("steer")                          # a map ride (tools/lidar_rides.py): drift out the way it lands
+        if st and (s.track.air or pos[2] > l["take_off"][2] + 1.0):   # (a lift's steady climb reads as ground to the
+            return 1.0, 0.0, math.atan2(st[1], st[0]), 0             # tracker: live Zealot's bots rose straight up, no drift)
         return 0.0, 0.0, yaw, 0
 
     def shot_trial(s, pos, rec, T):
@@ -1604,8 +1761,9 @@ class Roomba:
                 rec.shot_claims.pop(l["k"], None)    # done (shot_done) or failed: free for another bot
         s.trial = None
 
-    def pocket(s, pos, rec, T):
-        """Call a jump: the nearest floors this bot cannot walk to (within 25 units), a take-off on
+    def pocket(s, pos, rec, T, aim=None):
+        """Call a jump: the nearest floors this bot cannot walk to (within 25 units; nearest the director's aim, an
+        island's floor, when given), a take-off on
         floor it can, with room to run up, and a full-speed jump whose arc (jumpphys.fly over the
         level data, this game's run, jump and gravity) comes down on that floor, alive: the call
         is that landing spot. It counts only landing within CALL_XY / CALL_Z of the call and alive
@@ -1629,7 +1787,8 @@ class Roomba:
         js, is_ = js + j0, is_ + i0
         far = int(math.ceil(float(jumpphys.reach(ph, -MAX_DROP)) / NAV_CELL)) + 1
         seen = []
-        for k in np.argsort((js - j) ** 2 + (is_ - i) ** 2):
+        tj, ti = T._cell(Vec(*aim)) if aim is not None else (j, i)
+        for k in np.argsort((js - tj) ** 2 + (is_ - ti) ** 2):
             want = T._center(int(ls[k]), int(js[k]), int(is_[k]))
             if any(abs(want.x - a) < 1.5 and abs(want.y - b) < 1.5 for a, b in seen) or rec.near_fall(want.x, want.y, want.z):
                 continue
@@ -1642,16 +1801,30 @@ class Roomba:
             aj, ai = aj + wj0, ai + wi0
             ax, ay, az = T.x0 + (ai + 0.5) * NAV_CELL, T.y0 + (aj + 0.5) * NAV_CELL, T.lz[al, aj, ai]
             dist, dz = np.hypot(want.x - ax, want.y - ay), want.z - az
-            miss = np.abs(dist - jumpphys.reach(ph, dz))     # a full-speed jump comes down about here
-            ok = (dist >= 0.5) & (dz <= ph.apex * 0.9) & (dz >= -MAX_DROP) & (miss < 0.75)
-            for n in np.nonzero(ok)[0][np.argsort(miss[ok])][:8]:
+            tuck = CROUCH_TUCK.get(getattr(ph, "game", None), 0.0)
+            cands = []                               # plain jumps first, then crouch-jumps (feet tucked at the apex)
+            for tk in ((0.0, tuck) if tuck else (0.0,)):
+                with np.errstate(invalid="ignore"):
+                    miss = np.abs(dist - jumpphys.reach(ph, dz - tk))   # a full-speed jump comes down about here
+                    ok = (dist >= 0.5) & (dz - tk <= ph.apex * 0.9) & (dz >= -MAX_DROP) & (miss < 0.75)
+                    if tk:
+                        ok &= dz > ph.apex * 0.9 - 0.05  # (only where a plain jump falls short)
+                cands += [(n, tk) for n in np.nonzero(ok)[0][np.argsort(miss[ok])][:8 if not tk else 3]]
+            for n, tk in cands:
                 a = (float(ax[n]), float(ay[n]), float(az[n]))
                 ux, uy = (want.x - a[0]) / dist[n], (want.y - a[1]) / dist[n]
                 run = Vec(a[0] - ux * 0.8, a[1] - uy * 0.8, a[2])
                 rl, rj, ri = T._node(run)
                 if not (can[rl, rj, ri] and abs(T.lz[rl, rj, ri] - a[2]) < 0.3):
                     continue                         # no room to run up
-                out, p, top, t, impact = jumpphys.fly(T, ph, a, ux * ph.run, uy * ph.run, dt=1.0 / HZ)
+                if rec.near_fall(a[0], a[1], a[2], 1.2) or rec.near_fall(run.x, run.y, a[2], 1.2):
+                    continue                         # a take-off where bots fell: the walk there is refused (deadly),
+                    #                                  so the call was dropped at once and counted missed (Construct
+                    #                                  live 0 of 155: 47 of 49 replayed misses were these)
+                oob = getattr(T, "oob", None)
+                if oob is not None and (oob[T._node(Vec(*a))] or oob[T._node(run)]):
+                    continue                         # (a take-off in a kill zone)
+                out, p, top, t, impact = fly_tuck(T, ph, a, ux * ph.run, uy * ph.run, tk, dt=1.0 / HZ)
                 if out != "land" or impact >= ph.lethal_v:
                     continue
                 pl, pj, pi = T._node(Vec(*p))
@@ -1660,12 +1833,20 @@ class Roomba:
                 key = (round(a[0] * 2), round(a[1] * 2), round(p[0] * 2), round(p[1] * 2))
                 if rec.failed_calls.get(key, 0) >= 2 or rec.find_link(a, p) or rec.near_fall(p[0], p[1], p[2]):
                     continue
+                if oob is not None and oob[T._node(Vec(*p))]:
+                    continue                         # (it lands in a kill zone)
                 if not all(self_safe(T, ph, a, ux, uy, back, turn) for back, turn in ((0.15, 0.0), (0.0, 0.05), (0.0, -0.05))):
                     continue                         # a slightly early or crooked try would kill it: not a call it makes
+                if tk and not all(_lands_near(fly_tuck(T, ph, a, (ux * c - uy * sn) * ph.run * f, (ux * sn + uy * c) * ph.run * f,
+                                                       tk, dt=1.0 / HZ), p)
+                                  for f, c, sn in ((0.96, 1.0, 0.0), (1.0, math.cos(0.035), math.sin(0.035)),
+                                                   (1.0, math.cos(0.035), -math.sin(0.035)))):
+                    continue                         # a crouch-jump is a ledge at the edge of reach: only one a 4% slow or
+                    #                                  2 degree crooked take-off still lands (the simulator missed 2 in 3)
                 mid = (a[0] + (p[0] - a[0]) / 2, a[1] + (p[1] - a[1]) / 2, top)
                 return dict(kind="jump", take_off=r2(a), land=r2(p), runup=r2((run.x, run.y, a[2])), apex=round(top, 2),
                             air_s=round(t, 2), path=[r2(a), r2(mid), r2(p)], called=True, found_by=rec.found_as,
-                            human=0, bot_ok=0, bot_fail=0, t=round(time.time()), _key=key)
+                            human=0, bot_ok=0, bot_fail=0, t=round(time.time()), _key=key, **({"crouch": 1} if tk else {}))
         return None
 
     def probe(s, pos, rec, T):
@@ -1717,9 +1898,15 @@ class Roomba:
         elif hasattr(w, "path"):
             a, b = w.path[0][:3], w.path[-1][:3]
             l = rec.find_link(a, b, "crouch") or rec.find_link(a, b, "route")
+        if l is not None and now < s.skip_links.get((round(l["take_off"][0], 1), round(l["take_off"][1], 1),
+                                                    round(l["land"][0], 1), round(l["land"][1], 1)), -1.0):
+            l = None                                 # (given up on lately: walk on, the nav finds another way next time)
+        if l is not None and l.get("ride"):          # a lift or man cannon on the way: step on, let it throw you
+            to = l["take_off"]                       # (interact_steer; a map ride steers its way in the air)
+            l = dict(l, kind="ride", _of=l, _feat=("ride", round(to[0], 1), round(to[1], 1)))
         if l is not None:
             s.trial, s.phase, s.trial_t, s.crawl_path = l, "go", now, None
-            s.trial_s = 30.0 + 0.5 * len(l.get("path") or ())    # a long route takes longer
+            s.trial_s = 30.0 + 0.5 * len(l.get("path") or ()) + (l.get("air_s") or 0.0)   # a long route takes longer
         return s.way_wp
 
     def weapon_steer(s, now, pos, rec, T):
@@ -1751,7 +1938,8 @@ class Roomba:
             return None
         if now - s.trial_t > s.trial_s:            # could not get there: try something else
             if l.get("called") and l.get("kind", "jump") == "jump":
-                s.score(l, False, rec)
+                s.score(l, False, rec, jumped=s.phase == "fly")
+                s.why = f"call given up: {s.trial_s:.0f} s in phase {s.phase}"
             if "_feat" in l:
                 s.tried_feat(l, rec)
             s.trial = None
@@ -1770,17 +1958,30 @@ class Roomba:
                 from brain.core import Vec
                 if not math.isfinite(T._field(Vec(*run))[T._node(Vec(*pos))]):
                     if l.get("called"):                 # no walking way to the run-up from here: drop it
-                        s.score(l, False, rec)
+                        s.score(l, False, rec, jumped=False)
+                        s.why = "call dropped: no walking way to its run-up"
                     s.trial = None
                     return None
                 w = T.nav(Vec(*pos), Vec(*run))
                 goal = (w.x, w.y, w.z)
             if math.dist(pos[:2], run[:2]) < 0.35:
                 s.phase = "run"
+                if getattr(s, "runups_for", None) is not l:
+                    s.runups_for, s.runups = l, 0
+                s.runups += 1
+                if s.runups > 3:                     # three run-ups and no jump: not one this bot makes from here
+                    s.score(l, False, rec, jumped=False)
+                    s.why = "jump given up: 3 run-ups"
+                    s.skip_links[(round(to[0], 1), round(to[1], 1), round(land[0], 1), round(land[1], 1))] = now + 60.0
+                    s.trial = None
+                    return None
             return 1.0, 0.0, math.atan2(goal[1] - pos[1], goal[0] - pos[0]), 0
         if s.phase == "run":                       # jump on the spot: within a tick's travel, or passing it
             d = math.dist(pos[:2], to[:2])
-            passed = (to[0] - pos[0]) * (land[0] - to[0]) + (to[1] - pos[1]) * (land[1] - to[1]) <= 0
+            # past the take-off along the run-up line (run -> to), not along the jump: a jump that turns from its run-up
+            # (the owner's Construct jump from (0.51, -3.84, 11.82): run-up north, landing south-east) read "passed" at the
+            # run-up itself and the bot went run-up, run, run-up ... standing still, 290 bot-seconds live
+            passed = (to[0] - pos[0]) * (to[0] - run[0]) + (to[1] - pos[1]) * (to[1] - run[1]) <= 0
             jump = d < 0.6 * (rec.phys.run if rec.phys else 2.25) / HZ or (d < 0.3 and passed)
             if passed and not jump:                  # ran past it off the line: run up again
                 s.phase = "go"
@@ -1795,11 +1996,17 @@ class Roomba:
             s.trial = None
             return None
         yaw = math.atan2(land[1] - pos[1], land[0] - pos[0])
+        if not l.get("called") and now - s.fly_t > 0.6 and not s.track.air:
+            # a known jump taken on the way: down is done (scored on where it came down, no 5 s wait standing still: live
+            # Construct's bots stood 350 of 639 still bot-seconds in such waits)
+            s.score(l, math.dist(pos[:2], land[:2]) < 1.0 and abs(pos[2] - land[2]) < 0.6, rec)
+            s.trial = None
+            return None
         if now - s.fly_t > 0.6 and not s.track.air:  # down: stand still while the 5 s run out
             return 0.0, 0.0, yaw, 0
         if pos[2] <= land[2] + 0.05 or math.dist(pos[:2], land[:2]) < 0.3:
             return 0.0, 0.0, yaw, 0                  # down on it (the tracker lags): pushing on ran bots off ledges
-        return 1.0, 0.0, yaw, 0
+        return 1.0, 0.0, yaw, (BTN_CROUCH if l.get("crouch") else 0)   # a crouch-jump: crouch held in the air
 
     def route_steer(s, now, pos, rec, T, l):
         """A crouch route (from its nearer end) or a recorded route (from its start): get there,
@@ -1886,13 +2093,14 @@ class Roomba:
                 link[rec.ok_key] = link.get(rec.ok_key, 0) + 1
         s.trial = None
 
-    def score(s, l, ok, rec):
+    def score(s, l, ok, rec, jumped=True):
         """A tried jump's result: on the link (a two-way jump taken backwards: on its own link, and
         it was done back); a new called jump made becomes a link, one missed is remembered."""
         with rec.lock:
             new = "_key" in l and not any(x is l for x in rec.links)    # a fresh call (pocket()), not a known link
-            if new:
-                rec.calls["made" if ok else "missed"] += 1
+            if new:                                  # (a call given up before its jump: dropped, not missed)
+                k = "made" if ok else "missed" if jumped else "dropped"
+                rec.calls[k] = rec.calls.get(k, 0) + 1
                 if not ok:
                     rec.failed_calls[l["_key"]] = rec.failed_calls.get(l["_key"], 0) + 1
                     return
@@ -1905,6 +2113,14 @@ class Roomba:
             src[k] = src.get(k, 0) + 1
             if ok and "_of" in l:
                 src["back"] = src.get("back", 0) + 1
+            fails, oks = src.get(rec.fail_key, 0), src.get(rec.ok_key, 0)
+            if not ok and src.get("crouch") and not src.get("human") and fails >= 3 and fails > 2 * oks:
+                # a crouch-jump bots keep missing: out of the nav, never called again (live Construct: one landed once
+                # then missed 54 times, bots queued on it and the floor behind it stayed at 91%; usable_links keeps any
+                # link landed once)
+                rec.links[:] = [x for x in rec.links if x is not src]
+                to, la = src["take_off"], src["land"]
+                rec.failed_calls[(round(to[0] * 2), round(to[1] * 2), round(la[0] * 2), round(la[1] * 2))] = 2
 
     def died(s, rec):
         if s.trial is not None and "_feat" in s.trial:
@@ -1933,14 +2149,24 @@ class Roomba:
                 rec.bumped(p0, (math.cos(a), math.sin(a)))
 
     def think(s, now, pos, rec, T, bounds):
+        s.why = ""                                   # (what decided this tick: the decision log, tools/lidar.py main)
         steer = s.trial_steer(now, pos, rec, T)
         if steer is not None:
             fwd, strafe, move, buttons = steer[:4]
             pitch = steer[4] if len(steer) > 4 else 0.0    # aiming trials (recorded shots) look up or down
-            if s.phase == "go" and fwd > 0.5 and (s.deadly(pos[0] + math.cos(move) * 0.3, pos[1] + math.sin(move) * 0.3, pos[2], rec, T)
-                                                  or s.walk_off_kills(pos, math.cos(move), math.sin(move), rec, T)):
+            pad = s.trial.get("kind") == "ride" and math.dist(pos[:2], s.trial["take_off"][:2]) < 1.5
+            if s.phase == "go" and fwd > 0.5 and not pad and \
+                    (s.deadly(pos[0] + math.cos(move) * 0.3, pos[1] + math.sin(move) * 0.3, pos[2], rec, T, frm=pos)
+                     or s.walk_off_kills(pos, math.cos(move), math.sin(move), rec, T)):
+                # (stepping onto a lift or cannon pad is no deadly edge: its column has no floor and the guard dropped the
+                # ride every tick, Aftship's bots piled up at the big lift, the simulator froze at 49%)
                 if s.trial.get("called") and s.trial.get("kind", "jump") == "jump":
-                    s.score(s.trial, False, rec)     # the way to the take-off runs off a deadly edge: not this one
+                    s.score(s.trial, False, rec, jumped=False)   # the way to the take-off runs off a deadly edge
+                    s.why = "call dropped: " + ("fall spot" if rec.near_fall(pos[0] + math.cos(move) * 0.3,
+                                                                            pos[1] + math.sin(move) * 0.3, pos[2], frm=pos)
+                                                else "edge on the way")
+                if "_feat" in s.trial:
+                    s.tried_feat(s.trial, rec)       # (a ride whose way runs off an edge: counted, not recreated forever)
                 s.trial = None
                 s.last = pos
                 return 0.0, 0.0, move, 0.0, 0
@@ -1954,14 +2180,20 @@ class Roomba:
             s.last, s.pushed, s.bump = pos, False, None
             return fwd, strafe, move, pitch, buttons
         t = s.target
+        if T is not None and getattr(T, "oob", None) is not None and not getattr(s, "escaping", False):
+            from brain.core import Vec
+            if T.out_of_bounds(Vec(*pos)):
+                t = None                             # into a kill zone on the way: out of it first (pick: escape)
         if t is None or (math.dist(t[:2], pos[:2]) < 1.0 and abs(t[2] - pos[2]) < 0.6) or \
                 now - s.target_t > (20 if T is None or s.straight else 40):
+            s.why = "new goal: " + ("none" if t is None else "reached" if math.dist(t[:2], pos[:2]) < 1.0 else "timeout")
             s.pick(now, pos, rec, T, bounds)
         wp = s.way_in(now, pos, rec, T)
         if s.trial is not None:
             s.last, s.pushed = pos, False
             return 0.0, 0.0, 0.0, 0.0, 0
         if wp is not None and math.dist(wp[:2], pos[:2]) < 0.05 and math.dist(s.target[:2], pos[:2]) > 1.0:
+            s.why = "way ends here"
             s.pick(now, pos, rec, T, bounds)         # the nav's way ends here (the goal snapped to this spot)
             wp = None
         grab = s.weapon_steer(now, pos, rec, T)
@@ -1981,6 +2213,7 @@ class Roomba:
             a = s.rng.choice((-1, 1)) * s.rng.uniform(0.8, 2.0)
             s.wiggle, s.wiggle_until, jump = (math.cos(a), math.sin(a)), now + 0.5, True
         if s.stuck_t > STUCK_S:
+            s.why = "stuck"
             s.pick(now, pos, rec, T, bounds)
             s.stuck_t = 0.0
         # headway over a window, not a tick: pressed into a wall a bot jitters or slides a hundredth of a unit a tick,
@@ -1992,6 +2225,7 @@ class Roomba:
                 s.walls += 1
                 if s.walls >= 2:
                     s.blocked, s.walls = (move, now + 20.0), 0
+                    s.why = "no headway"
                     s.pick(now, pos, rec, T, bounds)
                 else:
                     a = s.rng.choice((-1, 1)) * s.rng.uniform(1.2, 2.2)
@@ -2004,8 +2238,11 @@ class Roomba:
         # the step ahead: a deadly drop (level data, or where a bot already fell) -> stop, new goal.
         # On the nav's path only just ahead: a long probe overshoots the next corner of a walkway
         mx, my = math.cos(move) * fwd - math.sin(move) * strafe, math.sin(move) * fwd + math.cos(move) * strafe
-        if any(s.deadly(pos[0] + mx * k, pos[1] + my * k, pos[2], rec, T) for k in ((0.3,) if wp else (0.6, 1.2))) \
+        if any(s.deadly(pos[0] + mx * k, pos[1] + my * k, pos[2], rec, T, frm=pos) for k in ((0.3,) if wp else (0.6, 1.2))) \
                 or s.walk_off_kills(pos, mx, my, rec, T):
+            s.why = "edge: " + ("fall spot" if any(rec.near_fall(pos[0] + mx * k, pos[1] + my * k, pos[2], frm=pos)
+                                                 for k in ((0.3,) if wp else (0.6, 1.2)))
+                                else "walk-off kills" if s.walk_off_kills(pos, mx, my, rec, T) else "level-data drop")
             s.pick(now, pos, rec, T, bounds)
             s.pushed = False
             return 0.0, 0.0, move, 0.0, 0
@@ -2229,7 +2466,8 @@ class Hub:
         d = s.rec.stored
         return dict(map=s.rec.map, title=map_title(s.rec.map), mode=s.mode, session=s.session, cell=CELL, zstep=ZSTEP, walk=d.get("walk", []),
                     deaths=d.get("deaths", [])[-1500:], runs=d.get("runs", 0), bot_minutes=d.get("bot_minutes", 0),
-                    features=load_features(s.rec.map), links=d.get("links", []), weapons=d.get("weapons", []))
+                    features=load_features(s.rec.map), links=d.get("links", []), weapons=d.get("weapons", []),
+                    wall_kinds=wall_kinds_view(s.rec.map))
 
     def live(s, since):
         if time.time() - getattr(s, "classified", 0) > 2:   # two-way / one-way for new jumps too
@@ -2248,6 +2486,9 @@ class Hub:
         ver = (st.version if st is not None else None, ob.version if ob is not None else None)
         if (st is not None or ob is not None) and (ver != getattr(s, "sent_ver", None) or since == 0):
             s.sent_ver, extra["features"] = ver, load_features(s.rec.map, st, ob)
+        d = getattr(s.rec, "director", None)            # coverage and the open patches (tools/lidar_director.py)
+        if d is not None and d.history:
+            extra["coverage"] = d.view()
         return dict(map=s.rec.map, mode=s.mode, session=s.session, note=s.note, seq=since + len(cells), cells=cells, weapons=weapons,
                     players=players, deaths=deaths, links=links, recording=s.recording, calls=s.rec.calls, t=round(time.time(), 2),
                     **extra)
@@ -2281,9 +2522,16 @@ def serve(hub, port=PORT):
                 s.send(json.dumps(dict(maps=map_list(), live=h.rec.map, mode=h.mode)).encode(), "application/json")
             elif u.path == "/map":
                 name, src = (q.get("name") or [""])[0], (q.get("src") or ["scan"])[0]
-                if not name or (name == h.rec.map and src == ("sim" if h.mode == "sim" else "scan")):
-                    s.send(json.dumps(h.stored_view()).encode(), "application/json")
+                if not name or (name == h.rec.map and src == ("sim" if h.mode == "sim" else getattr(h, "view_src", "scan"))):
+                    view = h.stored_view()
+                    if getattr(h, "view_src", "scan") == "sim":
+                        view.update(src="sim")
+                    s.send(json.dumps(view).encode(), "application/json")
                 elif map_ok(name):
+                    if src == "scan":                # no scan from matches, a simulator one: show that
+                        it = next((m for m in map_list() if m["name"] == name), {})
+                        if "scan" not in it and "sim" in it:
+                            src = "sim"
                     path = os.path.join(ROOT, "maps", name, "lidar_sim.json" if src == "sim" else "lidar.json")
                     view = Hub(Recorder(name, count_run=False, path=path), "stored").stored_view()
                     view.update(browse=True, src=src)  # another map than the one being mapped: stored data only
@@ -2389,6 +2637,8 @@ def report(rec, data, T=None):
                   f"{'on the nav' if p.get('reach') else 'nav floor there but not reached from the spawns' if p.get('on') else 'no nav floor there'}"
                   for p in bad[:40]]
         lines.append("")
+    if getattr(rec, "director", None) is not None:   # coverage of the reachable floor, what is left and why
+        lines += ["Coverage (the LiDAR director, tools/lidar_director.py):", ""] + rec.director.lines() + [""]
     if T is not None and floor:
         miss = [(x * CELL, y * CELL, z * ZSTEP, n) for x, y, z, k, n in floor
                 if not T.ground_ok(x * CELL, y * CELL, z * ZSTEP, drop=0.6)]
@@ -2512,6 +2762,13 @@ def main(o):
     rec.pickup_ok = o.game in PICKUP_GAMES
     import jumpphys                                 # bots call their jumps with this game's physics
     rec.phys = jumpphys.Phys(o.game, rec.apex() if len(rec.stored.get("jumps", [])) >= 20 else None)
+    if T is not None:                                # the map's lifts and man cannons, read from its tags: ride links
+        import lidar_rides                           # the nav uses at once (never saved: rebuilt every run)
+        rides = lidar_rides.ride_links(o.map, T, rec.phys)
+        if rides:
+            rec.links += rides
+            nav_learn(T, o.map, rec.links)
+        print(f"{len(rides)} lift and man cannon rides from the map's tags", flush=True)
     owner_acts, owner_had, dbg_seq = [], None, None
     if T is not None and hasattr(live, "set_map"):  # weapon names come from the map's placements
         from brain.maps import get_map
@@ -2547,9 +2804,12 @@ def main(o):
     oob_seen = [oob.version, 0.0]
     if oob.spots or oob.volumes:                 # (and the map's own kill zones: maps/<map>/killzones.json)
         T.set_oob(oob.spots, oob.version, oob.volumes)
+        nav_learn(T, o.map, rec.links)           # (links landing in a kill zone out of the nav, now that it knows them)
     import bug_reports
     import types
     run_stamp = time.strftime("%Y%m%d-%H%M%S")
+    dec_t = {}                                       # each bot's decisions, twice a second and on every new goal
+    dec = open(os.path.join(ROOT, "logs", f"lidar_decisions_{file_name(o.map)}_{run_stamp}.jsonl"), "a", buffering=1)
     t0 = last_save = time.time()
     collector, last_at = None, {}                  # your play recorded in LiDAR runs too (the player's boot camp demos:
     try:                                           # LiDAR mode kept no Data collector, so his ability use was lost)
@@ -2726,6 +2986,15 @@ def main(o):
                     if h not in seen_w and math.dist(wpos, pos) < 5.0 and rec.found_weapon(name, wpos, "seen"):
                         seen_w.add(h)
                 fwd, strafe, yaw, pitch, buttons = b.think(now, pos, rec, T, bounds)
+                if now - dec_t.get(index, -9.0) >= 0.5 or b.why:   # the decision log: what each bot did and why
+                    dec_t[index] = now
+                    tr, job = b.trial, (rec.director.jobs.get(b.index) if getattr(rec, "director", None) else None)
+                    dec.write(json.dumps(dict(
+                        t=round(now, 2), i=b.index, pos=r2(pos), act=[round(fwd, 2), round(strafe, 2), round(yaw, 2), buttons],
+                        why=b.why, target=r2(b.target) if b.target else None, wp=r2(b.way_wp) if b.way_wp else None,
+                        trial=[tr.get("kind", "jump"), b.phase, bool(tr.get("called")), bool(tr.get("crouch")),
+                               r2(tr["take_off"]), r2(tr["land"])] if tr else None,
+                        job=job[0] if job else None, dry=getattr(b, "dry", 0), stuck=round(b.stuck_t, 1))) + chr(10))
                 botctl.act(m, slot, fwd, strafe, yaw, pitch, buttons)
             notices.check()
             if getattr(rec, "director", None) is not None:
@@ -2780,19 +3049,25 @@ def view(o):
     """The stored data of a map in the 3D view (no game needed); the newest map by default. If
     the live view already runs (a LiDAR match), just open it."""
     import appwindow
-    name = o.map
+    name, src = o.map, "scan"
     if not name:
-        found = sorted((os.path.getmtime(p), os.path.basename(os.path.dirname(p)))
-                       for p in __import__("glob").glob(os.path.join(ROOT, "maps", "*", "lidar.json")))
-        found += sorted((os.path.getmtime(p), os.path.relpath(os.path.dirname(p), os.path.join(ROOT, "maps")).replace("\\", "/"))
-                        for p in __import__("glob").glob(os.path.join(ROOT, "maps", "*", "variants", "*", "lidar.json")))
-        found.sort()
+        # the newest scan with floor in it, from matches or from the simulator (a simmed map has a lidar.json with
+        # only the simulator's jumps: map_list leaves that out)
+        found = []
+        for m in map_list():
+            for key in ("scan", "sim"):
+                if key in m:
+                    found.append((m[key]["updated"], m["name"], key))
         if not found:
-            sys.exit("no LiDAR data yet: run a LiDAR match first (BOTS panel > LiDAR mode)")
-        name = found[-1][1]
-    hub = Hub(Recorder(name, count_run=False), "stored")
-    srv = serve(hub)
-    url = f"http://127.0.0.1:{PORT}/"
+            sys.exit("no LiDAR data yet: run a LiDAR match or the LiDAR Simulator first")
+        _, name, src = max(found)
+    elif "sim" in (it := next((m for m in map_list() if m["name"] == name), {})) and "scan" not in it:
+        src = "sim"                                  # a map named with only a simulator scan: show that one
+    path = os.path.join(ROOT, "maps", name, "lidar_sim.json") if src == "sim" else None
+    hub = Hub(Recorder(name, count_run=False, path=path), "stored")
+    hub.view_src = src                               # (the page's label: SIMULATOR SCAN; the window reopened shows it too)
+    srv = serve(hub, getattr(o, "port", PORT))       # (--port: a second view beside a running one)
+    url = f"http://127.0.0.1:{getattr(o, 'port', PORT)}/"
     if o.open:
         appwindow.open_window(url)
     if srv is None:

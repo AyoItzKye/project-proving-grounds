@@ -72,6 +72,45 @@ def recordings(fails):
             play.CARNAGE = report
 
 
+def other_copies(fails):
+    """Games another copy of the mod recorded are listed (Nov 4, the owner: "when I press refresh on observer, no list
+    of games pops up": his install's Observer read the install's logs, no games, while the brain ran from the working
+    repo's botcore.dll and recorded into the repo's logs). Copies list themselves per user (tools/recording.py
+    COPIES); the other copy's games are listed with their folder, readable, keepable in their own logs, and an empty
+    list has the page's empty state."""
+    import tempfile
+    sys.path.insert(0, HERE)
+    import observer
+    import recording
+    was = observer.LOGS, getattr(recording, "COPIES", None)
+    with tempfile.TemporaryDirectory() as tmp:
+        mine, repo = os.path.join(tmp, "install", "logs"), os.path.join(tmp, "repo")
+        os.makedirs(mine)
+        os.makedirs(os.path.join(repo, "logs"))
+        game = os.path.join(repo, "logs", "trace_h2_coagulation_20261103-221113.jsonl")
+        with open(game, "w") as f:
+            f.write(json.dumps(dict(t=0.0, meta=dict(map="h2_coagulation", bot=dict(id=1, tier="top")))) + "\n")
+        copies = os.path.join(tmp, "per_user", "copies.json")
+        os.makedirs(os.path.dirname(copies))
+        json.dump([os.path.join(tmp, "install"), repo], open(copies, "w"))
+        observer.LOGS, recording.COPIES = mine, copies
+        try:
+            got = observer.trace_files()
+            if [d.get("copy") for d in got] != [repo]:
+                fails.append(f"another copy's games are not listed: {got} (want its one game, copy {repo})")
+            elif observer.safe_trace(got[0]["file"]) != got[0]["file"] or not os.path.samefile(got[0]["file"], game):
+                fails.append(f"another copy's game {got[0]['file']} cannot be read")
+            elif got[0]["kept"] is not False or got[0]["label"] != "Match Nov 03 22:11, Legendary":
+                fails.append(f"another copy's game entry {got[0]}")
+            if observer.safe_trace(os.path.join(repo, "logs", "..", "..", "x.jsonl")) is not None:
+                fails.append("served a path outside the game list")
+        finally:
+            observer.LOGS, recording.COPIES = was
+    page = open(os.path.join(HERE, "observer.html"), encoding="utf-8").read()
+    if 'id="nogames"' not in page or "showNoGames()" not in page:
+        fails.append("the page has no empty state for an empty game list")
+
+
 def _one(tmp, name):
     """A Legendary match's trace (back after it was rotated out above), for the game list's label."""
     path = os.path.join(tmp, name)
@@ -87,6 +126,7 @@ def main():
     u = f"http://127.0.0.1:{sys.argv[1] if len(sys.argv) > 1 else 8811}"
     fails = []
     recordings(fails)
+    other_copies(fails)
     if fails:
         sys.exit("FAIL: " + "; ".join(fails))
     testdata.need(*[] if glob.glob(os.path.join(ROOT, "logs", "trace_*.jsonl")) else ["logs/trace_*.jsonl"],
@@ -128,7 +168,8 @@ def run(u, fails):
         except urllib.error.HTTPError:
             pass
     rec = json.loads(get(u + "/settings").read())        # the Recording settings (tools/recording.py)
-    if not (2 <= rec.get("games", 0) <= 50 and 1 <= rec.get("minutes", 0) <= 600) or "kept" not in traces[0]:
+    if not (2 <= rec.get("games", 0) <= 50 and 1 <= rec.get("minutes", 0) <= 600) or "kept" not in traces[0] \
+            or not {"logs", "on", "copies"} <= set(rec):      # (the page's empty list says where it looked)
         fails.append(f"recording settings {rec}, game list entry {sorted(traces[0])}")
     for path, body in (("/keep", {"file": "../../brain/bot.py", "keep": True}), ("/settings", {"games": 3})):
         try:                                             # (only the Observer's own page may change these)

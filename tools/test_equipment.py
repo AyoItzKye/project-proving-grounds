@@ -449,6 +449,63 @@ def main():
         got = plan_now(b, foes, seen, goal, hit, me_kw, **snap_kw)[4]
         if got != want:
             fails.append(f"{tier} {kind}, goal {goal[0]}: {got!r} (want {want!r})")
+    # ... a Halo 4 Flood survivor never raises the hardlight shield at a lunging Flood (it shoots him: the owner's Blood
+    #     Cavern Flood 20261105-225014, "using the hardlight shield more than shooting"); in Slayer a top bot still blocks
+    #     a sword lunge
+    lunger = foe(A + Vec(3.0, 0, 0), yaw=math.pi, weapon="sword")
+    for snap_kw, want in ((dict(mode="infection", infected=1), None), ({}, "hardlight: block it")):
+        b = bot("top", "h4", "hardlight_shield")
+        b.cover_from = nocover
+        got = plan_now(b, [lunger], (2,), ("fight", 2), False, {}, **snap_kw)[4]
+        if got != want:
+            fails.append(f"hardlight vs a sword lunge {snap_kw or 'slayer'}: {got!r} (want {want!r})")
+    # ... the owner's three cases (Nov 5): a short block when it cannot shoot back first: magazine empty (then a melee),
+    #     swarmed by two lunging Flood, or backed into a corner
+    lunger2 = foe(A + Vec(2.5, 1.0, 0), i=3, yaw=math.pi, weapon="sword")
+    for foes_, seen_, kw, want in (
+            ([lunger, lunger2], (2, 3), {}, "survivor: swarmed, block and shoot the gaps"),
+            ([lunger], (2,), dict(weapon="shotgun", weapons=["shotgun"], mag=[0], ammo=[12]), "survivor: block, then melee")):
+        b = bot("top", "h4", "hardlight_shield")
+        b.cover_from = nocover
+        got = plan_now(b, foes_, seen_, ("fight", 2), False, kw, mode="infection", infected=1)[4]
+        if got != want:
+            fails.append(f"survivor, {want.split(':')[1].strip()}: {got!r} (want {want!r})")
+    b = bot("top", "h4", "hardlight_shield")
+    b.cover_from = nocover
+    b.air_terrain = lambda: type("Box", (), {"clearance": staticmethod(lambda p, yaw, far=3.0: 0.6)})()
+    got = plan_now(b, [lunger], (2,), ("fight", 2), False, {}, mode="infection", infected=1)[4]
+    if got != "survivor: cornered, block":
+        fails.append(f"a survivor walled in on every side with a Flood lunging: {got!r} (want a cornered block)")
+    # ... and the block stays short (never stretched while the Flood is near), the gun comes back for 1.2 s before the
+    #     next, and the let-go of an empty-gun block is a melee
+    b = bot("top", "h4", "hardlight_shield")
+    b.cover_from = nocover
+    close = foe(A + Vec(1.2, 0, 0), yaw=math.pi, weapon="sword")
+    held, melee, t = [], 0, 0.0
+    while t < 3.0:
+        b.per.beliefs[2] = Belief(close.pos, close.vel, t, True, "eyes")
+        b.per.recognized.add(2)
+        me = me_state(b, A, 0.0, 0.0, weapon="shotgun", weapons=["shotgun"], mag=[0], ammo=[12])
+        sn = Snapshot(t, [me, close], mode="infection", infected=1)
+        a = b.think(t, DT, sn, lambda p, q: True, lambda p, q, **k: q, [])
+        held.append(bool(a.ability or a.equipment))
+        melee += bool(a.melee)
+        t += DT
+    runs, cur = [], 0
+    for h in held:
+        cur = cur + 1 if h else (runs.append(cur) or 0) if cur else 0
+    longest = max(runs + [cur]) * DT
+    if not held.count(True) or longest > 0.75:
+        fails.append(f"survivor blocks: longest {longest:.2f} s (want 0.6 s blocks), held {held.count(True)} of {len(held)} ticks")
+    if held.count(True) * DT > 0.45 * 3.0:
+        fails.append(f"survivor blocks: shield up {held.count(True) * DT:.1f} of 3 s (the gun should have most of it)")
+    if not melee:
+        fails.append("survivor block with an empty gun: no melee on the let-go")
+    b = bot("novice", "h4", "hardlight_shield")
+    b.cover_from = nocover
+    got = plan_now(b, [lunger], (2,), ("fight", 2), True, {}, mode="infection", infected=1)[4]
+    if got is not None:
+        fails.append(f"a novice survivor hit by the Flood raised the hardlight shield: {got!r}")
     b = bot("strong", "reach", "active_camo")
     b.order.role = "runner"
     if plan_now(b, [], (), run_to, me_kw=dict(tracker=False))[4] != "camo for the objective run":

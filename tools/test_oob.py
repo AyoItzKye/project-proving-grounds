@@ -17,6 +17,7 @@
 
 usage: python -I test_oob.py      -> "out of bounds OK (...)"
 """
+import json as json_
 import math
 import os
 import random
@@ -79,6 +80,13 @@ def main():
     if first != [(0.0, 200.0, 0.0, False)] or not second or not second[0][3] or o.candidates:
         fails.append(f"1. an enemy alive 30 u off, out of sight: first {first}, second {second} (want a candidate, "
                      f"then counted)")
+    # (two deaths in the same blast are one event: live Spire 20261105-004256 at 232.1 s, a learned spot 5 u from
+    # phase 2's territory from two Spartans killed together)
+    n = len(o.spots)
+    pair = life(o, 100.0, [(1, 0, (0.0, 300.0, 0.0)), (3, 0, (1.0, 300.5, 0.0))], **dict(hidden, others=[(2, 1, (30.0, 300.0, 0.0))]))
+    if len(o.spots) != n or any(c for *_, c in pair):
+        fails.append(f"1. two deaths in one blast: {pair}, {len(o.spots) - n} spots (want candidates only)")
+    o.candidates.clear()
     # 2. flags, and the file
     if not o.flag("this is out of bounds", (5.0, 5.0, 1.0), 12.0) or o.flag("nice shot", (6.0, 6.0, 1.0), 13.0):
         fails.append("2. the flag words: want 'out of bounds' a spot, 'nice shot' none")
@@ -159,14 +167,50 @@ def main():
     if O.where([ball], (0, 0, 1)) is not None or O.where([ball], (0, 0, 6)) is None or \
             O.where([ball], (0, 0, 4.5), pad=1.0) is None:
         fails.append("4. a safe zone: inside safe, outside (or within the pad of its rim) out of bounds")
-    for m, vs in (("base", [box, dict(cyl, condition="game type: x")]), ("base/variants/v1", [dict(ball, source="mvar")])):
+    # (a map variant's game-type volumes and late ones are the game type's: Spire's Invasion gates put its phase 2
+    # territories and core out of bounds, live 20261104-222857)
+    gate = dict(box, label="g", source="mvar", forge_label="inv_gates", gametype_specific=True, placed_at_start=True)
+    late = dict(box, label="l", source="mvar", gametype_specific=False, placed_at_start=False)
+    for m, vs in (("base", [box, dict(cyl, condition="game type: x")]),
+                  ("base/variants/v1", [dict(ball, source="mvar", gametype_specific=False, placed_at_start=True), gate,
+                                        late])):
         os.makedirs(os.path.join(O.ROOT, m), exist_ok=True)
         with open(os.path.join(O.ROOT, m, "killzones.json"), "w") as f:
-            f.write('{"volumes": %s}' % str(vs).replace("'", '"'))
+            f.write(json_.dumps({"volumes": vs}))
     got = [v["label"] for v in O.volumes("base/variants/v1")]
     if got != ["b", "s"] or [v["label"] for v in O.volumes("base")] != ["b"]:
-        fails.append(f"4. volumes(): a layout's {got} (want the base map's box and its own sphere, the conditioned cylinder"
-                     " left out)")
+        fails.append(f"4. volumes(): a layout's {got} (want the base map's box and its own sphere, the conditioned cylinder,"
+                     " the game type's gate and the late box left out)")
+    by = {ph: [v["label"] for v in O.volumes("base/variants/v1", ph)] for ph in (1, 2)}
+    if by != {1: ["b", "s", "g"], 2: ["b", "s"]}:      # (its seq: 1 by default, the phase its gates close)
+        fails.append(f"4. volumes() in Invasion phases 1 / 2: {by} (want the phase 1 gate's volume in phase 1 only)")
+    T0 = type("T", (), {"set_oob": lambda s, *a: setattr(s, "got", a)})()
+    gv = O.Oob("base/variants/v1")
+    gv.set_phase(T0, 1)
+    if [v["label"] for v in T0.got[2]] != ["b", "s", "g"]:
+        fails.append("4. Oob.set_phase(1): the gate's volume not on the nav")
+    # 4b. a layout whose .mvar was read knows every kill zone: a death in none of them is not learned, and death spots
+    # learned there before are dropped. Spire S3 / S4 learned three on the Spartans' lane to phase 1's territory A and
+    # phase 1 was lost both rounds of S5 (live 20261105-045139); a layout with no .mvar read still learns. Nor a flag:
+    # Spire 20261105-201917 the player's report about the Falcon ("... into the fucking soft kill boundary ...") filed a
+    # spot where he stood on the spire's top, 4.3 u from the core's stand; the flags filed before are dropped too
+    os.makedirs(os.path.join(O.ROOT, "base/variants/v3"), exist_ok=True)
+    with open(os.path.join(O.ROOT, "base/variants/v3", "killzones.json"), "w") as f:
+        f.write(json_.dumps({"volumes": []}))            # (its .mvar read, no volume of its own)
+    with open(O.path_of("base/variants/v3"), "w") as f:
+        f.write(json_.dumps({"spots": [[0, 0, 0, "death", 1.0, "twice"], [9, 9, 0, "flag", 2.0, "oob"]],
+                             "candidates": [[5, 5, 0, 3.0]]}))
+    lv = O.Oob("base/variants/v3")
+    got = life(lv, 0.0, [(1, 0, (60.0, 60.0, 0.0))], others=[(2, 1, far)])
+    flagged = lv.flag("just flies it into the fucking soft kill boundary", (-179.0, -409.51, -24.33), 342.8)
+    if getattr(lv, "learn", True) or got or flagged or lv.spots or lv.candidates or not lv.version:
+        fails.append(f"4b. a layout with its .mvar read: learn {getattr(lv, 'learn', None)}, a lone death taken {got}, a "
+                     f"flag filed {flagged}, spots {[q[3] for q in lv.spots]}, candidates {lv.candidates} (want no "
+                     f"learning, no spot kept)")
+    os.makedirs(os.path.join(O.ROOT, "base/variants/v2"), exist_ok=True)
+    nv = O.Oob("base/variants/v2")
+    if not getattr(nv, "learn", True) or life(nv, 0.0, [(1, 0, (60.0, 60.0, 0.0))], others=[(2, 1, far)]) != [(60.0, 60.0, 0.0, True)]:
+        fails.append("4b. a layout with no .mvar read: a lone death not learned (want learned)")
     k = O.Oob("base")
     got = life(k, 0.0, [(1, 0, (0.5, 0.0, 0.0))], others=[(2, 1, (3.0, 0.0, 0.0))], sees=lambda a, b: True)
     fallen = life(k, 10.0, [(1, 0, (0.0, 0.0, 6.0))], others=[(2, 1, far)], fall=5.0)
@@ -210,6 +254,18 @@ def main():
         fails.append(f"4. reach_35_island: kill_soft / safe_zone_soft kinds {sorted((k, v['kind']) for k, v in isl.items())}")
     if not any(v["source"] == "bsp" and v["shape"] == "plane" for v in O.volumes("h3_sandbox")):
         fails.append("4. h3_sandbox: no BSP soft kill ceiling")
+    # Bungie's own Invasion map variants as the live brain files them (.mvar: this PC's matches): no objective of the
+    # game in a kill volume, none of its spawns either
+    from brain import invasion
+    for m in ("reach_35_island/variants/v3977bae2", "reach_70_boneyard/variants/v4d71c7d5"):
+        if not os.path.exists(os.path.join(REAL, m, "killzones.json")):
+            continue
+        L = invasion.layout(get_map(m)["objects"])          # (each phase's objectives with that phase's volumes)
+        pts = [(3, "core", L["core"])] + [(ph, f"phase {ph}", z) for ph in (1, 2, 3) for z in L["phases"][ph]]
+        bad = [(n, (round(z.x), round(z.y), round(z.z)), v["label"]) for ph, n, z in pts
+               for v in [O.where(O.volumes(m, ph), (z.x, z.y, z.z + 0.3))] if v is not None]
+        if bad:
+            fails.append(f"4. {m}: Invasion objectives out of bounds {bad}")
     import json
     for m in ("h2_lockout", "reach_35_island", "h4_ca_redoubt", "h2a_ca_relic", "h3_guardian"):
         vs = O.volumes(m)

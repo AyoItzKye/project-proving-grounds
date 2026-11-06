@@ -180,6 +180,40 @@ def main():
         D.posture = real
     if "team 0 blitz (all_in): go" not in out.getvalue():
         fails.append("trace: no \"team 0 blitz (all_in): go\" in observer.py events")
+
+    # 6. a goer keeps its prong while the goers change (live Spire 20261105-011146: by its place in the list the prong
+    #    flipped as men died and every flip sent the bot back out, the loose core never taken); none once it is nearer
+    #    the target than its prong
+    target, prongs = Vec(0.0, 0.0, 0.0), [Vec(10.0, 5.0, 0.0), Vec(10.0, -5.0, 0.0)]
+    gs = [type("B", (), {"id": i})() for i in (1, 3, 5, 7)]
+    pos = {1: Vec(30, 0, 0), 3: Vec(30, 2, 0), 5: Vec(30, -2, 0), 7: Vec(4, 0, 0)}
+    snap6 = Snapshot(0.0, [PlayerState(i, 0, "b", p, alive=True) for i, p in pos.items()])
+    u0 = {}
+    first = {b.id: D.Director.prong_via(b, snap6, target, prongs, u0) for b in gs[:3]}
+    used = {}
+    again = {b.id: D.Director.prong_via(b, snap6, target, prongs, used) for b in gs[1:3]}   # (bot 1 died)
+    near = D.Director.prong_via(gs[3], snap6, target, prongs, {})
+    if any(again[i] != first[i] for i in again) or len({v for v in first.values()}) < 2 or near != ():
+        fails.append(f"prongs: first {first}, after one goer left {again}, a goer 4 u from the target {near} (want each "
+                     "kept, both used, none for the near one)")
+    # (passed once, not given back when the way on leads away from the target first: Boneyard's prongs under the
+    # territories, live 20261105-014814)
+    snap7 = Snapshot(0.0, [PlayerState(7, 0, "b", Vec(25.0, 0.0, 0.0), alive=True)])
+    back = D.Director.prong_via(gs[3], snap7, target, prongs, {})
+    if back != ():
+        fails.append(f"prongs: a goer that passed its prong walked away from the target: given it again {back}")
+    # (a prong on another level or behind a gate is none: Boneyard, a rally on phase 1's south territory's platform, the
+    # prongs 6 u under it on the floor and through the laser gate, live 20261105-022641)
+    from brain import invasion
+    from brain.maps import get_map, terrain
+    bm = get_map("reach_70_boneyard/variants/v86d95e85")
+    invasion.apply_barriers(terrain(bm), invasion.layout(bm["objects"]))
+    bd = D.Director(1, bm, {})
+    for c, tgt in ((Vec(262.0, 66.0, -6.0), Vec(251.217, 94.975, -4.0)), (Vec(262.0, 66.0, -6.0), Vec(255.81, 81.954, -4.0))):
+        r = bd.blitz_rally(c, tgt)
+        low = [q for q in bd.blitz_prongs(r, tgt) if q.z < tgt.z - 3.0]
+        if low:
+            fails.append(f"Boneyard prongs from the rally {r} on the platform to {tgt}: {low} on the floor under it")
     if fails:
         sys.exit("FAIL\n" + "\n".join(fails))
     print(f"blitz OK (desperate by mode; CTF rally then go in {went:.1f} s, {len(orders)} runners on {len(vias)} prongs; "

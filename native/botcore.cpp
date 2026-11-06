@@ -322,7 +322,7 @@ static DWORD g_brain_due;            // match started: start the brain when the 
 static void ini_path(wchar_t* out) { swprintf_s(out, MAX_PATH, L"%sbotcore.ini", g_dir); }
 
 hb_roster g_roster;                  // the BOTS panel's list: exactly the bots of the next match (bots_panel.h)
-uint32_t g_prejoin = 1;              // H2A: a match's first tick waits for the bots (native/h4f.cpp f_prejoin; botcore.ini prejoin=0: off)
+uint32_t g_prejoin = 1;              // H2A, Halo 4: a match's first tick waits for the bots (native/h4f.cpp f_prejoin; botcore.ini prejoin=0: off)
 uint32_t g_collector = 0;            // the brain records the player for the Observer (collector=; tools/collector.py)
 uint32_t g_scale_games = 5;         // Scaling difficulty: the player's last games averaged (scale_games=)
 uint32_t g_sounds = 60;              // the BOTS panel's sound volume, 0-100, 0 off (sounds=; overlay.cpp play_sound)

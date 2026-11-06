@@ -13,6 +13,7 @@
 #include "shared.h"
 #include "model_view.h"
 #include "bots_panel.h"
+#include "ui_layout.h"
 #include "third_party/minhook/include/MinHook.h"
 #include "third_party/imgui/imgui.h"
 #include "third_party/imgui/imgui_impl_win32.h"
@@ -51,8 +52,19 @@ typedef HANDLE(WINAPI* createfile_fn)(LPCWSTR, DWORD, DWORD, LPSECURITY_ATTRIBUT
 // not covered by the carnage report or a menu) is checked on the frame itself (probe_lobby).
 static createfile_fn o_createfile;
 static volatile LONG g_session;      // title of the last custom game lobby opened: 1 CE, 2 Halo 2
-                                     // Classic, 3 Halo 3, 5 Reach, 6 H2A, 7 H4 (the titles with bots), 4 any other, 0 none
+                                     // Classic, 3 Halo 3, 5 Reach, 6 H2A, 7 H4, 8 ODST (the titles with bots), 4 any other, 0 none
 static volatile DWORD g_lobby_gfx_at;
+static volatile LONG g_ff_lobby;     // the lobby last opened is Firefight's (FirefightCustomGame.gfx): it holds 4 players
+static bool bots_title(LONG t) { return t >= 1 && t <= 8 && t != 4; }
+extern int hb_panel_firefight;   // (bots_panel.cpp: the roster's cap, 3 bots in Firefight)
+static const wchar_t* wcsistr(const wchar_t* s, const wchar_t* f) {   // (MCC opens some screens in lower case)
+    for (; *s; s++) {
+        const wchar_t *a = s, *b = f;
+        while (*a && *b && towlower(*a) == towlower(*b)) { a++; b++; }
+        if (!*b) return s;
+    }
+    return nullptr;
+}
 
 static LONG title_of(LPCWSTR name) {
     if (wcsstr(name, L"halo1\\")) return 1;
@@ -61,6 +73,7 @@ static LONG title_of(LPCWSTR name) {
     if (wcsstr(name, L"haloreach\\")) return 5;
     if (wcsstr(name, L"groundhog\\")) return 6;
     if (wcsstr(name, L"halo4\\")) return 7;
+    if (wcsstr(name, L"halo3odst\\")) return 8;
     return 4;
 }
 
@@ -72,7 +85,8 @@ static HANDLE WINAPI h_createfile(LPCWSTR name, DWORD a, DWORD s, LPSECURITY_ATT
             logf("lobby file %ls", name);
         }
         if (wcsstr(name, L"\\Screens\\")) {
-            if (wcsstr(name, L"MultiplayerCustomGame.gfx")) g_lobby_gfx_at = GetTickCount();
+            if (wcsistr(name, L"MultiplayerCustomGame.gfx")) { g_lobby_gfx_at = GetTickCount(); g_ff_lobby = 0; hb_panel_firefight = 0; }
+            else if (wcsistr(name, L"FirefightCustomGame.gfx")) { g_lobby_gfx_at = GetTickCount(); g_ff_lobby = 1; hb_panel_firefight = 1; }
         } else if (wcsstr(name, L"game_variants\\") || wcsstr(name, L"\\maps\\info\\")) {
             LONG title = title_of(name);
             if (g_lobby_gfx_at && GetTickCount() - g_lobby_gfx_at < 1500) {   // the lobby's own title
@@ -117,9 +131,9 @@ static void probe_lobby(IDXGISwapChain* sc) {
     if (FAILED(sc->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)&back)) || !back) return;
     D3D11_TEXTURE2D_DESC bd;
     back->GetDesc(&bd);
-    float W = (float)bd.Width, H = (float)bd.Height, w16 = H * 16 / 9, x0 = (W - w16) / 2;
-    if (w16 > W) { w16 = W; x0 = 0; }
-    UINT top = (UINT)(H * 0.152f), bot = (UINT)(H * 0.285f), h = bot - top;
+    float W = (float)bd.Width, H = (float)bd.Height;                     // (ui_layout.h: MCC's fitted 16:9 page)
+    ui_rect rows = mcc_probe_rows(W, H);
+    UINT top = (UINT)rows.y0, bot = (UINT)rows.y1, h = bot - top;
     if (!g_probe || g_probe_h != h || g_probe_fmt != bd.Format) {
         if (g_probe) g_probe->Release();
         D3D11_TEXTURE2D_DESC sd{};
@@ -130,9 +144,8 @@ static void probe_lobby(IDXGISwapChain* sc) {
         g_probe_h = h; g_probe_fmt = bd.Format;
     }
     bool ok = g_probe && bd.SampleDesc.Count == 1;
-    const float edges[2] = { 0.383f, 0.508f };             // OPTIONS and START left frame lines
-    for (int e = 0; e < 2 && ok; e++) {
-        UINT x = (UINT)(x0 + w16 * edges[e]), left = x > 6 ? x - 6 : 0;
+    for (int e = 0; e < 2 && ok; e++) {                   // OPTIONS' and START's left frame lines
+        UINT x = (UINT)mcc_probe_x(W, H, e), left = x > 6 ? x - 6 : 0;
         if (left + 12 > bd.Width || bot > bd.Height) { ok = false; break; }
         D3D11_BOX box;                                     // field order is left, top, FRONT, right, bottom, back
         box.left = left; box.right = left + 12;
@@ -155,19 +168,33 @@ static void probe_lobby(IDXGISwapChain* sc) {
 
 static bool in_ce_menus() {
     __try {
-        return (g_session >= 1 && g_session <= 7 && g_session != 4) && g_lobby_visible && g_exe[0x4000B8C + 0x11] == 0;
+        return bots_title(g_session) && g_lobby_visible && g_exe[0x4000B8C + 0x11] == 0;
     } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
 
 static const char* DIFF_NAME[6] = { "Easy", "Normal", "Heroic", "Legendary", "Scaling", "Mixed" };   // (bots_panel.cpp tiers, then Mixed)
 
-// --- the tile: same place and size as the lobby's tiles, right of START (measured from
-// screenshots: tiles sit in a 16:9 area centred in the window; START spans x 0.508-0.630 of it,
-// y 0.146-0.292 of the height)
-static ImVec4 tile_rect(ImVec2 disp) {
-    float w16 = disp.y * 16.0f / 9.0f, x0 = (disp.x - w16) * 0.5f;
-    if (w16 > disp.x) { w16 = disp.x; x0 = 0; }
-    return ImVec4(x0 + w16 * 0.637f, disp.y * 0.1463f, x0 + w16 * 0.759f, disp.y * 0.2925f);
+// MCC lays its menus out on the back buffer; the window shows that buffer stretched to its client area. The two differ
+// when the window was moved or resized without MCC resizing its buffer (a borderless window put on another monitor):
+// MCC's menus are placed by the buffer's size, so ours are too, then mapped into the window ImGui draws and clicks in
+// (io.DisplayFramebufferScale makes ImGui render window units onto the whole buffer).
+static float g_bb_w, g_bb_h;              // the back buffer, every frame (h_present)
+static ImVec2 bb_size() {
+    ImVec2 d = ImGui::GetIO().DisplaySize;
+    return g_bb_w > 0 && g_bb_h > 0 ? ImVec2(g_bb_w, g_bb_h) : d;
+}
+static ImVec4 to_ui(ui_rect r) {          // back buffer px -> window px
+    ImVec2 d = ImGui::GetIO().DisplaySize, b = bb_size();
+    float kx = d.x / b.x, ky = d.y / b.y;
+    return ImVec4(r.x0 * kx, r.y0 * ky, r.x1 * kx, r.y1 * ky);
+}
+// our windows' scale: MCC's menu page fitted into the window (ui_layout.h mcc_content), in window px
+static float ui_scale() { ImVec2 d = ImGui::GetIO().DisplaySize; return mcc_content(d.x, d.y).s; }
+
+// --- the tile: same size as the lobby's tiles, the next slot right of START (ui_layout.h bots_tile_rect)
+static ImVec4 tile_rect() {
+    ImVec2 b = bb_size();
+    return to_ui(bots_tile_rect(b.x, b.y));
 }
 
 static ImFont* g_font_label;   // Bahnschrift (Windows), close to MCC's condensed UI font
@@ -201,7 +228,7 @@ static void draw_helmet(ImDrawList* dl, ImVec2 c, float r, float t, ImU32 line) 
 
 static void draw_tile(float t) {
     ImGuiIO& io = ImGui::GetIO();
-    ImVec4 r = tile_rect(io.DisplaySize);
+    ImVec4 r = tile_rect();
     ImDrawList* dl = ImGui::GetForegroundDrawList();
     ImVec2 a(r.x, r.y), b(r.z, r.w);
     ImVec2 m = io.MousePos;
@@ -295,7 +322,7 @@ static void draw_panel() {
     e.collector = &g_collector;
     e.sounds = &g_sounds; e.play_sound = play_sound; e.scale_games = &g_scale_games;
     e.pad = g_pad_last;
-    e.title = (int)g_session; e.scale = ImGui::GetIO().DisplaySize.y / 1080.0f;
+    e.title = (int)g_session; e.scale = ui_scale();
     e.f_title = e.f_head = e.f_body = e.f_small = g_font_small;
     e.open = &g_panel;
     if (bots_panel(e)) { g_shm->settings_seq++; save_settings(); }
@@ -313,7 +340,7 @@ static bool g_bug_ui;                // last frame: the report UI is up over the
 static char g_bug_text[1001];
 
 static bool in_match() {
-    return g_session >= 1 && g_session <= 7 && g_session != 4 && mcc_menu_state() == 1 && !g_playback;
+    return bots_title(g_session) && mcc_menu_state() == 1 && !g_playback;
 }
 
 static bool cursor_up() {
@@ -466,11 +493,12 @@ static void draw_notice() {
     if (a <= 0) return;
     ImGuiIO& io = ImGui::GetIO();
     ImDrawList* dl = ImGui::GetForegroundDrawList();
-    float h = io.DisplaySize.y, ts = h * 0.036f, ls = h * 0.022f;
+    ui_page pg = mcc_content(io.DisplaySize.x, io.DisplaySize.y);    // (MCC's page: 16:10 and 32:9 alike)
+    float h = pg.h, ts = h * 0.036f, ls = h * 0.022f;
     ImVec2 tsz = g_font_label->CalcTextSizeA(ts, 1e9f, 0, text);
     ImVec2 lsz = line ? g_font_small->CalcTextSizeA(ls, 1e9f, 0, line) : ImVec2(0, 0);
     float w = (tsz.x > lsz.x ? tsz.x : lsz.x) + h * 0.06f, bh = tsz.y + lsz.y + h * 0.035f;
-    ImVec2 p0(io.DisplaySize.x * 0.5f - w * 0.5f, h * 0.17f), p1(p0.x + w, p0.y + bh);
+    ImVec2 p0(io.DisplaySize.x * 0.5f - w * 0.5f, pg.y0 + h * 0.17f), p1(p0.x + w, p0.y + bh);
     int A = (int)(a * 255);
     dl->AddRectFilled(p0, p1, IM_COL32(6, 18, 28, (int)(a * 215)));
     dl->AddRect(p0, p1, IM_COL32(110, 200, 255, (int)(a * 230)), 0, 0, 2.0f);
@@ -518,8 +546,17 @@ static HRESULT __stdcall h_present(IDXGISwapChain* sc, UINT sync, UINT flags) {
             }
         }
         if (g_ready) {
+            DXGI_SWAP_CHAIN_DESC scd;                             // the back buffer's size (MCC lays out on it)
+            if (SUCCEEDED(sc->GetDesc(&scd))) {
+                RECT cr{};
+                GetClientRect(g_hwnd, &cr);
+                if (scd.BufferDesc.Width != (UINT)g_bb_w || scd.BufferDesc.Height != (UINT)g_bb_h)
+                    logf("overlay: back buffer %ux%u, window client %ldx%ld", scd.BufferDesc.Width, scd.BufferDesc.Height,
+                         cr.right - cr.left, cr.bottom - cr.top);
+                g_bb_w = (float)scd.BufferDesc.Width; g_bb_h = (float)scd.BufferDesc.Height;
+            }
             static unsigned frame;
-            if ((g_session >= 1 && g_session <= 7 && g_session != 4) && frame++ % 8 == 0) probe_lobby(sc);   // the lobby must be on screen
+            if (bots_title(g_session) && frame++ % 8 == 0) probe_lobby(sc);   // the lobby must be on screen
             g_show_tile = in_ce_menus();
             if (!g_show_tile) g_panel = false;
             if (g_show_tile && g_panel && !g_parked && o_getcursorpos) { o_getcursorpos(&g_park_at); g_parked = true; }
@@ -545,6 +582,11 @@ static HRESULT __stdcall h_present(IDXGISwapChain* sc, UINT sync, UINT flags) {
                 t_ours = true;                                       // (our frame reads the real cursor)
                 ImGui_ImplWin32_NewFrame();
                 t_ours = false;
+                {                                                    // window units onto the whole back buffer
+                    ImGuiIO& fio = ImGui::GetIO();
+                    if (fio.DisplaySize.x > 0 && fio.DisplaySize.y > 0 && g_bb_w > 0 && g_bb_h > 0)
+                        fio.DisplayFramebufferScale = ImVec2(g_bb_w / fio.DisplaySize.x, g_bb_h / fio.DisplaySize.y);
+                }
                 ImGui::GetIO().MouseDrawCursor = bug && g_bug_open && !pause;   // the game hides the cursor in play
                 // keyboard navigation (Tab, arrows, Space / Enter, Esc) while the panel is open: every control by keys
                 // (the keyboard pass: without it Tab reached only the two text boxes); off otherwise, so the lobby's
@@ -555,8 +597,9 @@ static HRESULT __stdcall h_present(IDXGISwapChain* sc, UINT sync, UINT flags) {
                 ImGui::NewFrame();
                 pad_frame();
                 if (bug) {
-                    bug_report_env be{ ImGui::GetIO().DisplaySize.y / 1080.0f, g_font_small, pause, &g_bug_open,
-                                       g_bug_text, (int)sizeof g_bug_text, false };
+                    ImVec2 bb = bb_size();
+                    bug_report_env be{ ui_scale(), g_font_small, pause, &g_bug_open,
+                                       g_bug_text, (int)sizeof g_bug_text, false, bb.x, bb.y };
                     bool saved = bug_report_ui(be);
                     if (g_bug_open && !g_bug_was_open) g_bug_from_menu = pause;   // how it was opened, for the report
                     if (saved) save_bug_report();

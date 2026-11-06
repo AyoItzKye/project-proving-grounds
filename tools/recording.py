@@ -12,6 +12,8 @@ user/recording.json: updates and Repair keep the user folder, like user/mcc_fold
   collector's start) are always kept. A bug report keeps its own copy (tools/bug_reports.py catch_up).
 - A developer's checkout (a .git folder beside tools/): only matches recorded after the first run here are rotated
   ("since" in the settings file), so the recordings already in logs/ stay.
+- Every copy of the mod (an install, a working repo) adds itself to %LOCALAPPDATA%\\ProjectProvingGrounds\\copies.json
+  when it records a match or opens the Observer; the Observer lists the other copies' games too (register, other_logs).
 
     python -I recording.py        self-check: rotation and the time window ("recording OK")
 """
@@ -27,6 +29,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.normpath(os.path.join(HERE, ".."))
 LOGS = os.path.join(ROOT, "logs")
 SETTINGS = os.path.join(ROOT, "user", "recording.json")
+# every copy of the mod that recorded games or opened the Observer here (the install, a working repo): one per-user
+# list, like the films (native/botcore.cpp film_dir)
+COPIES = os.path.join(os.environ["LOCALAPPDATA"], "ProjectProvingGrounds", "copies.json") \
+    if os.environ.get("LOCALAPPDATA") else None
 DEFAULTS = dict(games=5, minutes=15)
 LIMITS = dict(games=(2, 50), minutes=(1, 600))     # (2 games at least: Scaling reads the last match back at the next)
 PART = re.compile(r"^(?:trace|collect|critique)_.+_(\d{8}-\d{6})(?:\.carnage\.xml|\.jsonl|\.md)$")
@@ -124,6 +130,8 @@ def rotate(logs=LOGS, games=None, after=None):
         s = stamp_of(p)
         if s and os.path.isfile(p):
             parts.setdefault(s, []).append(p)
+    if os.path.normcase(os.path.normpath(logs)) == os.path.normcase(LOGS):
+        register()                  # (tools/play.py rotates before each recorded match: this copy records games)
     keepers = saved(logs)
     queue = sorted(s for s in parts if s not in keepers and (after is None or s >= after))
     gone = queue[:max(0, len(queue) - (games - 1))]
@@ -134,6 +142,35 @@ def rotate(logs=LOGS, games=None, after=None):
             except OSError:
                 pass                # open in the Observer this second: it goes with the next match
     return gone
+
+
+# ---------------------------------------------------------------- every copy of the mod on this PC
+
+def register(root=ROOT, path=None):
+    """This copy of the mod in the per-user list (COPIES), so the Observer of every other copy lists its games too:
+    the BOTS panel's brain runs from the copy whose botcore.dll is in MCC, which need not be the copy whose Observer
+    is open (Nov 4: the owner's install listed nothing while his games went to the working repo's logs)."""
+    path = path or COPIES
+    if not path:
+        return
+    have = _raw_list(path)
+    key = os.path.normcase(os.path.normpath(root))
+    if key not in {os.path.normcase(os.path.normpath(r)) for r in have}:
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            json.dump(have + [os.path.normpath(root)], open(path, "w", encoding="utf-8"), indent=1)
+        except OSError:
+            pass
+
+
+def other_logs(logs=LOGS, path=None):
+    """The logs folders of the other copies in the per-user list that are still there (not logs itself)."""
+    mine, out = os.path.normcase(os.path.normpath(logs)), []
+    for r in _raw_list(path or COPIES) if (path or COPIES) else []:
+        d = os.path.normpath(os.path.join(r, "logs"))
+        if os.path.normcase(d) != mine and os.path.isdir(d) and d not in out:
+            out.append(d)
+    return out
 
 
 # ---------------------------------------------------------------- the time window
@@ -213,6 +250,9 @@ class RollingFile:
 
     def write(s, text):
         return s.f.write(text)
+
+    def writelines(s, lines):        # (live_bots writes the callouts this way: without it a traced brain stopped at once)
+        s.f.writelines(lines)
 
     def flush(s):
         s.f.flush()
@@ -325,6 +365,13 @@ def selftest():
     first = since(sp, tmp)
     assert first and since(sp, tmp) == first and save_settings(dict(games=7), sp)["since"] == first
     assert since(sp, os.path.join(tmp, "user")) is None
+    # every copy of the mod: listed once, the others' logs folders found (not this one's, not a removed copy's)
+    cp, other = os.path.join(tmp, "per_user", "copies.json"), os.path.join(tmp, "repo")
+    os.makedirs(os.path.join(other, "logs"))
+    for r in (tmp, other, other.upper() if os.name == "nt" else other, os.path.join(tmp, "gone")):
+        register(r, cp)
+    assert len(_raw_list(cp)) == 3, _raw_list(cp)
+    assert other_logs(logs, cp) == [os.path.join(other, "logs")], other_logs(logs, cp)
     # the time window: 10 s kept of 40 s at 10 rows a second, header lines kept, the rows in order, whole lines
     path = os.path.join(tmp, "trace_h3_construct_20261101-140000.jsonl")
     r = RollingFile(path, 10.0)

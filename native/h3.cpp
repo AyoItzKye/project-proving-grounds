@@ -269,6 +269,21 @@ static void __fastcall h_h3_update(uint8_t* actions) {
                     // (+0x5C) cleared above, the action check FUN_1800e4254 drops the action and the game replays the
                     // bot's last one. Every time the player fired on someone all bots froze, view and walk, 0.5-4.7 s
                     memset(act + 0x64, 0, 0x1C);
+                    // the red reticle's target (shared.h hb_target), as the player's own action carries it: his sword
+                    // red on a man (live, Rat's Nest, logs/tmp/host_hunt.py) read +0x5C = that man's unit, +0x60 1,
+                    // +0x64 weight 1.0, +0x68 0, +0x78 flags 4, and through the lunge +0x54 = the man too; he lunged
+                    // 1.4 u in 0.15 s and killed. Cleared (as before), no bot press ever lunged (issue #3)
+                    int tgt = hb_target(a.buttons);
+                    if (tgt >= 0 && tgt < HB_MAX_PLAYERS && h3_live(tls, tgt)) {
+                        uint32_t th = *(uint32_t*)(h3_player(tls, tgt) + 0x28);
+                        if (th != 0xFFFFFFFFu && h3_object(tls, th)) {
+                            *(uint32_t*)(act + 0x54) = th;          // (the melee request's target, FUN_1800e7efc)
+                            *(uint32_t*)(act + 0x5C) = th;
+                            *(uint32_t*)(act + 0x60) = 1;
+                            *(float*)(act + 0x64) = 1.0f;
+                            act[0x78] = 4;
+                        }
+                    }
                     hb_set_zoom(3, act, H3_ACTION, a.buttons);      // the scope level it wants (-1 none)
                     // the weapon set the unit checks: unit_control (FUN_180350ed4, ghidra/h3_unit_control.c) takes the
                     // action's +0x44..+0x47 only when its set (u16) equals the unit's +0x264; +0x260 (s94 and before)

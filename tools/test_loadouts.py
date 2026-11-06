@@ -202,6 +202,38 @@ def main():
         if asked != want:
             fails.append(f"a DMR lover in slot {have}, slots 0-2 DMR, the team on {kits}: asked {asked} (want {want})")
 
+    # 6. Invasion: each side learns its own slots (live Boneyard B27: slot 1 was the Spartans' DMR + AR and the Elites'
+    #    needle rifle + plasma pistol, one palette for both kept the last spawn's). Attackers team 1: an Elite spawned
+    #    in slot 1 with the needle rifle, a Spartan defender in slot 1 with the DMR (learned last). The Elite, a DMR lover
+    #    with the needle rifle next, then dies: it must see its own slot 1 (the needle rifle) and look in a slot it has not
+    #    seen for its DMR; on the shared palette it saw the Spartan's DMR in its own slot and stayed
+    class InvLive:
+        def loadout(s, index):
+            return 1
+
+    def inv_snap(alive_e):
+        sn = Snapshot(0.0, [PlayerState(1, 1, "bot", Vec(), alive=alive_e, weapon="needle_rifle",
+                                        weapons=["needle_rifle", "plasma_pistol"]),
+                            PlayerState(3, 0, "bot", Vec(9.0, 0.0, 0.0), alive=True, weapon="dmr",
+                                        weapons=["dmr", "assault_rifle"])])
+        sn.mode, sn.inv_attackers = "invasion", 1
+        return sn
+    e1, s3 = bot("top", 1), bot("top", 3)
+    e1.team, s3.team = 1, 0
+    e1.liked, s3.liked = ["dmr", "needle_rifle"], ["dmr"]
+    pal6, st6, asked6 = Palette(), {}, []
+    for t in (0.0, 0.5, 1.2):
+        live_bots.loadout_check(InvLive(), lambda i, sl: asked6.append((i, sl)) or True, {1: e1, 3: s3}, pal6, st6,
+                                inv_snap(True), t)
+    att, dfd = pal6.side("attack").seen if hasattr(pal6, "side") else {}, \
+        pal6.side("defend").seen if hasattr(pal6, "side") else {}
+    if att != {1: ("needle_rifle", "plasma_pistol")} or dfd != {1: ("dmr", "assault_rifle")}:
+        fails.append(f"invasion: one palette for both sides (attackers {att}, defenders {dfd}, shared {pal6.seen})")
+    live_bots.loadout_check(InvLive(), lambda i, sl: asked6.append((i, sl)) or True, {1: e1, 3: s3}, pal6, st6,
+                            inv_snap(False), 2.0)
+    if len(asked6) != 1 or asked6[0][0] != 1 or asked6[0][1] in (1,):
+        fails.append(f"invasion: the Elite DMR lover asked {asked6} (want one unseen slot, not 1)")
+
     if fails:
         sys.exit("FAIL: " + "; ".join(fails))
     print("loadouts OK")

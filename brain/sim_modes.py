@@ -26,9 +26,13 @@ Infection and Juggernaut are not simulated (a player's side changes on death or 
 are fixed per team); Infection's live roles are checked by tools/test_modes.py.
 """
 from . import invasion, modes
-from .core import Vec, dist
+from .core import TICK, Vec, dist
 
 TAKE_S, PHASE_S, ARM_S, PICKUP_R = 10.0, 180.0, 3.0, 1.2
+# the dropped core goes home after this long with a defender on it and no attacker (the owner's Tempest variant: "Core
+# Return Time 30 s"; ASSUMED for every map, and that stepping off starts it again: live Spire 20261105-143525 a person
+# 11.5 s on it did not return it)
+CORE_RETURN_S = 30.0
 # a moving hill's stay; a loose ball's time before it goes home (INFERRED: Halo 3 and Reach's ball reset default, not
 # read from a variant); a zone's height (as territories)
 HILL_MOVE_S, BALL_RESET_S, ZONE_DZ = 60.0, 30.0, 2.5
@@ -75,6 +79,10 @@ class SimModes:
                 raise ValueError(f"{sim.m['name']}: no Invasion setup on this map")
             invasion.apply_barriers(sim.T, s.inv)
             s.round_start()
+        elif s.mode == "race":                   # CE's in-order race on foot (no vehicle model): a lap a point
+            s.race = modes.Race(modes.race_gates(objs), "normal", ce=sim.game == "ce")
+            if not s.race.gates:
+                raise ValueError(f"{sim.m['name']}: no race gates on this map")
         elif s.mode in SPOT_MODES:
             mid = sim.m["points"]["mid"]
             # hills on a floor the nav knows (a placeholder flag at the origin under Lockout's floor is no hill)
@@ -113,6 +121,7 @@ class SimModes:
         s.phase, s.phase_t, s.held = 1, s.sim.now, {}
         s.core = dict(pos=s.inv["core"], carrier=None)
         invasion.apply_barriers(s.sim.T, s.inv)          # gates closed again
+        s.sim.oob.set_phase(s.sim.T, 1)                  # (and their kill volumes: brain/oob.py volumes)
 
     def spawn_points(s, team):
         """A team's respawn points this phase: where the live game respawned that side in this phase (maps/<map>/
@@ -152,6 +161,15 @@ class SimModes:
             return s.step_invasion(now)
         if s.mode in SPOT_MODES:
             return s.step_spot(now)
+        if s.mode == "race":
+            laps = dict(s.race.laps)
+            s.race.step([(p.id, p.pos, p.alive, False) for p in s.sim.players])
+            for pid, n in s.race.laps.items():
+                if n > laps.get(pid, 0):
+                    p = s.sim.players[pid]
+                    s.sim.score[p.team] += 1
+                    s.events.append((round(now, 1), f"{p.name} finished lap {n}"))
+            return
         if s.mode == "territories":
             for k, (pos, r, _) in enumerate(s.lay.get("territory", [])):
                 teams = {p.team for p in s.players() if dist(p.pos, pos) <= r and abs(p.pos.z - pos.z) < 2.5}
@@ -279,6 +297,7 @@ class SimModes:
                         s.phase, s.phase_t, s.held = s.phase + 1, now, {}
                         s.sim.score[att] += 1
                         s.events.append((round(now, 1), f"attackers took phase {s.phase - 1} (territory {k})"))
+                        s.sim.oob.set_phase(s.sim.T, s.phase)
                         if s.phase == 2:          # the gates open
                             invasion.apply_barriers(s.sim.T, s.inv, {b["key"]: False for b in s.inv["barriers"]
                                                                      if b["kind"] == "gate"})
@@ -298,8 +317,14 @@ class SimModes:
             else:
                 p = next((p for p in s.players() if p.team == att and dist(p.pos, core["pos"]) < PICKUP_R), None)
                 if p is not None:
-                    core["carrier"], p.has_flag = p.id, True
+                    core["carrier"], p.has_flag, core["back"] = p.id, True, 0.0
                     s.events.append((round(now, 1), f"{p.name} picked up the core"))
+                elif dist(core["pos"], s.inv["core"]) > 1.5:      # dropped: a defender on it takes it home
+                    on = any(p.team != att and dist(p.pos, core["pos"]) < PICKUP_R for p in s.players())
+                    core["back"] = core.get("back", 0.0) + TICK if on else 0.0
+                    if core["back"] >= CORE_RETURN_S:
+                        core["pos"], core["back"] = s.inv["core"], 0.0
+                        s.events.append((round(now, 1), "the defenders returned the core"))
         if now - s.phase_t > PHASE_S:
             s.sim.score[1 - att] += 1
             s.events.append((round(now, 1), f"phase {s.phase} timed out: round to the defenders"))
@@ -336,6 +361,11 @@ class SimModes:
         if s.mode == "vip":
             snap.vips = tuple(sorted(v for v in s.vips.values() if v is not None))
             return
+        if s.mode == "race":
+            r = s.race
+            snap.obj_zones = [(g, rad, -1) for g, rad, _, _ in r.gates]
+            snap.race_next = {p.id: r.gates[r.next_gate(p.id, p.pos)][0] for p in s.sim.players}
+            return
         if s.mode == "invasion":
             snap.inv_phase, snap.inv_attackers, snap.inv_phase_t = s.phase, 1, s.sim.now - s.phase_t
             snap.inv_zones = list(s.inv["phases"][3 if s.phase == 3 else s.phase])
@@ -343,6 +373,7 @@ class SimModes:
             snap.inv_delivery = s.inv["phases"][3][0]
             if s.phase == 3:
                 snap.inv_core, snap.inv_core_carrier = s.core["pos"], s.core["carrier"]
+            snap.inv_stand = s.inv["core"]
             return
         if s.mode == "territories":
             snap.obj_zones = [(p, r, s.owner.get(k, -1)) for k, (p, r, _) in enumerate(s.lay.get("territory", []))]

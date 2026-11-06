@@ -149,7 +149,7 @@ def main():
             def core(s, raw, stand, key="core"):
                 return []
 
-            def present(s, pts):
+            def present(s, pts, names=None):
                 return set(range(len(pts)))
         W = invasion.Watch(bone, T)
         lv = FakeLive()
@@ -416,7 +416,7 @@ def main():
                 def core(s, raw, stand, key="core"):    # (the carried bomb also reads as the core: third slot)
                     return [dict(pos=(stand.x, stand.y, stand.z), carrier=None if key == "bomb" else 3)]
 
-                def present(s, pts):
+                def present(s, pts, names=None):
                     return set()
 
                 def match_state(s):
@@ -432,7 +432,7 @@ def main():
             # still read there; the way to the core goes in through a door, not over the vault's roof (live: the
             # attackers stood 4 u over the core for 250 s)
             class Live4(Live2):
-                def present(s, pts):
+                def present(s, pts, names=None):
                     return set(range(len(pts)))
             TB2 = terrain(get_map("reach_dlc_invasion"))
             W3 = invasion.Watch(bp, TB2)

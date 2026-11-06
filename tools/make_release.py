@@ -18,6 +18,9 @@ personal term (a name, gamertag or Xbox ID, one per line) in .private_terms at t
 never committed (.gitignore), so the terms are not in the code either. It also counts the comments still quoting
 development messages (removed in the comment pass).
 
+Before any build the no-break gate runs (regress_gate: tools/test_regressions.py --gate, every test guarding a behavior
+in docs/WORKING_BEHAVIORS.md): one failing row and nothing is built.
+
 usage: python -I make_release.py [out_folder]      (default: a "release" folder beside this project's folder)
        python -I make_release.py --scan <folder>    only the privacy scan
 """
@@ -86,11 +89,13 @@ RULES = tuple((p, None) for p in NOT_SHIPPED) + (
     ("maps/*/wedges.json", None), ("maps/*/shots.json", None), ("maps/*/paint.json", None), ("maps/*/oob*.json", None),
     ("maps/*/stations.json", None), ("maps/*/variant.json", None), ("maps/*/*.obj", None), ("maps/*/*.xml", None),
     # map pack
+    ("maps/*/walls_learned.json", None),     # (learned in matches, as los_learned; the windows / fences from the kits: pack)
     ("maps/*/heightmap.npz", "pack"), ("maps/*/topdown.png", "pack"), ("maps/*/glass.json", "pack"),
+    ("maps/*/wall_kinds.json", "pack"),
     ("maps/_shapes/**", "pack"),
     # release
     ("maps/*/callouts.json", "release"), ("maps/*/positions.json", "release"), ("maps/*/features.json", "release"),
-    ("maps/*/objects.json", "release"), ("maps/*/inv_spawns.json", "release"), ("maps/*/killzones.json", "release"),
+    ("maps/*/objects.json", "release"), ("maps/*/inv_spawns.json", "release"), ("maps/*/killzones.json", "release"), ("maps/*/phantoms.json", "release"),
     ("maps/_inputs/**", "release"), ("maps/_looks/**", "release"), ("maps/_vehicles/**", "release"),
     ("maps/_human/**", "release"), ("maps/**", None),
     ("brain/**", "release"), ("tools/**", "release"), ("native/**", "release"), ("docs/**", "release"),
@@ -305,11 +310,21 @@ def report(folder):
     return not problems
 
 
+def regress_gate():
+    """No release while a behavior proven working live is broken: tools/test_regressions.py (docs/WORKING_BEHAVIORS.md)
+    must pass on this code, else the build stops (build_installer.py calls this too)."""
+    r = subprocess.run([sys.executable, "-I", os.path.join(HERE, "test_regressions.py"), "--gate"], cwd=HERE)
+    if r.returncode:
+        raise SystemExit("tools/test_regressions.py fails: a behavior proven working live is broken, not building "
+                         "(docs/WORKING_BEHAVIORS.md; fix it, never weaken the test)")
+
+
 def main():
     args = sys.argv[1:]
     if args[:1] == ["--scan"]:
         ok = report(args[1])
     else:
+        regress_gate()
         out = os.path.abspath(args[0]) if args else os.path.join(os.path.dirname(ROOT), "release")
         out, pack = build(out)
         print("release:", out)

@@ -56,11 +56,15 @@ class Sim:
         s.m = get_map(map_name)
         s.game = game_of(map_name)
         s.T = terrain_for(s.m)
+        from .oob import Oob                     # out of bounds as the live brain has it (tools/live_bots.py): the
+        s.oob = o = Oob(map_name)                # map's kill zones and learned spots (without them a map variant's
+        if o.spots or o.volumes:                 # Invasion gates walling off Spire's core passed here, failed live)
+            s.T.set_oob(o.spots, o.version, o.volumes)
         s.mode, s.now = mode, 0.0
-        s.los, s.nav = s.T.los, s.T.nav
+        s.los, s.nav = s.T.sees, s.T.nav     # (sight: through windows and fences; shots: T.shot_los)
         s.objmodes = None
         if mode in ("invasion", "territories", "assault", "stockpile", "headhunter", "king", "crazy_king", "oddball",
-                    "vip"):
+                    "vip", "race"):
             from .sim_modes import SimModes          # objective rules (brain/sim_modes.py)
             s.objmodes = SimModes(s)
         s.players, s.bots = [], {}
@@ -78,6 +82,7 @@ class Sim:
                 p.yaw = angles_to(p.pos, s.m["flags"][1 - team])[0]
                 s.players.append(p)
                 s.bots[pid] = Bot(pid, team, prof, s.m, random.Random(seed * 100 + pid))
+                s.bots[pid].feet_off = 0.0       # (bodies here stand on the floor; H2A / Halo 4 report 0.38 over it: Bot.feet)
                 s.state[pid] = dict(last_hit=-99, respawn_at=None, airborne_until=0)
                 s.stats[pid] = dict(shots=0, hits=0, kills=0, deaths=0, moved=0.0, caps=0, tier=prof.tier,
                                     jumps=0, fight_ticks=0, strafe_ticks=0)
@@ -193,7 +198,11 @@ class Sim:
                         n = math.hypot(dx, dy)
                         if n and (dx * vx + dy * vy) / n > 0.8 * math.hypot(vx, vy) and \
                                 (dx * run.x + dy * run.y) / n > 0.5 * SPEED:
-                            p.pos = Vec(*k["land"][:3])
+                            # onto the landing's nav node (Terrain.add_human_links: dst), not the raw LiDAR point: one
+                            # on a cell edge whose own cell has no floor at that height (h3_construct (-5.76, -2.31,
+                            # 11.53), a two-way link bots landed live 5 times) left the body off its node, every step
+                            # refused (can_step), frozen for the rest of its life (sim A/B Nov 4)
+                            p.pos = s.T._center(*dst)
                             break
             if s.bots[p.id].goal[0] == "fight":
                 s.stats[p.id]["fight_ticks"] += 1
@@ -283,8 +292,8 @@ class Sim:
                 lands = [k["land"] for src, dst, k, w in getattr(s.T, "hjumps", [])
                          if math.hypot(k["take_off"][0] - base.x, k["take_off"][1] - base.y) < 2.0
                          and k["land"][2] > base.z + 3.0]
-                if lands:
-                    s._lifts.append((base, Vec(*lands[0])))
+                if lands:                                  # (onto the landing's nav node, as a jump's landing)
+                    s._lifts.append((base, s.T._center(*s.T._node(Vec(*lands[0])))))
         return s._lifts
 
     def target_in_crosshair(s, p):
@@ -293,7 +302,7 @@ class Sim:
             if e.team == p.team or not e.alive:
                 continue
             d = dist(p.pos, e.pos)
-            if d > 80 or not s.los(p.pos, e.pos):
+            if d > 80 or not s.T.shot_los(p.pos, e.pos):
                 continue
             y, pt = angles_to(eye(p), e.pos + Vec(0, 0, 0.35))
             err = math.hypot(wrap(y - p.yaw), pt - p.pitch)
@@ -329,6 +338,13 @@ class Sim:
         s.damage(e, p, BODY_DMG.get(w, 0.4), head)
 
     def melee(s, p):
+        om = getattr(s, "objmodes", None)
+        if om is not None and om.mode == "invasion" and om.core.get("carrier") == p.id:
+            # Reach drops the Invasion core on its carrier's melee press (live Spire 18 of 18, Boneyard 2 of 2 carries
+            # ended within 1 s; logs/tmp/invasion_regress/melee_drop.py): no swing, the core falls at his feet
+            om.core["carrier"], om.core["pos"], p.has_flag = None, p.pos, False
+            om.events.append((round(s.now, 1), f"{p.id} dropped the core (melee)"))
+            return
         for e in s.players:
             if e.team != p.team and e.alive and dist(p.pos, e.pos) < 1.4:
                 s.damage(e, p, 9 if p.has_flag else 0.8, False)   # flag melee kills

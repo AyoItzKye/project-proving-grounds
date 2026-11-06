@@ -43,7 +43,14 @@ TAG_ALIAS = {"sniper_rifle": "sniper", "rocket_launcher": "rockets", "energy_swo
              "overshield": "powerup_super_shield", "activecamo": "powerup_invisibility",   # brain/maps.py POWER's H2 names
              "storm_rifle": "plasma_rifle",          # ponytail: the Elite plasma rifle's successor, same role
              "suppressor": "smg",                    # ponytail: Promethean full-auto, the SMG's role
-             "new_flag": "flag", "skull": "ball", "oddball": "ball"}   # the objectives in hand (Halo 4, H2A)
+             "new_flag": "flag", "skull": "ball", "oddball": "ball",   # the objectives in hand (Halo 4, H2A)
+             # the infected's own swords (Halo 4 Flood's storm_flood_sword, H2A's h2a_energy_sword_infected): lunge
+             # like the sword (their tags: autoaim range 2.25, angle 6, as the sword's); unnamed, a Flood played its
+             # prongs as a gun (band 5-25 u: backed off inside 5 u, swung from across the room; owner, issue #3)
+             "flood_sword": "sword", "energy_sword_infected": "sword"}
+# the infected's own weapons by their tag names: seeing one in a hand says Infection / Flood whatever the variant's
+# name (brain/modes.py mode_of)
+ZOMBIE_TAGS = ("storm_flood_sword", "h2a_energy_sword_infected")
 
 
 def brain_name(name):
@@ -232,6 +239,17 @@ class Live:
 
     def engine(s):
         return struct.unpack("<i", s.g.read(s.g.base + s.VARIANT + 0x30, 4))[0]
+
+    # an object's parent (what it rides, its holder): +0xD8, the field players() reads for the vehicle a unit rides. The
+    # vehicle list's default (+0x14) is another field in CE: live Blood Gulch Race, all 8 race vehicles read 0x2CDD1E..
+    # there and were left out as guns riding something, so no bot ever took one; +0xD8 read NONE on all 8 and on 5 guns
+    PARENT_AT = 0xD8
+
+    def race_type(s):
+        """Race's type: 0 normal (in order), 1 any order, 2 flag rally; the variant's game type options at +0x7C (MCC's
+        own .bin files share this layout: +0x30 engine, +0x58 score, +0x78 time all match the live reads, and +0x7C is 1
+        in Crazy King, 0 in King: King's moving hill, the first option; every built-in race 0). INFERRED in memory."""
+        return struct.unpack("<i", s.g.read(s.g.base + s.VARIANT + 0x7C, 4))[0]
 
     def tracker(s, player):
         """Enemies show on the motion tracker: the variant's flags (+0x38) bit 0 "Other Player on Radar", bit 6
@@ -732,6 +750,9 @@ class LiveH3(LiveH2):
             return "none"
         tag = struct.unpack("<I", s.g.read(o, 4))[0]
         s.__dict__.setdefault("_ever_held", set()).add(weapon_handle)   # (asked for guns in hands: _was_held)
+        own = s._own_gun(tag) if s.MAG_NAMES else None     # (Halo 3: the map's tag names first, _own_gun)
+        if own:
+            return own
         if tag not in s._names and s.MAG_NAMES:
             # a gun the map never places (Epitaph has no assault rifle, the spawn gun: 69-80% of a match read "unknown")
             # is named by its full magazine, when that size belongs to one gun only
@@ -740,6 +761,36 @@ class LiveH3(LiveH2):
                 s._names[tag] = by_mag
         name = s._names.get(tag, "unknown")
         return WEAPON_ALIAS.get(name, name)
+
+    def _own_gun(s, tag):
+        """Halo 3: a gun's name from the map's own tag names (_melee_name), only one the brain has a range for; None
+        else. OBSERVED live (Rat's Nest Infection, Nov 4): energy_blade, battle_rifle, assault_rifle, gravity_hammer
+        each at their tags' indexes, while the placement match had named the battle rifle "assault_rifle"."""
+        cache = s.__dict__.setdefault("_own_guns", {})
+        if tag not in cache:
+            from .bot import WEAPON_RANGE
+            n = s._melee_name(tag)
+            n = WEAPON_ALIAS.get(n, n)
+            cache[tag] = n if n in WEAPON_RANGE else None
+        return cache[tag]
+
+    def _melee_name(s, tag):
+        """Halo 3: a weapon's name by the map's own tag names (tools/reach_tag_names.py reads Halo 3's .map files too):
+        "objects\\weapons\\...\\X\\X" at the tag's index, else None. Rat's Nest places no sword, so Infection's zombies
+        held "unknown" and played their swords as guns (band 5-25 u: backed off inside 5 u, swung from far; owner,
+        issue #3)."""
+        names = s.__dict__.get("_h3_tag_names")
+        if names is None:
+            try:
+                sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "tools"))
+                import reach_tag_names
+                names = reach_tag_names.cached(s.map_name(), "h3")
+            except Exception:
+                names = []
+            s._h3_tag_names = names
+        k = tag & 0xFFFF
+        parts = names[k].split("\\") if k < len(names) and names[k] else []
+        return parts[-1] if len(parts) >= 3 and "weapons" in parts and parts[-1] == parts[-2] else None
 
     def flags(s, players, stands=None):
         """Halo 3 CTF flags (not yet seen live; the player's CTF game ran as Slayer without them: no bot touched a
@@ -1222,7 +1273,9 @@ class LiveReach(LiveH3):
         k = tag & 0xFFFF
         for j in range(min(k, len(names) - 1), max(-1, k - 5), -1):
             parts = names[j].split("\\")
-            if folder in parts and len(parts) >= 2 and parts[-1] == parts[-2]:
+            # (or an infected's own gun filed in another weapon's folder: Halo 4's prongs at
+            # "...\\melee\\storm_energy_sword\\storm_flood_sword", live Adrift Flood: they read "unknown")
+            if folder in parts and len(parts) >= 2 and (parts[-1] == parts[-2] or parts[-1] in ZOMBIE_TAGS):
                 return parts[-1]
         return None
 
@@ -1337,6 +1390,18 @@ class LiveReach(LiveH3):
     # player +0x414: the object the game respawns the player at. Invasion's script gives every player its team's zone
     # of the phase (live Spire, all 8 players: an inv_res_p1 hill beacon of their side in phase 1, inv_res_p2 in phase 2)
     RESPAWN_ZONE_AT = 0x414
+    # Rally's destination: the rally flag the HUD marks, the Megalo object variable before REACH_HILL (live Boneyard
+    # Rally, Nov 4: +0x253C4 / +0x253C8 read (7, 3) then (5, 7): +0x253C8 takes over +0x253C4's flag at each "Destination
+    # Moved", and with +0x253C8 on flag 5 the HUD's marker read 168 m, flag 6's distance, which +0x253C8 named next:
+    # +0x253C8 is the last destination). Halo 4 / H2A: not read (None)
+    RALLY_DEST = 0x253C4
+
+    def rally_dest(s):
+        """The position of Rally's / Rocket Race's live destination object, or None."""
+        if not s.RALLY_DEST or type(s) is not LiveReach:
+            return None
+        o = s.object(struct.unpack("<I", s.g.read(s._vbase() + s.RALLY_DEST, 4))[0])
+        return struct.unpack("<3f", s.g.read(o + s.POS_AT, 12)) if o else None
 
     def respawn_zone(s, index):
         """(x, y, z, yaw) of the respawn zone object the game gives player `index` (RESPAWN_ZONE_AT), or None."""
@@ -1364,21 +1429,43 @@ class LiveReach(LiveH3):
             weapons, held, {0: stand}, s.__dict__.setdefault(f"_{key}_tags", set()),
             s.__dict__.setdefault(f"_{key}_team", {}), (), (), anchored=s._attached)]
 
-    def present(s, points, r=0.35):
-        """Which of points (Vec) have an object of any kind standing at them (within r, 1 up or down): Invasion's
-        gates are there while closed. Every object's position read once."""
+    def present(s, points, r=0.35, names=None):
+        """Which of points (Vec) have an object standing at them (within r, 1 up or down): Invasion's gates are there
+        while closed. names: each point's own object name (the gate's piece, as the map's tag names give it): then only
+        that object counts there, any object where the name is None or the map's names are not read. Any object
+        counted, a danger zone marker 0.3 u from Boneyard's laser field by the drop to the core kept that gate standing
+        all phase 3: the attackers' way down went round it, 17,000 rows at its foot and no core run (live
+        20261105-033712). Every object's position read once."""
+        tags = None
+        if names and any(names):
+            try:
+                from .forge import _tag_names
+                tags = _tag_names(s) or None
+            except Exception:
+                tags = None
         ents, mx, _ = s._array(s.OBJECTS_AT)
         b = s.g.read(ents, mx * 0x18)
         here = set()
         for i in range(mx):
             if not struct.unpack_from("<H", b, i * 0x18)[0]:
                 continue
+            o = struct.unpack_from("<Q", b, i * 0x18 + 0x10)[0]
             try:
-                pos = struct.unpack("<3f", s.g.read(struct.unpack_from("<Q", b, i * 0x18 + 0x10)[0] + s.POS_AT, 12))
+                pos = struct.unpack("<3f", s.g.read(o + s.POS_AT, 12))
             except OSError:
                 continue
+            name = False                          # (read once, only for an object at a point)
             for k, p in enumerate(points):
                 if abs(pos[0] - p.x) < r and abs(pos[1] - p.y) < r and abs(pos[2] - p.z) < 1.0:
+                    if tags is not None and names[k]:
+                        if name is False:
+                            try:
+                                t = struct.unpack("<I", s.g.read(o + getattr(s, "TAG_AT", 0), 4))[0] & 0xFFFF
+                                name = tags[t].rsplit("\\", 1)[-1] if t < len(tags) else None
+                            except OSError:
+                                name = None
+                        if name != names[k]:
+                            continue
                     here.add(k)
         return here
 
@@ -1770,6 +1857,7 @@ class LiveH4F(LiveReach):
         own = s._own_name(tag, "weapons")
         if own:
             s._names[tag] = brain_name(own)
+            s.zombie_seen = s.__dict__.get("zombie_seen", False) or own in ZOMBIE_TAGS   # (modes.mode_of)
         elif pos is not None:
             LiveReach._learn(s, tag, pos)
 

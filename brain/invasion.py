@@ -113,9 +113,12 @@ def layout(objs, shapes=None, styles=None):
                                                   # cov_powermodule_stand, a gate on the core: attackers 2 u off, live)
         if f["type"] == "inv_platform" and staged and (_v(f["pos"]) - phases[3][0]).flat() < 5.0:
             continue                              # the ship the core is delivered to (Tempest's Pelican, 1.7 u off)
-        if abs((f.get("up") or (0, 0, 1))[2]) < 0.9:
+        uz = (f.get("up") or (0, 0, 1))[2]
+        if abs(uz) < 0.9:
             continue                              # a piece on its side (a floor tile stood up as a wall): brain/forge.py
                                                   # PieceWatch walls it with its real axes; this outline is yaw-only
+        if uz < 0:                                # upside down (a map variant file's: Spire's big phase 1 shield
+            z0, z1, y0, y1 = -z1, -z0, -y1, -y0   # doors hang from their spot), so it reaches down, left mirrored
         yaw = math.radians(f.get("facing") or 0.0)
         fx, fy = math.cos(yaw), math.sin(yaw)     # the object's forward; left = (-fy, fx)
         p = _v(f["pos"])
@@ -271,7 +274,7 @@ class Watch:
         if s.gates and now - s.gates_t > 2.0:     # gates: a barrier while the object stands
             s.gates_t = now
             try:
-                here = live.present([b["pos"] for b in s.gates])
+                here = live.present([b["pos"] for b in s.gates], names=[b.get("name") for b in s.gates])
                 # Breakpoint's vault doors (the gates at its bomb's plant markers) are what the bomb blows open: in
                 # phase 3 they are open whatever still stands there (live: read closed after the detonation, the
                 # attackers' way in went over the vault's roof and they stood 4 u over the core for 250 s)
@@ -294,6 +297,7 @@ class Watch:
         snap.inv_zone_r = [zone_radius(s.inv, z) for z in snap.inv_zones]
         snap.inv_delivery = s.inv["phases"][3][0]
         snap.inv_core, snap.inv_core_carrier = (s.core, s.carrier) if s.phase == 3 else (None, None)
+        snap.inv_stand = s.inv["core"]
         if s.phase == 3 and s.core is None:       # phase 3 but the core not seen yet: go for its stand
             snap.inv_core = s.inv["core"]
         if s.phase == (s.inv.get("bomb_phase") or 2) and s.inv.get("bomb") is not None:
@@ -316,9 +320,11 @@ class Watch:
             plant = min(s.inv["phases"][s.inv.get("bomb_phase") or 2], key=lambda z: (z - pos).flat())
             snap.inv_phase, snap.inv_zones, snap.inv_zone_r = 3, [plant], [zone_radius(s.inv, plant)]
             snap.inv_delivery, snap.inv_core, snap.inv_core_carrier = plant, pos, carrier
+            snap.inv_stand = s.inv["bomb"]
             # lying in its plant zone: armed (live: the carrier stood 4.6 s on the marker, then the game took it from
             # his hands); the attackers guard it, the defenders go to disarm it
             snap.inv_armed = carrier is None and (pos - plant).flat() <= zone_radius(s.inv, plant) + 0.5
+            snap.inv_bomb = True
             s.carrier = carrier
         for p in snap.players:
             if s.carrier is not None and p.id == s.carrier:

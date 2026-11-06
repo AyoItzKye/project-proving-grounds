@@ -36,7 +36,10 @@ enum : uint32_t {
     HB_BTN_ABILITY = 1 << 23,   // with EQUIPMENT: a hold-mode armor ability held (Reach action +0x08 bit 8, maps/_inputs/
                                 // reach.json "ability"; the brain sends it only for kinds whose tag is in hold mode).
                                 // Decoded table only (hb_apply_buttons): no build needed for it to reach the game
+    HB_TARGET_SHIFT = 24,       // bits 24-28: the player index + 1 a sword / hammer / melee press locks onto (0 none): the
+                                // red reticle's target the game's lunge needs in the action (hb_target; issue #3)
 };
+static inline int hb_target(uint32_t buttons) { return (int)((buttons >> HB_TARGET_SHIFT) & 31) - 1; }
 
 // Which loose weapon a bot's Use picks up (Reach: botcore fills the pickup interaction itself). Of the weapons lying
 // within reach (1.0 u across, 1 u up or down from the feet), the one nearest the view line when one lies within 0.6 rad

@@ -133,8 +133,10 @@ def meta_line(now, map_name, game, index, name, team, prof):
 
 def blitz_rows(directors):
     """The world line's "blitz": {team: [why, rally | go]} for each team in one (director.blitz_tick)."""
-    return {str(t): [d.blitz["why"], "go" if d.blitz["go"] is not None else "rally"]
-            for t, d in directors.items() if isinstance(t, int) and getattr(d, "blitz", None)}
+    # (and a free for all's sides, Infection's: keyed ("side", team); their charge was never written)
+    return {str(t if isinstance(t, int) else d.team): [d.blitz["why"], "go" if d.blitz["go"] is not None else "rally"]
+            for t, d in directors.items()
+            if (isinstance(t, int) or (isinstance(t, tuple) and t[0] == "side")) and getattr(d, "blitz", None)}
 
 
 def call_lines(now, director, said):

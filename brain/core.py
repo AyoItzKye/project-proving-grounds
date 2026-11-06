@@ -115,7 +115,10 @@ class Snapshot:
     inv_core: object = None
     inv_core_carrier: object = None
     inv_armed: bool = False    # Breakpoint's bomb lies armed in its plant zone (brain/invasion.py)
+    inv_bomb: bool = False     # phase 3's object is Breakpoint's bomb, not the core (a melee drops the core, not the bomb)
     inv_delivery: object = None
+    inv_stand: object = None   # where phase 3's core (Breakpoint's bomb in its run) stands until taken: off it, it is
+                               # dropped, the defenders' to return (Bot.return_point)
     inv_phase_t: float = 0.0   # seconds into the phase (brain/invasion.py Watch; the director's push)
     # the other objective modes (brain/modes.py: territories, assault, stockpile, headhunter, infection):
     # zones [(Vec, radius, owner team or -1)], objects to carry [{pos, carrier, kind}], each team's goals {team: [Vec]}
@@ -124,6 +127,7 @@ class Snapshot:
     obj_goals: dict = field(default_factory=dict)
     infected: int = -1         # Infection: the infected side when the reader knows it (Halo 3: by the zombies' gun)
     vips: tuple = ()           # VIP: each team's VIP (player ids), as the game marks them (Halo 3: brain/modes.py)
+    race_next: dict = field(default_factory=dict)   # Race: player id -> his next gate (Vec), brain/modes.py Race
 
     def player(s, pid):
         return next((p for p in s.players if p.id == pid), None)
@@ -157,3 +161,5 @@ class Action:
                               # sent where decoded, maps/_inputs/<game>.json "fire2")
     cycle: bool = False       # a press of the weapon cycle: Reach's Banshee fuel rod is cycled to (shared.h
                               # HB_BTN_CYCLE; sent where decoded, maps/_inputs/<game>.json "cycle")
+    lunge_at: int = -1        # the player id a sword / hammer / melee press locks onto: its red reticle's target, which
+                              # the game's lunge needs in the action (shared.h HB_TARGET_SHIFT; issue #3)

@@ -20,7 +20,12 @@ from .match import posture, tempo, one_flag_posture, Posture
 
 DEFEND_PULL_TIME = 15.0
 SPLIT_CHANCE = 0.5          # a CTF attack cycle (40-70 s) split over two lanes instead of one group
-PUSH_AFTER = 60.0           # seconds into an Invasion phase: the attackers all go into the territory
+# seconds into an Invasion phase: the attackers all go into the territory. 0: from the start. Live Boneyard B17-B25
+# the round 2 attack had its pile-on from the first second (its side's director kept inv_push from round 1) and took
+# phase 1 in 7 of 9 rounds; round 1's split for 60 s (two in, one to the other territory, escorts, overlooks) 2 of 9,
+# with the same movement and speed on both sides (logs/tmp/invasion_regress sidecmp.py / speeds.py, tools/test_round_plan)
+PUSH_AFTER = 0.0
+INV_STALL = 25.0            # ... and kept while one of the team was within 8 u of it in the last this many s (director)
 INV_COMMIT = 30.0           # an Invasion attack keeps its territory at least this long after picking it (director)
 # a CTF carry as the team's play: three escorts from six of us, one screen SCREEN_BACK u toward their base, the pushers
 # SCREEN_AHEAD u ahead of him on his way home (role_slots); CUTOFF: with three or more hunters on their carrier, one
@@ -42,8 +47,14 @@ POWER_EARLY, POWER_WAIT = 10.0, 8.0   # a power spawn due back within this is fe
 # the blitz (blitz_tick): the team rallies BLITZ_RALLY_D short of the objective, BLITZ_GATHER_S at most or until
 # BLITZ_READY of it is there, goes in together BLITZ_GO_S at most, then plays its normal plan BLITZ_COOL_S
 BLITZ_RALLY_D, BLITZ_GATHER_S, BLITZ_GO_S, BLITZ_COOL_S, BLITZ_READY = 14.0, 4.0, 25.0, 15.0, 0.6
+# Invasion phase 3's core waves (Director.regather): from a respawn, wait REGATHER_D short of the core for REGATHER_N
+# goers or REGATHER_S s, then in together
+REGATHER_D, REGATHER_N, REGATHER_S = 22.0, 3, 8.0
 BLITZ_SPREAD = 25.0         # u: one of the team this far from the rest makes the rest rally for it first
-BLITZ_DETOUR = 1.3          # the second prong's way at most this many times the first's (rally -> prong -> target)
+AMBUSH_S = 30.0             # s an infected waits at one corner (director.ambush_fresh), then hunts as long
+INF_SPREAD, INF_GATHER_S = 8.0, 8.0  # Infection's charge (desperate): gathered unless within 8 u of each other, 8 s at most
+BLITZ_DETOUR = 1.3         # the second prong's way at most this many times the first's (rally -> prong -> target)
+PRONG_NAV_DETOUR = 2.5     # a prong's way by the nav at most this many times the rally's own (prong_pair; Blood Gulch's 1.4)
 # an Invasion push's flanks (push_lanes): LANE_R u out from the territory, LANE_ANGLE off the team's line in, kept
 # LANE_KEEP_S per territory; attackers with posts within LANE_NEAR of it take them in turn
 LANE_R, LANE_ANGLE, LANE_KEEP_S, LANE_NEAR = 14.0, math.radians(60.0), 30.0, 15.0
@@ -234,6 +245,7 @@ class Director:
             s.power_runs(now, snap)        # every mode (audit PW-03: Invasion only before)
         s.blitz_tick(now, snap)
         s.wave_tick(now, snap)
+        s.core_wave_tick(now, snap)
 
     def desperate(s, now, snap):
         """(where, why) when only everyone going in together saves the game, else None. BLITZ_MODES by the score posture:
@@ -248,6 +260,16 @@ class Director:
         in Territories holding is the score (the sim, all in on one: our points 11 -> 8, theirs 4 -> 8). Never while the
         core or a flag is in our hands: that is the carrier's and his escorts' plan."""
         if any(p.team == s.team and p.alive and p.has_flag for p in snap.players):
+            return None
+        if snap.mode == "infection":
+            # the infected, at survivors grouped and holding well (two or more together, standing): all rally, then
+            # charge at once (owner, issue #3: "instead of trickling in one at a time")
+            from .modes import zombie_team, survivor_clusters
+            if zombie_team(snap) != s.team:
+                return None
+            for c, grp in survivor_clusters([p for p in snap.players if p.team != s.team]):
+                if sum(q.vel.flat() for q in grp) / len(grp) < 1.0:
+                    return c, "infection: they hold"
             return None
         if snap.mode == "invasion":
             if snap.inv_attackers != s.team:
@@ -349,7 +371,9 @@ class Director:
             rally = s.blitz_rally(c, target)
             # a rally only for a team strung out (one BLITZ_SPREAD from the rest: respawned, far behind); together it
             # goes at once (the sim, Spire phase 3: a 6 s rally of a team already together cut pickups 6 of 6 -> 3 of 6)
-            near = ot or (c - target).flat() < BLITZ_RALLY_D + 6.0 or max((q - c).flat() for q in pos) < BLITZ_SPREAD
+            # (the infected gather unless already together: from 25 u apart they came in one at a time, issue #3)
+            spread = INF_SPREAD if snap.mode == "infection" else BLITZ_SPREAD
+            near = ot or (c - target).flat() < BLITZ_RALLY_D + 6.0 or max((q - c).flat() for q in pos) < spread
             bz = s.blitz = dict(t0=now, target=target, rally=rally, why=why, go=now if near else None,
                                 prongs=s.blitz_prongs(rally, target))
             s.event(now, "blitz", f"blitz ({why}): {'go' if near else 'rally'}")
@@ -365,21 +389,104 @@ class Director:
         if bz["go"] is None:
             at = sum(1 for b in goers if dist(snap.player(b.id).pos, bz["rally"]) < 8.0
                      or dist(snap.player(b.id).pos, bz["target"]) <= ahead)
-            if now - bz["t0"] >= BLITZ_GATHER_S or at >= BLITZ_READY * len(goers):
+            if now - bz["t0"] >= (INF_GATHER_S if snap.mode == "infection" else BLITZ_GATHER_S) or \
+                    at >= BLITZ_READY * len(goers):
                 bz["go"] = now
                 s.event(now, "blitz", "blitz: go")
-        role = s.blitz_role(snap)
-        for k, b in enumerate(goers):
+        role, used = s.blitz_role(snap), {}
+        held = s.regather(now, snap, bz, goers) if bz["go"] is not None else {}
+        for b in goers:
             # (one already nearer the objective than the rally is in: never called back to gather. The sim, Spire
             # phase 3: each wave's rally took the attackers on the top back down to the foot, pickups 6 of 6 -> 1 of 6)
             if bz["go"] is None and dist(snap.player(b.id).pos, bz["target"]) > ahead:
                 b.set_order(Order("defender", bz["rally"]), sure=True)
                 s.roles[b.id] = "defender"
+            elif b.id in held:
+                b.set_order(Order("defender", held[b.id]), sure=True)
+                s.roles[b.id] = "defender"
             else:
-                via = (bz["prongs"][k % len(bz["prongs"])],) if bz["prongs"] else ()
+                via = s.prong_via(b, snap, bz["target"], bz["prongs"], used)
                 b.set_order(Order(role, bz["target"], via=via), sure=True)
                 s.roles[b.id] = role
             b.blitz_until = now + 0.5             # (refreshed each tick while the blitz lasts)
+
+    def core_wave_tick(s, now, snap):
+        """The core's waves (regather) when no blitz runs: the normal plan's runners (invasion_slots, the whole team on
+        the core) wait for their wave at the regather point too."""
+        if getattr(s, "blitz", None) is not None or not (snap.mode == "invasion" and snap.inv_phase == 3
+                                                          and snap.inv_core is not None and snap.inv_core_carrier is None):
+            s.core_wave = None
+            return
+        cw = getattr(s, "core_wave", None)
+        if cw is None or dist(cw["target"], snap.inv_core) > 3.0:
+            cw = s.core_wave = dict(target=snap.inv_core)
+        goers = [b for b in s.blitz_team(snap) if s.roles.get(b.id) == "runner" or b.id in cw.get("waits", {})]
+        for bid, pt in s.regather(now, snap, cw, goers).items():
+            b = s.bots[bid]
+            b.set_order(Order("defender", pt), sure=True)
+            s.roles[bid] = "defender"
+
+    def regather(s, now, snap, bz, goers):
+        """Invasion phase 3, the core loose or on its stand, the blitz going: a goer coming from its respawn (farther than
+        REGATHER_D from the core) waits at the regather point REGATHER_D short of it toward the team until REGATHER_N of
+        the goers are there or REGATHER_S s, then all of them go in together. Live Boneyard B14 / B18: the blitz went at
+        the phase's start and every respawned attacker went in alone from 50 u: 34 deaths in 248 s, the median 13 u from
+        the core, 37 s a life, no pickup, the defenders 136-155 bot-s on the core. {bot id: where it waits}."""
+        if not (snap.mode == "invasion" and snap.inv_phase == 3 and snap.inv_core is not None
+                and snap.inv_core_carrier is None and not snap.inv_armed and snap.inv_attackers == s.team):
+            return {}
+        target = bz["target"]
+        if "regather" not in bz:
+            pos = [snap.player(b.id).pos for b in goers] or [target]
+            c = Vec(sum(q.x for q in pos) / len(pos), sum(q.y for q in pos) / len(pos), sum(q.z for q in pos) / len(pos))
+            bz["regather"], bz["waits"] = s.blitz_rally(c, target, REGATHER_D), {}
+        pt, waits = bz["regather"], bz["waits"]
+        alive = {b.id for b in goers}
+        for k in [k for k in waits if k not in alive]:
+            del waits[k]                          # (dead: its next life regathers again)
+        at = [b for b in goers if dist(snap.player(b.id).pos, pt) < 8.0]
+        out = {}
+        for b in goers:
+            d = dist(snap.player(b.id).pos, target)
+            w = waits.get(b.id)
+            if d <= REGATHER_D - 4.0 and w is None:
+                waits[b.id] = -1.0               # in already (it never came from behind): it goes on
+                continue
+            if w is None:
+                w = waits[b.id] = now
+            if w < 0:
+                continue                          # released: in with its wave
+            if len(at) >= min(REGATHER_N, len(goers)) or now - w >= REGATHER_S:
+                for g in goers:                   # the wave goes: everyone waiting goes with it
+                    if waits.get(g.id, -1.0) >= 0:
+                        waits[g.id] = -1.0
+                s.event(now, "blitz", f"core wave: go ({len(at)} at the regather point)")
+                return {}
+            out[b.id] = pt
+        return out
+
+    @staticmethod
+    def prong_via(b, snap, target, prongs, used):
+        """A goer's prong for a blitz or a wave: the one it has for the whole push (a new goer the less used one; used:
+        {prong: goers on it}), none once it is nearer the target than the prong (Bot.objective_point passes it then). By
+        its place in the list the prong changed as men died or held, every change sent the bot back out to the other
+        one: live Spire 20261105-011146, the core loose 200 s, the attackers' choices 17,400 on the two prongs 10 u off
+        it against 9,400 on it, no pickup."""
+        if not prongs:
+            return ()
+        had = getattr(b, "prong", None)
+        p = had if had in prongs else min(prongs, key=lambda q: used.get(q, 0))
+        if p is not had:
+            b.prong_passed = False
+        b.prong = p
+        used[p] = used.get(p, 0) + 1
+        me = snap.player(b.id)
+        # (passed once, never given back this push: a prong on the floor under Boneyard's territories, the way up from
+        # it leads away from the target first and the prong came back, the bot sent down again; live 20261105-014814)
+        if me is None or b.prong_passed or dist(me.pos, target) <= dist(p, target) or dist(me.pos, p) < 5.0:
+            b.prong_passed = me is not None
+            return ()
+        return (p,)
 
     def wave_tick(s, now, snap):
         """CTF's attack as a wave, the normal plan (wave 2: the sim's runners on The Pit died one by one 6-18 u from the
@@ -430,8 +537,9 @@ class Director:
                     if b.order.role == "mid":
                         s.roles[b.id] = "mid"
             return
-        for k, b in enumerate(team):
-            via = (w["prongs"][k % len(w["prongs"])],) if w["prongs"] else ()
+        used = {}
+        for b in team:
+            via = s.prong_via(b, snap, w["target"], w["prongs"], used)
             b.set_order(Order("runner", w["target"], via=via))
             if b.order.role == "runner":
                 s.roles[b.id] = "runner"
@@ -443,14 +551,16 @@ class Director:
         a drop point, a territory)."""
         if snap.mode in ("ctf", "assault", "stockpile") or (snap.mode == "invasion" and snap.inv_phase == 3):
             return "runner"
+        if snap.mode == "infection":
+            return "hunter"                       # (the infected's charge: at them, not a post among them)
         return "defender"
 
-    def blitz_rally(s, c, target):
+    def blitz_rally(s, c, target, d=BLITZ_RALLY_D):
         """Where the team gathers: BLITZ_RALLY_D short of the target toward the team, on the team's own floor (a target
         on a tower's top: at its foot, by the ways up), the nearest floor anyone can stand on."""
-        d = Vec(c.x - target.x, c.y - target.y, 0.0)
-        n = d.flat()
-        x, y = (target.x + d.x / n * BLITZ_RALLY_D, target.y + d.y / n * BLITZ_RALLY_D) if n > 1e-6 else (c.x, c.y)
+        v = Vec(c.x - target.x, c.y - target.y, 0.0)
+        n = v.flat()
+        x, y = (target.x + v.x / n * d, target.y + v.y / n * d) if n > 1e-6 else (c.x, c.y)
         z = c.z if target.z - c.z > 6.0 else target.z
         return s.floor_near(Vec(x, y, z))
 
@@ -503,14 +613,33 @@ class Director:
         mid = Vec(rally.x + d.x * 0.6, rally.y + d.y * 0.6, rally.z)
         side = Vec(-d.y / n * 8.0, d.x / n * 8.0, 0.0)
         a, b = (s.floor_near(Vec(mid.x + side.x * k, mid.y + side.y * k, mid.z)) for k in (1, -1))
-        return s.prong_pair(rally, target, a, b)
+        return s.prong_pair(rally, target, a, b, s.nav_way(rally, target))
+
+    def nav_way(s, rally, target):
+        """way(q): the walk rally -> q -> target by the nav's costs (people's jumps and routes on, as bots go), or None
+        outside the nav (prong_pair then goes by straight lines)."""
+        T = s.terrain()
+        if not all(T.inside(p.x, p.y) for p in (rally, target)):
+            return None
+        to_target = T._field(target, human=True)
+        from_rally = T._field(rally, human=True)          # (rally -> q = q -> rally: the walking graph is near symmetric)
+        return lambda q: float(from_rally[T._node(q)] + to_target[T._node(q)]) if T.inside(q.x, q.y) else math.inf
 
     @staticmethod
-    def prong_pair(rally, target, a, b):
+    def prong_pair(rally, target, a, b, way=None):
         """Both prongs when the longer way (rally -> prong -> target) is at most BLITZ_DETOUR times the shorter, else the
         shorter alone (the sim, Spire phase 3 when its ways up were prongs: half the team sent the long way round by the
-        middle cannon, pickups 6 of 6 -> 4 of 6)."""
-        way = lambda q: dist(rally, q) + dist(q, target)
+        middle cannon, pickups 6 of 6 -> 4 of 6). way: the nav's (nav_way); a prong whose way is over PRONG_NAV_DETOUR
+        times the nav's own from the rally is none: one on another level (Boneyard, a rally on phase 1's platform, a
+        prong 6 u under it on the floor: 110 against 20, live 20261105-022641 attackers' near time spent down there) or
+        behind a wall or a gate (914: through the laser gate)."""
+        if way is None:
+            way = lambda q: dist(rally, q) + dist(q, target)
+        else:
+            best = way(rally)
+            a, b = (q if way(q) <= PRONG_NAV_DETOUR * best else None for q in (a, b))
+            if a is None or b is None:
+                return tuple(q for q in (a, b) if q is not None)
         short, long_ = sorted((a, b), key=way)
         return (short, long_) if way(long_) <= BLITZ_DETOUR * way(short) else (short,)
 
@@ -720,6 +849,9 @@ class Director:
         driving a vehicle with a free seat within 45 u picks him up and runs him home (ferry); a carrier bot within 10
         u of that vehicle gets in."""
         from . import vehicles
+        if snap.mode == "infection":
+            return      # survivors hold their rooms, the infected run on foot (live Rat's Nest: zombies sent to drive
+                        # Mongooses 584 of 618 order rows; issue #3)
         players = {b.id: snap.player(b.id) for b in alive}
         s.honk_orders(now, snap, alive, players)
         # (our objective carrier's escorts stay on him: live Spire at 417 s four of his six escorts were sent to a
@@ -728,7 +860,11 @@ class Director:
         foot = [b for b in alive if players[b.id] is not None and players[b.id].vehicle == -1
                 and not players[b.id].has_flag and s.roles.get(b.id) not in ("runner", "defender", "ride", "board")
                 and not (s.carrying and s.roles.get(b.id) == "escort")]
-        s.crew_orders(now, snap, players, foot)
+        # (a power vehicle by a bot on an objective job: its pool, crew_orders)
+        busy = [b for b in alive if b not in foot and players[b.id] is not None and players[b.id].alive
+                and players[b.id].vehicle == -1 and not players[b.id].has_flag and b.p.tier != "novice"
+                and s.roles.get(b.id) not in ("ride", "board", "ferry") and not b.urgent(players[b.id], snap)]
+        s.crew_orders(now, snap, players, foot, busy)
         foot = [b for b in foot if s.roles.get(b.id) != "drive"]
         for v in snap.vehicles:
             if v.get("team") != s.team or not vehicles.needs_gunner(v, snap):
@@ -763,6 +899,8 @@ class Director:
         teammate a defender). Not our carrier (ferry), not Easy (it never plans). The driver waits for them
         (Bot.crew_coming)."""
         from . import vehicles
+        called, last = s.__dict__.setdefault("aboard_calls", {}), {}   # vehicle handle -> who it called last pass
+        s.aboard_calls = last
         for v in snap.vehicles:
             sp = vehicles.spec(v["kind"])
             if (v.get("team") != s.team or sp is None or sp["move"] == "none" or not v.get("riders", 0)
@@ -780,63 +918,95 @@ class Director:
             drv = next((b for b in alive if players[b.id] is not None and players[b.id].vehicle == h
                         and getattr(b, "seat", "") == "driver"), None)
             bound = [q for q in (vp, getattr(drv, "drive_to", None)) if q is not None]
+            # (one called last pass and still on his way keeps the call, whatever his role pass made him: each pass's
+            # roles reset his order, and the call again was a fresh choice, a rogue roll and the trip rule. Live Spire
+            # 20261105-143525: at 1029.3 s Cyber117 took the Falcon's gun, walked to 6 u of it, and at 1033.3 s the
+            # pass made him a runner 17 u from the core and nobody called him again)
+            # (a bot driver's wait for them ends 6 s from the call, 12 s in an aircraft: Bot.crew_coming; then so does this)
+            t_call = (getattr(drv, "called_aboard", {}).get(h) or ((), -99.0))[1] if drv is not None else now
+            was = called.get(h, ()) if now - t_call < (12.0 if sp["move"] == "air" else 6.0) else ()
+
+            # (a person at its wheel: he drives where he likes, so a defender takes his gun wherever his post is. Live
+            # Spire 20261105-201917, 113-215 s: the owner drove his Warthog among his team's defenders, two of them 1-9
+            # u off it for 20 s each, posts 35-60 u away, and nobody took the gun: "teammates still ignore my empty gun
+            # on my warthog"; Oct 31 230307 at 354 s the same)
+            person = drv is None and any(p.vehicle == h and p.alive and not p.is_bot and not getattr(p, "gunner_seat", False)
+                                         for p in snap.players)
 
             def wanted(b):
-                return s.rider_ok(b, players, gun_free, bound)
+                return b.id in was or s.rider_ok(b, players, gun_free, bound, person)
             cands = sorted((b for b in alive if b not in coming and b.p.teamwork > 0 and players[b.id] is not None
                             and players[b.id].vehicle == -1 and not players[b.id].has_flag
                             and dist(players[b.id].pos, vp) < call_r and wanted(b)),
-                           key=lambda b: dist(players[b.id].pos, vp))
+                           key=lambda b: (b.id not in was, dist(players[b.id].pos, vp)))
             for b in cands:
                 if free <= 0:
                     break
-                if s.roles.get(b.id) == "defender" and not gun_free:
+                if s.roles.get(b.id) == "defender" and not gun_free and b.id not in was:
                     continue                     # (a defender rides the gun only)
                 seat = "ride" if gun_free else "board" if "passenger" in sp["seats"] else None
                 if seat is None:
                     break
                 gun_free = gun_free and seat != "ride"
-                b.set_order(Order(seat, vp, target=h))
+                b.set_order(Order(seat, vp, target=h), sure=b.id in was or person)   # (a person's call, as a honk)
                 if b.order.role == seat:
                     s.roles[b.id], free = seat, free - 1
-                    s.event(now, "vehicle", f"{players[b.id].name}: called {'onto the gun' if seat == 'ride' else 'aboard'}"
-                                            f" ({v['kind']})")
+                    if b.id not in was:
+                        s.event(now, "vehicle", f"{players[b.id].name}: called "
+                                                f"{'onto the gun' if seat == 'ride' else 'aboard'} ({v['kind']})")
             # its bot driver waits for them (Bot.crew_coming), 6 s from the first call of these riders
             ids = tuple(b.id for b in alive if b.order.target == h and b.order.role in ("ride", "board"))
+            last[h] = ids
             if drv is not None and ids:
                 old = getattr(drv, "called_aboard", {}).get(h)
                 drv.called_aboard = {h: (ids, old[1] if old and set(old[0]) >= set(ids) else now)}
                 if not old or not set(old[0]) >= set(ids):     # flagging them down ("Get in, <zone>!")
                     s.report(now, drv.id, "pickup", vp, count=len(ids))
+            elif drv is not None:
+                # nobody coming any more: no waiting for them (the same match, 1033-1040 s: the Falcon sat 7 s more for
+                # the man no longer called)
+                getattr(drv, "called_aboard", {}).pop(h, None)
 
-    def rider_ok(s, b, players, gun_free, bound):
+    def rider_ok(s, b, players, gun_free, bound, person=False):
         """A bot rider_calls may call to a vehicle whose places (where it is, where it goes) are bound. A defender only
-        onto the gun of one at his post or bound for it; the others with a trip of CALL_TRIP or more (a mid by his post
-        stays there)."""
+        onto the gun of one at his post or bound for it, or of one a person drives (person); the others with a trip of
+        CALL_TRIP or more (a mid by his post stays there)."""
         role = s.roles.get(b.id)
         if role == "defender":
-            return gun_free and b.order.point is not None and any(dist(q, b.order.point) < 15.0 for q in bound)
+            return gun_free and (person or b.order.point is not None and any(dist(q, b.order.point) < 15.0 for q in bound))
         return (role in ("runner", "mid", "free", "hunter") + (() if getattr(s, "carrying", False) else ("escort",))
                 and (b.order.point is None or dist(players[b.id].pos, b.order.point) >= s.CALL_TRIP))
 
     PICKUP_R, PICKUP_WAIT = 60.0, 8.0   # u, s: a lone driver goes for a gunner this near; gives one up after waiting this long
+    PICKUP_DETOUR = 25.0                # u: on a trip (goal), a gunner fetched only this far off its way (gunner_pickup)
 
-    def gunner_pickup(s, now, b, me, snap, alive, players):
+    def gunner_pickup(s, now, b, me, snap, alive, players, goal=None):
         """Where a bot at the wheel of a gun vehicle with its gun seat empty and no job goes: to the nearest teammate on
         foot rider_calls would put on the gun there (live Spire 230307, 69-95 s: a defender drove his Warthog alone to
         his post for 26 s, no job, every teammate posted farther than CALL_R off it, then chased men to run them over).
-        A teammate he waited PICKUP_WAIT s by without boarding is skipped for 30 s. None: nobody to fetch."""
+        On a trip to goal (a runner's) only one PICKUP_DETOUR or less off the way. A teammate he waited PICKUP_WAIT s by
+        without boarding is skipped for 30 s. None: nobody to fetch."""
         skip = b.__dict__.setdefault("pickup_skip", {})
         at = getattr(b, "pickup_at", None)       # (the teammate, since when the driver has been by him)
         if at and at[1] is not None and now - at[1] > s.PICKUP_WAIT:
             skip[at[0]], b.pickup_at, at = now, None, None
+        # an aircraft's way is over the ground, height costs it little: its detour is measured flat, and on a trip one
+        # on the way is fetched however far (live Spire 20261105-201917 at 296.7 s: the Falcon's runner pilot took off
+        # alone from the pad, his whole team 100 u off at the spire's foot right under the core he flew to, 32 u of
+        # detour by the 3-d way and over PICKUP_R; "not trying to pick up any teammates")
+        from . import vehicles
+        v = next((q for q in snap.vehicles if q["handle"] == me.vehicle), None)
+        air = v is not None and (vehicles.spec(v["kind"]) or {}).get("move") == "air"
+        way = (lambda p, q: (p - q).flat()) if air else dist
         cands = [(dist(me.pos, players[x.id].pos), x) for x in alive if x is not b and players[x.id] is not None
                  and players[x.id].vehicle == -1 and not players[x.id].has_flag and x.p.teamwork > 0
                  and x.p.tier != "novice" and now - skip.get(x.id, -99.0) > 30.0
                  and x.order.role not in ("ride", "board", "ferry")
-                 and s.rider_ok(x, players, True, [players[x.id].pos])]
+                 and s.rider_ok(x, players, True, [players[x.id].pos])
+                 and (goal is None or way(me.pos, players[x.id].pos) + way(players[x.id].pos, goal) - way(me.pos, goal)
+                      <= s.PICKUP_DETOUR)]
         d, x = min(cands, key=lambda c: c[0], default=(None, None))
-        if x is None or d > s.PICKUP_R:
+        if x is None or d > s.PICKUP_R and not (air and goal is not None):
             b.pickup_at = None
             return None
         since = at[1] if at and at[0] == x.id else None
@@ -875,7 +1045,14 @@ class Director:
             elif ours is not None and ours.id != b.id and fights and ours.vehicle != v["handle"] and kind not in vehicles.TANKS:
                 job = ("escort", ours.pos)
             elif b.order.role == "runner" and b.order.point is not None and vehicles.taxi_ok(v["kind"]):
-                job = ("taxi", b.order.point)     # (a power vehicle is no taxi: its job below, vehicles.taxi_ok)
+                # (a power vehicle is no taxi: its job below, vehicles.taxi_ok). Alone at the wheel of a gun it cannot
+                # fire itself (a Falcon, a Warthog): a gunner on its way first (gunner_pickup, PICKUP_DETOUR). Live
+                # Spire 20261105-143525, 963-1024 s: a runner flew his Falcon alone 100 u to the core, AtomicBeast 37-48
+                # u off its way there, then 40 s over the fight with nobody on its guns
+                mate = s.gunner_pickup(now, b, me, snap, alive, players, goal=b.order.point) if (
+                    vehicles.needs_gunner(v, snap) and not vehicles.driver_armed(v) and not aboard
+                    and b.p.tier != "novice") else None
+                job = ("pickup", mate) if mate is not None else ("taxi", b.order.point)
             elif aboard and kind not in vehicles.TANKS:
                 goals = [s.bots[x.id].order.point for x in aboard if x.id in s.bots and s.bots[x.id].order.point is not None
                          and s.bots[x.id].order.role in ("runner", "escort", "mid")]
@@ -989,8 +1166,9 @@ class Director:
             s.roles[cb.id] = "board"
 
     CREW_REACH = 45.0      # u: how far a bot is sent on foot to drive a vehicle its team wants (crew_orders)
+    POWER_R = 15.0         # u: a bot on an objective job takes a free power vehicle this near it (crew_orders)
 
-    def crew_orders(s, now, snap, players, foot):
+    def crew_orders(s, now, snap, players, foot, busy=()):
         """Vehicles picked by role. Roles in the order one anti-air, one anti-vehicle, one transport (CTF and Assault: the
         transport first; King and Territories: the anti-vehicle gun first), then every harasser: a role none of ours
         fills gets the empty vehicle of that role nearest a bot of ours on foot with no objective job (foot), within
@@ -1010,9 +1188,11 @@ class Director:
         empty = {v["handle"]: v for v in snap.vehicles if not v["occupied"] and vehicles.roles_of(v["kind"])
                  and vehicles.usable(v, now, duds)}
         free = {b.id: b for b in foot}
+        near = {b.id: b for b in busy}
         for h, (bid, since) in list(crews.items()):
-            if h in empty and bid in free and now - since < 30.0:
-                b, v = free.pop(bid), empty.pop(h)
+            if h in empty and (bid in free or bid in near) and now - since < 30.0:
+                b, v = (free.pop(bid, None) or near.pop(bid)), empty.pop(h)
+                near.pop(bid, None)
                 b.set_order(Order("drive", Vec(*v["pos"]), target=h), sure=True)   # (it took the job)
                 s.roles[bid] = "drive"
                 r = vehicles.roles_of(v["kind"])
@@ -1047,6 +1227,28 @@ class Director:
                 s.roles[b.id] = "drive"
                 filled.add(role)
                 s.event(now, "vehicle", f"{players[b.id].name}: driving the {v['kind']} ({role.replace('_', '-')})")
+        # a power vehicle (vehicles.taxi_ok: a Banshee, a tank ...) nobody of ours took, by a bot on an objective job
+        # (busy: Invasion has no other kind): the nearest one within POWER_R takes it to work it (Bot.drive: its role's
+        # patrol, never left at a trip's end), whatever role we fill. Live Spire 20261105-201917: three Banshees stood
+        # on their pad 274-505 s, attackers 1-9 u off it all the while, no bot ever in one ("they dont touch the banshee
+        # at all"); since 811e5a1 (no taxi in a power vehicle) only bots with no objective job were sent to one
+        for h, v in list(empty.items()):
+            if vehicles.taxi_ok(v["kind"]):
+                continue
+            vp = Vec(*v["pos"])
+            d, b = min(((dist(players[bid].pos, vp), b) for bid, b in near.items()
+                        if skip.get((bid, h), 0.0) <= now), key=lambda x: x[0], default=(None, None))
+            if d is None or d > s.POWER_R:
+                continue
+            del near[b.id]
+            b.set_order(Order("drive", vp, target=h))
+            if b.order.role != "drive":
+                skip[(b.id, h)] = now + 10.0
+                continue
+            del empty[h]
+            crews[h] = (b.id, now)
+            s.roles[b.id] = "drive"
+            s.event(now, "vehicle", f"{players[b.id].name}: taking the {v['kind']} (power vehicle by him)")
 
     def enemy_vehicles(s, snap, within=20.0):
         """The kinds of the vehicles men of theirs ride that one of our bots has seen in the last within s."""
@@ -1171,8 +1373,19 @@ class Director:
         if snap.mode == "firefight":
             # teammates of the people: stay with the nearest human, fight whatever comes
             people = [p for p in snap.players if p.team == s.team and p.alive and not p.is_bot]
-            lead = people[0].pos if people else mid
-            return [("escort", lead, "aggression")] * n
+            if people:
+                s.ff_last = people[0].pos
+                return [("escort", people[0].pos, "aggression")] * n
+            # the player is down (the owner, Nov 6: "if player dies have them roam or find a safe spot"): they hold the
+            # map's safe spots nearest where he fell (its holds and named points), two spots so they are not stacked,
+            # and fight from there until he is back (they ran into the open middle before)
+            last = getattr(s, "ff_last", None) or mid
+            spots = sorted([q for h in s.map["holds"].values() for q in h] + list(s.map["points"].values()),
+                           key=lambda q: dist(q, last))
+            if not spots:
+                return [("defender", last, "camping")] * n
+            a, b = spots[0], spots[1] if len(spots) > 1 else spots[0]
+            return [("defender", a, "camping") if i % 2 == 0 else ("defender", b, "camping") for i in range(n)]
         if snap.mode == "king" and snap.hill is not None:
             # theirs on it (guide 19 KOTH-STATIC-04, the contested hill): we take it, one more of us inside than of them
             # (two at least), the rest on the spots that see it shooting in, held TAKE_HOLD s past the last sighting.
@@ -1196,7 +1409,11 @@ class Director:
             return [("defender", post, "camping")] + [("mid", q, "camping") for q in s.overlooks(snap.hill, n)]
         if snap.mode == "invasion":
             return s.invasion_slots(now, snap, n)
-        if snap.mode in ("territories", "assault", "stockpile", "headhunter", "infection"):
+        if snap.mode == "race" and snap.race_next:
+            # each racer at its own next gate (brain/modes.py Race; Bot.race_gate keeps it to the tick): no posts, no
+            # escorts, kills score nothing (RACE-01)
+            return [("runner", snap.race_next[b.id], "objective") for b in s.bots.values() if b.id in snap.race_next]
+        if snap.mode in ("territories", "assault", "stockpile", "headhunter", "infection", "regicide"):
             return s.mode_slots(now, snap, n)
         if snap.mode == "oddball":
             ball = snap.ball or mid
@@ -1223,8 +1440,6 @@ class Director:
             return s.slayer_slots(now, snap, n)
         if s.is_one_flag(snap):                 # One Flag: the flag keeps its stand while the sides swap each round
             home = s.capture_point(snap)        # attackers score on the other stand; defenders post at the flag
-            if own is not None:
-                holds = [own.home] + [s.spread(own.home, k, 5.0) for k in (1, 2)]
         slots = []
         carrier = next((p for p in snap.players if p.team == s.team and p.has_flag), None)
         # split attacks: decided per attack cycle, two runners on different lanes, each with its own escort, and
@@ -1381,9 +1596,10 @@ class Director:
         with the fewest enemies seen), one holds each zone we own while we have the numbers, the rest cover the
         target. Assault / Stockpile: our carriers run (assign_roles), two escort; a loose object gets two runners
         and an escort; their carrier gets hunters; two hold our goal. Headhunter: one in three banks at the nearest
-        drop point (skull counts are not read), the rest hunt. Infection: survivors hold the nearest haven
-        together; the infected hunt the nearest survivor."""
-        from .modes import zombie_team
+        drop point (skull counts are not read), the rest hunt. Infection: survivors hold rooms with few ways in, in
+        groups (Reach's Safe Haven: the haven); the infected hunt the nearest survivor, a third wait round the corners of
+        the survivors' holds."""
+        from .modes import zombie_team, holds, pick_holds
         mid = s.map["points"]["mid"]
         foes = [p for p in snap.players if p.team != s.team and p.alive]
         mine = [p for p in snap.players if p.team == s.team and p.alive]
@@ -1470,14 +1686,69 @@ class Director:
             return slots + s.slayer_slots(now, snap, n)
         if snap.mode == "infection":
             infected = zombie_team(snap)
-            havens = [z for z, r, o in (snap.obj_zones or [])] or [mid]
+            havens = [z for z, r, o in (snap.obj_zones or [])]
             if infected == s.team:
+                # (owner, issue #3: "run directly at players, or wait around corners for unsuspecting prey"; the
+                # rally and charge at a group holding well is desperate's / blitz_tick's)
+                ambush = [q for q in s.ambush_spots(snap, foes, n // 3) if s.ambush_fresh(now, q)]
+                slots += [("defender", q, "camping") for q in ambush]
                 for p in sorted((p for p in foes), key=lambda p: dist(p.pos, centre()))[:n]:
                     slots.append(("hunter", p.pos, "aggression"))
                 return slots + [("hunter", mid, "aggression")] * n
-            haven = min(havens, key=lambda z: dist(z, centre()))
-            return [("defender", s.spread(haven, k, 2.5), "camping") for k in range(n)]
+            if havens:                      # Reach's Safe Haven: the game's own haven
+                haven = min(havens, key=lambda z: dist(z, centre()))
+                return [("defender", s.spread(haven, k, 2.5), "camping") for k in range(n)]
+            # survivors: in groups of 2-3, each in its own hold (a room with the fewest ways in, modes.find_holds),
+            # far apart ("for better fun ... separate groups in their own respective areas of the map")
+            picked = pick_holds(holds(s.terrain(), s.map["name"]), max(1, round(n / 2.5)))
+            if not picked:                  # (still being found: the first seconds of the match)
+                return [("defender", s.spread(mid, k, 2.5), "camping") for k in range(n)]
+            return [("defender", s.spread(picked[k % len(picked)]["pos"], k // len(picked), 1.0), "camping")
+                    for k in range(n)]
+        if snap.mode == "regicide":
+            # the King (modes.Watch.mark_king, in snap.vips; the game shows him to everyone): hunted by the rest
+            # (SLAY-REG-01: his bounty is the best kill on the map); the King himself plays his own game (assign_roles:
+            # our VIP is never sent anywhere) and holds back from far fights (Bot: a VIP's)
+            king = next((p for p in map(snap.player, snap.vips) if p is not None and p.alive and p.team != s.team), None)
+            if king is not None:
+                return [("hunter", king.pos, "aggression")] + s.slayer_slots(now, snap, n)
         return s.slayer_slots(now, snap, n)
+
+    def ambush_fresh(s, now, q):
+        """A corner is waited at AMBUSH_S at most, then left AMBUSH_S to the hunt (the owner's Flood games: waits of
+        53-279 s, the longest whole rounds, at corners nobody came round)."""
+        key = (round(q.x), round(q.y))
+        t0 = s.__dict__.setdefault("_ambush_t", {}).get(key)
+        if t0 is None or now - t0 > 2 * AMBUSH_S:
+            s._ambush_t[key] = t0 = now
+        return now - t0 < AMBUSH_S
+
+    def ambush_spots(s, snap, foes, k):
+        """Up to k corners to wait round for survivors (the infected; owner, issue #3: "wait around corners for
+        unsuspecting prey"): the ways into the hold a survivor is in (modes.find_holds doors, HOLD_R by walk from its
+        middle) that the hold's middle does not see, never two within 2 u."""
+        if k <= 0 or not foes:
+            return []
+        from .modes import holds
+        T, eye = s.terrain(), Vec(0, 0, 0.6)
+        hs, out = holds(T, s.map["name"]), []
+        for p in foes:
+            h = min(hs, key=lambda h: dist(h["pos"], p.pos), default=None)
+            if h is None or dist(h["pos"], p.pos) > 6.0:
+                continue
+            for door in h["doors"]:
+                if len(out) >= k:
+                    return out
+                # the door itself, else the nearest floor by it (1.5-3.5 u) out of the middle's sight: round the corner
+                for q in [door] + [Vec(door.x + math.cos(a) * r, door.y + math.sin(a) * r, door.z)
+                                   for r in (1.5, 2.5, 3.5) for a in (x * math.pi / 4 for x in range(8))]:
+                    z = T.nav_z(q.x, q.y, door.z)
+                    q = Vec(q.x, q.y, z)
+                    if (abs(z - door.z) < 0.6 and T.ground_ok(q.x, q.y, q.z, drop=0.6) and not T.los(h["pos"] + eye, q + eye)
+                            and dist(q, h["pos"]) > 3.0 and all(dist(q, o) > 2.0 for o in out)):
+                        out.append(q)
+                        break
+        return out
 
     def invasion_slots(s, now, snap, n):
         """Reach Invasion roles (brain/invasion.py). Attackers, phases 1-2: most of the team takes one territory
@@ -1532,8 +1803,15 @@ class Director:
             # a push is seen through: kept while one of us is taking it, and for INV_COMMIT s after it was picked, then
             # while the other has no clear edge in defenders (the sightings were weighed first, so the defence's pile-on
             # turned the attack round mid-capture and it went back and forth between the two: review)
+            # ... and while the attack is AT it: one of us within 8 u of it in the last INV_STALL s. The defence piles
+            # onto the territory being attacked, so the other always looked emptier: live Boneyard B20 R2, the Spartans'
+            # target flipped six times in 250 s (every 20-50 s), 17.9 s in a zone, phase 1 lost; B19 R2 kept one all
+            # round and took it (logs/tmp/invasion_regress/targets.py). A stalled attack (none of us near) still moves
+            if keep is not None and any(p.team == s.team and p.alive and dist(p.pos, keep) < 8.0 for p in snap.players):
+                s.inv_near_t = now
+            at_it = keep is not None and now - getattr(s, "inv_near_t", -99.0) < INV_STALL
             if keep is not None and (inside(keep) or now - getattr(s, "inv_target_t", -99.0) < INV_COMMIT
-                                     or seen(keep) <= seen(best) + 1):
+                                     or seen(keep) <= seen(best) + 1 or at_it):
                 target = keep
             else:
                 target, s.inv_target_t = best, now

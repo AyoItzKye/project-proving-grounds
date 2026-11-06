@@ -396,7 +396,11 @@ def scenario_objects(v):
     r = lambda xs: [round(x, 3) for x in xs]
     for o in v["objects"]:
         name, label, t = o["name"] or "", o["label"] if o["label"] not in (None, "none") else None, o["team"]
-        pos, yaw, mp = r(o["pos"]), round(o["yaw"], 3), o["mp_type"]
+        # facing: the world heading of the object's forward (the file's yaw turns about up from an axis that flips
+        # between world x and y with up's tilt: 18 of Spire's 183 objects read 90 deg off, its core's shield door
+        # walled across the core's stand; the heading matches the live pieces' axes, 48 of 52 to the degree)
+        pos, mp = r(o["pos"]), o["mp_type"]
+        yaw = round(math.degrees(math.atan2(o["forward"][1], o["forward"][0])), 3)
         common = dict(team=t, pos=pos, facing=yaw)
         if mp == "spawn_point" or name in SPAWN_POINTS or name == "initial_spawn_point":
             teams = [t] if t in (0, 1) and label != "ffa_only" else [0, 1]
@@ -453,7 +457,8 @@ def killzones(v):
       yaw       degrees about up (the file's angle)
       source    "mvar"; label: the piece's name (kill_volume ...); forge_label: its Forge label or None
       gametype_specific   True: it spawns only in game types that use forge_label (the file's flag)
-      placed_at_start     False: it is not there when the match starts"""
+      placed_at_start     False: it is not there when the match starts
+      seq       its spawn sequence (Invasion's inv_gates: the phase it closes, brain/oob.py volumes)"""
     vols = []
     for o in v["objects"]:
         kind = BOUNDARY.get(o["name"] or "")
@@ -470,7 +475,8 @@ def killzones(v):
         vol = dict(kind=kind, shape=sh["shape"], center=[round(c, 3) for c in center], size=[round(s, 3) for s in size],
                    yaw=round(o["yaw"], 3), source="mvar", label=o["name"],
                    forge_label=o["label"] if o["label"] != "none" else None,
-                   gametype_specific=o["gametype_specific"], placed_at_start=o["placed_at_start"])
+                   gametype_specific=o["gametype_specific"], placed_at_start=o["placed_at_start"],
+                   seq=o["spawn_sequence"])
         if sh["shape"] != "box":
             vol["radius"] = round(sh["radius"], 3)
             if sh["shape"] == "cylinder":

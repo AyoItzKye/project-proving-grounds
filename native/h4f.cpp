@@ -518,6 +518,24 @@ static void f_fill(h4f_game& G, uint8_t* tls, uint8_t* act, int index, const hb_
     *(uint64_t*)(act + 0x40) = (b & HB_BTN_ACTION) ? 0x400000u : 0u;
     if (G.id == 7 && unit) f_sprint(tls, act, unit, (b & HB_BTN_SPRINT) != 0);
     if (G.id == 6) f_interaction(tls, act, unit, b, index);
+    // the red reticle's target (shared.h hb_target), as the player's own action carries it: Halo 4 (live, Adrift Flood,
+    // logs/tmp/aa_watch.py, his reticle red on a man) +0x88 1, +0x8C node, +0x90 the man's unit, +0x98 weight (to 1.0),
+    // +0xAC flags 4: Reach's block 0x10 on. And the melee target in interaction slot 1 (+0x70 type 0xE, +0x78 the unit),
+    // as Reach's (INFERRED here, and the whole block for H2A). Bots had the player's template's or none (issue #3)
+    int tgt = hb_target(a.buttons);
+    if (tgt >= 0 && tgt < HB_MAX_PLAYERS && f_live(tls, tgt)) {
+        uint32_t th = *(uint32_t*)(f_player(tls, tgt) + 0x2C);
+        if (th != 0xFFFFFFFFu && f_object(tls, th)) {
+            *(uint32_t*)(act + 0x88) = 1;
+            *(uint32_t*)(act + 0x8C) = 0;
+            *(uint32_t*)(act + 0x90) = th;
+            *(float*)(act + 0x98) = 1.0f;
+            memset(act + 0x9C, 0, 0x10);
+            *(uint32_t*)(act + 0xAC) = 4;
+            *(uint16_t*)(act + 0x70) = 0xE;
+            *(uint32_t*)(act + 0x78) = th;
+        }
+    }
 }
 
 // the bot's own player id in both of its bodies (+0xC0 the host's, +0x1E8 the client's: the id at +0x20 of each). The
@@ -575,10 +593,13 @@ static void f_update(h4f_game& G, uint8_t* actions) {
         if (!tls) return;
         static DWORD last_call[8];                    // ticks come 60 a second while a match runs: a gap is a new match
         bool first = GetTickCount() - last_call[G.id & 7] > 3000;
-        if (first && G.id == 6) {
-            // and the match's own clock near zero (player +0xA94, 60 a second: brain/live.py LiveH4F MATCH), so a pause or
-            // a stall later in a match never holds a tick
-            int clock = f_player(tls, 0) ? *(int32_t*)(f_player(tls, 0) + 0xA94) : -1;
+        if (first && (G.id == 6 || G.id == 7)) {
+            // and the match's own clock near zero (player +0xA94 H2A, +0xA8C Halo 4, 60 a second: brain/live.py LiveH4F
+            // MATCH), so a pause or a stall later in a match never holds a tick. Halo 4 too: Flood picks its first round's
+            // Flood from the players there at the start; the bots joined 0.3-8 s later, so the first round had none and
+            // the game ended it at once (the owner's three Flood games, Nov 4: all 16 removed at full health ~14.7 s,
+            // no Flood all round 1, two in round 2)
+            int clock = f_player(tls, 0) ? *(int32_t*)(f_player(tls, 0) + (G.id == 6 ? 0xA94 : 0xA8C)) : -1;
             bool hold = g_prejoin && g_shm->bots_enabled && clock >= 0 && clock < 60 && !f_any_bot(tls);
             logf("%s first tick: match clock %d, %s", G.tag, clock, hold ? "holding for the bots" : "not held");
             if (hold) f_prejoin(G, tls);

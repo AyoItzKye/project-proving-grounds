@@ -2,148 +2,440 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
 <title>Project Proving Grounds</title>
 <style>
+  /* tokens: spacing 4/8/12/16/24/32/48, type 12/14/16/20/24, colours by role, taken from the Proving Grounds art (the
+     dusk sky, the sand, the sign, the embers, the Spartan's blue and gold). Contrast measured (WCAG): every text colour
+     4.5:1 or more on every surface it is used on, control borders and the focus ring 3:1 or more */
   :root {
-    --bg: #0e1218; --card: #161c25; --line: #263040; --text: #e6ebf2; --dim: #9aa6b6; --accent: #4fb3ff;
-    --accent-ink: #04121f; --ok: #5fd38a; --warn: #f2c14e; --bad: #ff6b6b; --radius: 10px;
+    --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px; --s7: 48px;
+    --fs-xs: 12px; --fs-sm: 14px; --fs-md: 16px; --fs-lg: 20px; --fs-xl: 24px;
+    --r-sm: 2px; --r: 4px; --r-lg: 6px;
+    --font: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    --font-display: "Bahnschrift", "Segoe UI", system-ui, sans-serif;    /* (DIN, as the sign's stencil; ships with Windows) */
+    --font-mono: "Cascadia Mono", Consolas, ui-monospace, monospace;
+    /* the dusk sky: backgrounds and surfaces */
+    --bg: #121417; --surface: #1a1d21; --raised: #24282d; --hover: #2d3238; --pressed: #1e2226; --sunken: #0d0f11;
+    --border: #353a40; --control: #858070;
+    /* the sign and the sand: text */
+    --heading: #f1e8d4; --text: #e9e1ce; --text-2: #cdbf9f; --text-3: #aea38b;
+    /* the embers: the primary action */
+    --ember: #f0872e; --ember-hover: #ff9c48; --ember-pressed: #d8731d; --ember-ink: #1c0d02;
+    /* the Spartan: secondary accents */
+    --blue: #93b2f2; --blue-bg: #1c2638; --blue-hover: #243149; --gold: #e3b456; --focus: #a9c4ff;
+    --sand: #d8bb88; --sand-ink: #1f1608;
+    --ok: #8fd394; --warn: #e3b456; --bad: #ff8f80; --danger: #b3402b; --danger-hover: #c24c35;
+    --ok-bg: #15261a; --warn-bg: #2b2415; --bad-bg: #331c18; --warn-line: #6b5524; --bad-line: #b5503d;
+    --scrim: 14, 15, 18;
   }
   * { box-sizing: border-box; }
+  body { --edge: max(var(--s5), calc((100% - 1280px) / 2 + var(--s5))); }   /* (the hero and footer line up with the content) */
   [hidden] { display: none !important; }
-  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 "Segoe UI", system-ui, sans-serif; }
-  header { padding: 18px 24px 10px; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
-  h1 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: .2px; }
-  .sub { color: var(--dim); }
-  main { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 16px; padding: 8px 24px 16px; }
-  @media (max-width: 820px) { main { grid-template-columns: 1fr; } }
-  section { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; }
-  h2 { margin: 0 0 10px; font-size: 16px; font-weight: 600; }
-  .rows { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; margin: 0 0 14px; }
-  .rows dt { color: var(--dim); }
-  .rows dd { margin: 0; overflow-wrap: anywhere; }
-  .ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--bad); } .dim { color: var(--dim); }
-  button { font: inherit; color: var(--text); background: #222b38; border: 1px solid #334156; border-radius: 8px;
-           padding: 9px 14px; cursor: pointer; }
-  button:hover { background: #2a3546; }
-  button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
-  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600;
-                   font-size: 17px; padding: 11px 26px; }
-  button.primary:hover { background: #6fc2ff; }
-  button[aria-busy="true"] { opacity: .7; cursor: progress; }
-  .actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-  label.check { display: flex; gap: 8px; align-items: flex-start; margin: 10px 0 0; color: var(--text); }
-  .note { color: var(--dim); font-size: 13.5px; margin: 10px 0 0; }
-  .log { margin: 12px 0 0; background: #0b0f14; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px;
-         max-height: 160px; overflow: auto; font: 12.5px/1.45 Consolas, monospace; white-space: pre-wrap; color: #c9d3df; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  html { background: var(--bg); }
+  body { margin: 0; min-height: 100vh; display: flex; flex-direction: column; justify-content: center;   /* (a tall window: the page in its middle, not a gap over the footer) */ color: var(--text); background: var(--bg);
+         font: var(--fs-sm)/1.5 var(--font); -webkit-font-smoothing: antialiased; }
+  p { margin: 0; }
+  svg.i { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.75;
+          stroke-linecap: round; stroke-linejoin: round; }
+  svg.i.sm { width: 16px; height: 16px; }
+
+  /* hero: the art (docs/banner.jpg, cropped below the Halo logo to the whole sign, the sandbags and the helmet) and
+     the tagline over its dark sky */
+  .hero { position: relative; margin: var(--s3) var(--edge) 0; aspect-ratio: 1024 / 126; min-height: 100px;
+          border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden;
+          background: url("/art.jpg") center 67% / cover no-repeat, var(--surface); }
+  .hero::before { content: ""; position: absolute; inset: 0; pointer-events: none;
+                  background: radial-gradient(ellipse 46% 72% at 0 0, rgba(var(--scrim), .92) 0%, rgba(var(--scrim), .8) 55%,
+                                              rgba(var(--scrim), 0) 100%); }
+  .tagline { position: relative; max-width: 34%; padding: var(--s3) var(--s4); font: 600 var(--fs-md)/1.25 var(--font-display);
+             letter-spacing: .04em; color: var(--heading); text-wrap: balance; }
+  /* connection banner */
+  .banner { display: flex; gap: var(--s3); align-items: center; margin: var(--s4) var(--edge) 0; padding: var(--s3) var(--s4);
+            border-radius: var(--r); background: var(--bad-bg); border: 1px solid var(--bad-line); color: var(--text); }
+  .banner svg { color: var(--bad); }
+  .banner:has(#banner:empty) { display: none; }
+
+  /* layout */
+  main { flex: 0 1 auto; width: 100%; max-width: 1280px; margin: 0 auto; padding: var(--s3) var(--s5) var(--s2); display: grid; gap: var(--s3) var(--s4);
+         grid-template-columns: minmax(0, 1.45fr) minmax(280px, 1fr); align-items: start; align-content: start; }
+  .col { display: grid; gap: var(--s4); align-content: start; }
+  .wide { grid-column: 1 / -1; }
+  @media (max-width: 820px) { main { grid-template-columns: minmax(0, 1fr); padding: var(--s4); } body { --edge: var(--s4); } }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); padding: var(--s3) var(--s5) var(--s4);
+          min-width: 0; }
+  .card-head { display: flex; align-items: center; gap: var(--s3); margin-bottom: var(--s3); }
+  h2 { margin: 0; font: 700 var(--fs-md)/1.2 var(--font-display); letter-spacing: .08em; text-transform: uppercase;
+       color: var(--heading); }
+  .count { margin-left: auto; font-size: var(--fs-xs); color: var(--text-2); font-variant-numeric: tabular-nums; }
+  .help { color: var(--text-2); font-size: var(--fs-xs); }
+
+  /* buttons */
+  button { font: inherit; font-weight: 500; color: var(--text); background: var(--raised); border: 1px solid var(--control);
+           border-radius: var(--r); min-height: 36px; padding: 0 var(--s4); display: inline-flex; align-items: center;
+           justify-content: center; gap: var(--s2); cursor: pointer; transition: background-color .12s, border-color .12s; }
+  button:hover { background: var(--hover); }
+  button:active { background: var(--pressed); transform: translateY(1px); }
+  button:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+  button:focus-visible, input:focus-visible, summary:focus-visible {
+    outline: 2px solid var(--focus); outline-offset: 2px; }
+  button[aria-busy="true"] { cursor: progress; }
+  button.primary { background: var(--ember); border-color: var(--ember); color: var(--ember-ink); }
+  button.primary:hover { background: var(--ember-hover); border-color: var(--ember-hover); }
+  button.primary:active { background: var(--ember-pressed); border-color: var(--ember-pressed); }
+  button.accent { border-color: var(--blue); color: var(--blue); background: var(--blue-bg); }
+  button.accent:hover { background: var(--blue-hover); }
+  button.quiet { background: transparent; border-color: transparent; color: var(--text-2); padding: 0 var(--s3); }
+  button.quiet:hover { background: var(--raised); color: var(--text); }
+  button.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+  button.danger:hover { background: var(--danger-hover); border-color: var(--danger-hover); }
+  .actions { display: flex; gap: var(--s2); align-items: center; flex-wrap: wrap; }
+
+  /* busy spinner: shown in a busy button, replaces its icon */
+  .spin { display: none; animation: spin .9s linear infinite; }
+  [aria-busy="true"] > .spin { display: block; }
+  [aria-busy="true"] > .idle { display: none; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* messages next to actions: colour plus an icon, never colour alone */
+  .msg { font-size: var(--fs-sm); color: var(--text-2); }
+  .msg:empty { display: none; }
+  .msg[data-level="ok"] { color: var(--ok); } .msg[data-level="warn"] { color: var(--warn); }
+  .msg[data-level="bad"] { color: var(--bad); }
+  .msg[data-level="ok"]::before, .msg[data-level="warn"]::before, .msg[data-level="bad"]::before {
+    content: ""; display: inline-block; width: 16px; height: 16px; margin-right: 6px; vertical-align: -3px;
+    background: currentColor; -webkit-mask: var(--m) center / contain no-repeat; mask: var(--m) center / contain no-repeat; }
+  .msg[data-level="ok"]::before { --m: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M8 12.5l2.5 2.5L16 9.5'/%3E%3C/svg%3E"); }
+  .msg[data-level="warn"]::before { --m: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3.5 21.5 20h-19z'/%3E%3Cpath d='M12 10v4M12 17v.01'/%3E%3C/svg%3E"); }
+  .msg[data-level="bad"]::before { --m: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 7.5v5M12 16v.01'/%3E%3C/svg%3E"); }
+
+  /* Play */
+  .status { list-style: none; margin: 0 0 var(--s3); padding: 0; display: flex; flex-wrap: wrap;
+            background: var(--raised); border: 1px solid var(--border); border-radius: var(--r); overflow: hidden; }
+  .stat { display: grid; grid-template-columns: 16px minmax(0, 1fr); column-gap: var(--s2); row-gap: 2px;
+          align-content: start; padding: var(--s2) var(--s4); flex: 1 1 150px;
+          box-shadow: -1px 0 0 var(--border), 0 -1px 0 var(--border); }   /* (a tile that wraps takes the whole row) */
+  #st-mods { flex: 1.8 1 200px; }
+  .stat svg { width: 16px; height: 16px; align-self: center; color: var(--text-3); }
+  .stat-value, .stat-detail { grid-column: 1 / -1; }
+  .stat[data-level="ok"] svg { color: var(--ok); } .stat[data-level="warn"] svg { color: var(--warn); }
+  .stat[data-level="bad"] svg { color: var(--bad); } .stat[data-level="busy"] svg { color: var(--blue); }
+  .stat-label { font: 600 var(--fs-xs)/1.5 var(--font-display); color: var(--text-2); text-transform: uppercase; letter-spacing: .08em; }
+  .stat-value { font-weight: 600; color: var(--heading); }
+  .stat-detail { font-size: var(--fs-xs); color: var(--text-2); overflow-wrap: anywhere; }
+  .stat-detail:empty { display: none; }
+  .stat[data-level="busy"] .spinning { animation: spin .9s linear infinite; }
+  .play-row { display: flex; align-items: center; gap: var(--s4); flex-wrap: wrap; }
+  button#play { min-height: 52px; padding: 0 var(--s6) 0 var(--s5); font: 700 var(--fs-lg)/1 var(--font-display);
+                letter-spacing: .12em; text-transform: uppercase; border-radius: var(--r); }
+  button#play svg.i { width: 18px; height: 18px; }
+  button#play svg.idle { fill: currentColor; stroke: none; }
+  label.check { display: flex; gap: var(--s2); align-items: flex-start; margin-top: var(--s4); padding: var(--s3);
+                border-radius: var(--r); background: var(--warn-bg); border: 1px solid var(--warn-line); cursor: pointer; }
+  label.check input { width: 16px; height: 16px; margin: 2px 0 0; accent-color: var(--ember); flex: none; }
+  /* the steps beside Play (under it when narrow), so the whole window fits without scrolling */
+  .play-wrap { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--s4); align-items: start; }
+  .play-wrap .play-row { flex-direction: column; align-items: flex-start; gap: var(--s2); }
+  .howto { padding-left: var(--s4); border-left: 1px solid var(--border); }
+  @media (max-width: 820px) {
+    .play-wrap { grid-template-columns: minmax(0, 1fr); }
+    .howto { padding: var(--s4) 0 0; border-left: 0; border-top: 1px solid var(--border); }
+  }
+  .howto ol { list-style: none; margin: 0; padding: 0; counter-reset: step; display: grid; gap: var(--s1); }
+  .howto-title { font: 600 var(--fs-xs)/1.5 var(--font-display); color: var(--text-2); text-transform: uppercase;
+                 letter-spacing: .08em; margin-bottom: var(--s1); }
+  .howto li { counter-increment: step; display: grid; grid-template-columns: 24px 1fr; gap: var(--s2);
+              color: var(--text-2); line-height: 1.4; }
+  .howto li::before { content: counter(step); width: 20px; height: 20px; border-radius: var(--r-sm); display: grid;
+                      place-items: center; font: 700 var(--fs-xs)/1 var(--font-display); color: var(--sand-ink);
+                      background: var(--sand); margin-top: 1px; }
+  .howto b { color: var(--text); font-weight: 600; white-space: nowrap; }
+  .log { margin-top: var(--s4); background: var(--sunken); border: 1px solid var(--border); border-radius: var(--r);
+         padding: var(--s2) var(--s3); max-height: 160px; overflow: auto; font: var(--fs-xs)/1.5 var(--font-mono);
+         white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text); }
   .log:empty { display: none; }
-  ol.steps { list-style: none; padding: 0; margin: 0 0 12px; display: grid; gap: 4px; }
-  ol.steps li { display: grid; grid-template-columns: 22px 150px 1fr; gap: 6px; }
-  .tool { display: grid; grid-template-columns: 170px 1fr; gap: 10px; align-items: center; padding: 8px 0;
-          border-top: 1px solid var(--line); }
-  .tool:first-of-type { border-top: 0; }
-  .tool button { width: 100%; text-align: left; }
-  .tool p { margin: 0; color: var(--dim); font-size: 13.5px; }
-  footer { padding: 0 24px 18px; display: flex; gap: 10px; flex-wrap: wrap; color: var(--dim); align-items: center; }
-  .banner { margin: 0 24px; padding: 10px 14px; border-radius: 8px; background: #3a1d22; border: 1px solid #6b2c35; }
-  .banner:empty { display: none; }
-  .confirm { margin: 0 24px 18px; padding: 12px 16px; border-radius: var(--radius); background: var(--card);
-             border: 1px solid #6b2c35; }
-  .confirm p { margin: 0 0 10px; }
-  button.danger { background: #8f2a33; border-color: #b33a45; font-weight: 600; }
-  button.danger:hover { background: #a3313b; }
+
+  /* setup */
+  .setup-intro { margin-bottom: var(--s4); }
+  progress { width: 100%; height: 6px; border: 0; border-radius: 999px; overflow: hidden; background: var(--raised);
+             appearance: none; margin-bottom: var(--s4); display: block; }
+  progress::-webkit-progress-bar { background: var(--raised); }
+  progress::-webkit-progress-value { background: var(--gold); border-radius: 999px; }
+  progress::-moz-progress-bar { background: var(--gold); }
+  .done { display: flex; align-items: center; gap: var(--s2); color: var(--ok); font-weight: 600; margin-bottom: var(--s4); }
+  ol.steps { list-style: none; padding: 0; margin: 0 0 var(--s4); display: grid; gap: var(--s2) var(--s4);
+             grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+  ol.steps li { display: grid; grid-template-columns: 16px minmax(0, 1fr); column-gap: var(--s2); align-content: start; }
+  ol.steps svg { margin-top: 2px; color: var(--text-3); grid-row: 1 / span 2; }
+  ol.steps [data-state="done"] svg { color: var(--ok); } ol.steps [data-state="failed"] svg { color: var(--bad); }
+  ol.steps [data-state="working"] svg { color: var(--blue); animation: spin .9s linear infinite; }
+  .step-name { font-weight: 500; }
+  .step-note { font-size: var(--fs-xs); color: var(--text-2); overflow-wrap: anywhere; }
+  [data-state="failed"] .step-note { color: var(--bad); }
+  #setup-card .help.repair { margin-top: var(--s3); }
+
+  /* game folder (a setting: folded away while the game is found, open while it is not) */
+  details { border-radius: var(--r-lg); }
+  summary { list-style: none; cursor: pointer; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px var(--s3);
+            align-items: center; border-radius: var(--r); margin: calc(-1 * var(--s2)); padding: var(--s2); }
+  summary::-webkit-details-marker { display: none; }
+  summary:hover { background: var(--raised); }
+  summary .chev { grid-row: 1 / span 2; grid-column: 2; color: var(--text-2); transition: transform .15s; }
+  details[open] summary .chev { transform: rotate(90deg); }
+  .path { font-size: var(--fs-sm); overflow-wrap: anywhere; }
+  .path[data-level="dim"] { color: var(--text-3); }
+  summary .path { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-2); }
+  details[open] summary .path { display: none; }
+  .folder-body { margin-top: var(--s4); display: grid; gap: var(--s3); }
+  #folder-card[data-attention] { border-color: var(--bad-line); order: -1; }   /* (the game is not found: this comes first) */
+  .field-label { display: block; font-size: var(--fs-xs); color: var(--text-2); margin-bottom: var(--s1); }
+  .input-row { display: flex; gap: var(--s2); }
+  input[type="text"] { flex: 1; min-width: 0; font: inherit; color: var(--text); background: var(--sunken);
+                       border: 1px solid var(--control); border-radius: var(--r); min-height: 36px; padding: 0 var(--s3); }
+  input[type="text"]::placeholder { color: var(--text-3); }
+  input[type="text"]:hover { border-color: var(--text-3); }
+
+  /* tools: a heading and four tiles (no card around them) */
+  .card.tools-sec { background: none; border: 0; padding: 0; }
+  .tools-sec .card-head { margin-bottom: var(--s2); }
+  .tools { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s3); grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  @media (max-width: 900px) { .tools { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 520px) { .tools { grid-template-columns: minmax(0, 1fr); } }
+  .tools li { display: flex; }
+  button.tool { width: 100%; height: 100%; min-height: 0; padding: var(--s3) var(--s4); display: grid; align-content: start; align-items: center;
+                justify-items: start; grid-template-columns: auto minmax(0, 1fr) auto; gap: var(--s2) var(--s3); text-align: left;
+                font-weight: 400; background: var(--surface); border-color: var(--border); border-radius: var(--r-lg); }
+  button.tool:hover { background: var(--raised); border-color: var(--control); }
+  button.tool:active { background: var(--pressed); }
+  .tool-icon { width: 32px; height: 32px; grid-column: 1; grid-row: 1; border-radius: var(--r); display: grid; place-items: center; color: var(--blue);
+               background: var(--blue-bg); }
+  .tool .ext { color: var(--text-3); justify-self: end; grid-column: 3; grid-row: 1; }
+  button.tool:hover .ext { color: var(--text-2); }
+  .tool-text { display: contents; }
+  .tool-desc, .meter { grid-column: 1 / -1; }
+  .tool-name { font-weight: 600; font-size: var(--fs-sm); color: var(--heading); grid-column: 2; grid-row: 1; display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; }
+  .tool-desc { font-size: var(--fs-xs); color: var(--text-2); }
+  .chip { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-xs); font-weight: 500; line-height: 1;
+          padding: var(--s1) var(--s2); border-radius: 999px; background: var(--hover); color: var(--text-2); }
+  .chip.run { display: none; background: var(--ok-bg); color: var(--ok); }
+  .chip.run::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  button.tool[aria-busy="true"] .chip.run { display: inline-flex; grid-column: 3; grid-row: 1; }
+  button.tool[aria-busy="true"] .ext { display: none; }
+  button.tool[aria-busy="true"] { cursor: pointer; }
+  .meter { justify-self: stretch; display: grid; grid-template-columns: auto minmax(40px, 1fr); align-items: center; gap: var(--s3); }
+  .meter .tool-desc { grid-column: auto; }
+  .meter-bar { height: 4px; border-radius: 999px; background: var(--hover); overflow: hidden; }
+  .meter-bar span { display: block; height: 100%; width: 0; background: var(--gold); border-radius: 999px; }
+  #tool-state { margin-left: auto; font-size: var(--fs-xs); }
+  .card-head:has(#tool-state:not(:empty)) .hint { display: none; }
+
+  /* footer: the menu, the version and the notice */
+  footer { display: flex; align-items: center; gap: var(--s2) var(--s3); flex-wrap: wrap; padding: 0 var(--edge) var(--s1); }
+  footer .more { display: flex; align-items: center; gap: var(--s1); flex-wrap: wrap; margin-left: calc(-1 * var(--s3)); }
+  footer button.quiet { min-height: 32px; padding: 0 var(--s2); }
+  footer .legal { color: var(--text-3); font-size: var(--fs-xs); }
+  .version:not(:empty)::after { content: "  |  "; white-space: pre; }
+  /* updates: the bar when a new version is out (never installed unasked), the check's state and the choice in the footer */
+  .update { position: fixed; right: var(--edge); bottom: 52px; z-index: 5; max-width: min(460px, calc(100% - 2 * var(--edge)));
+            display: flex; align-items: center; gap: var(--s2) var(--s3); flex-wrap: wrap; padding: var(--s3) var(--s4);
+            border-radius: var(--r-lg); background: var(--warn-bg); border: 1px solid var(--gold); color: var(--heading);
+            font-weight: 600; box-shadow: 0 8px 28px rgba(0, 0, 0, .55); }
+  .update[hidden] { display: none; }
+  .update-actions { margin-left: auto; display: flex; gap: var(--s2); }
+  .primary-sm { min-height: 32px; padding: 0 var(--s4); border-radius: var(--r); border: 1px solid var(--ember);
+                background: var(--ember); color: var(--ember-ink); font-weight: 700; cursor: pointer; }
+  .primary-sm:hover { background: var(--ember-hover); }
+  .primary-sm:disabled { opacity: .6; cursor: default; }
+  footer .upd { display: flex; align-items: center; gap: var(--s2); color: var(--text-3); font-size: var(--fs-xs); margin-left: auto; }
+  footer .upd button.quiet { min-height: 28px; font-size: var(--fs-xs); padding: 0 var(--s2); }
+  .updauto { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; color: var(--text-2); }
+  .updauto input { accent-color: var(--ember); width: 16px; height: 16px; }
+  button#uninstall:hover { color: var(--bad); }
+
+  /* uninstall confirmation */
+  dialog { width: min(480px, calc(100vw - 32px)); padding: var(--s5); color: var(--text); background: var(--surface);
+           border: 1px solid var(--control); border-radius: var(--r-lg); box-shadow: 0 24px 64px rgba(0, 0, 0, .55); }
+  dialog::backdrop { background: rgba(var(--scrim), .75); }
+  dialog h2 { font: 600 var(--fs-lg)/1.3 var(--font); letter-spacing: 0; text-transform: none; color: var(--heading);
+              margin-bottom: var(--s2); }
+  dialog p { color: var(--text-2); }
+  dialog .actions { justify-content: flex-end; margin-top: var(--s5); }
+  dialog .msg { margin-top: var(--s3); }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before { animation: none !important; transition: none !important; }
+  }
 </style>
 </head>
 <body>
-<header>
-  <h1>Project Proving Grounds</h1>
-  <span class="sub">PvP bots for Halo: The Master Chief Collection</span>
-  <span class="sub" id="version"></span>
-</header>
-<div class="banner" id="banner" role="alert"></div>
-<main>
-  <div style="display:grid; gap:16px; align-content:start">
-    <section aria-labelledby="play-h">
-      <h2 id="play-h">Play</h2>
-      <dl class="rows" id="play-rows">
-        <dt>Game</dt><dd id="r-game" class="dim">Checking ...</dd>
-        <dt>Game folder</dt><dd><span id="r-folder" class="dim"></span>
-          <div class="actions" style="margin-top:6px">
-            <button id="mcc-browse" title="Pick the folder of the MCC copy the bots use (the one with MCC, halo1, halo3 ... in it)">Choose folder ...</button>
-            <button id="mcc-auto" hidden title="Use the copy Steam has installed">Use automatic</button>
-          </div>
-          <form class="actions" id="mcc-form" style="margin-top:6px">
-            <input id="mcc-path" aria-label="MCC folder path" placeholder="or paste the folder path here" style="flex:1; min-width:220px; font:inherit; color:var(--text); background:#0b0f14; border:1px solid var(--line); border-radius:8px; padding:8px 10px">
-            <button type="submit">Use</button>
-          </form>
-          <span id="mcc-state" aria-live="polite"></span></dd>
-        <dt>Setup</dt><dd id="r-setup" class="dim">Checking ...</dd>
-        <dt>Other mods</dt><dd id="r-mods" class="dim">Checking ...</dd>
-      </dl>
-      <div class="actions">
-        <button class="primary" id="play">Play</button>
-        <span id="play-state" class="dim" aria-live="polite"></span>
-      </div>
-      <label class="check" id="clean-wrap" hidden>
-        <input type="checkbox" id="clean" checked>
-        <span>Start without those mods this time (they are moved aside and put back when MCC closes)</span>
-      </label>
-      <p class="note">Steam asks how to start MCC: choose the option with anti-cheat off. The bots play in offline
-        custom games only. In MCC open Multiplayer &gt; Custom Multiplayer; the BOTS tile is next to START (or press B).</p>
-      <div class="log" id="log-play" aria-live="polite"></div>
-    </section>
+<svg hidden aria-hidden="true">
+  <symbol id="i-ok" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.5 2.5L16 9.5"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 3.5 21.5 20h-19z"/><path d="M12 10v4M12 17v.01"/></symbol>
+  <symbol id="i-bad" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9 9l6 6M15 9l-6 6"/></symbol>
+  <symbol id="i-wait" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3 2"/></symbol>
+  <symbol id="i-spin" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9"/></symbol>
+  <symbol id="i-todo" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/></symbol>
+  <symbol id="i-skip" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M8.5 12h7"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l12.5-7.5z"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-radar" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9"/><path d="M12 7a5 5 0 1 0 5 5"/><circle cx="12" cy="12" r="1.5"/><path d="M12 12l6.5-6.5"/></symbol>
+  <symbol id="i-cube" viewBox="0 0 24 24"><path d="M12 2.8l8.5 4.7v9L12 21.2l-8.5-4.7v-9z"/><path d="M3.5 7.5L12 12l8.5-4.5M12 12v9.2"/></symbol>
+  <symbol id="i-brush" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></symbol>
+  <symbol id="i-ext" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v4.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 4 18.5v-11A1.5 1.5 0 0 1 5.5 6H10"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H9l2 2.5h7.5A2.5 2.5 0 0 1 21 10v7.5a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24"><path d="M5 5.5A2.5 2.5 0 0 1 7.5 3H19v15H7.5A2.5 2.5 0 0 0 5 20.5z"/><path d="M5 20.5A2.5 2.5 0 0 1 7.5 18H19v3H7.5"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9.5 7V4.5h5V7M6 7l1 13h10l1-13"/></symbol>
+  <symbol id="i-repair" viewBox="0 0 24 24"><path d="M3.5 12a8.5 8.5 0 1 0 2.8-6.3"/><path d="M3.5 4v5h5"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
+</svg>
 
-    <section aria-labelledby="setup-h">
-      <h2 id="setup-h">First-time setup</h2>
-      <p class="note" style="margin-top:0">Builds the 3D bots, emblems, effects and map pictures from your own copy of
-        the game. Runs once; it takes a few minutes.</p>
-      <p id="setup-done" class="ok" hidden>All parts are ready.</p>
+<header class="hero">
+  <h1 class="sr-only">Project Proving Grounds</h1>   <!-- (the sign in the art shows the name) -->
+  <p class="tagline">PvP bots for Halo: The Master Chief Collection</p>
+</header>
+<div class="banner"><svg class="i" aria-hidden="true"><use href="#i-bad"/></svg><span id="banner" role="alert"></span></div>
+<div class="update" id="updbar" hidden role="status">
+  <span id="updmsg"></span>
+  <span class="update-actions"><button class="quiet" id="updlater">Later</button><button class="quiet" id="updnotes">What's new</button><button class="primary-sm" id="updnow">Update</button></span>
+</div>
+
+<main>
+  <section class="card" aria-labelledby="play-h">
+    <h2 id="play-h" class="sr-only">Play</h2>
+    <ul class="status" id="play-rows" aria-label="Status">
+      <li class="stat" id="st-game" data-level="wait"><svg class="i" aria-hidden="true"><use href="#i-wait"/></svg>
+        <span class="stat-label">Game</span><span class="stat-value" id="r-game">Checking ...</span>
+        <span class="stat-detail" id="r-game-detail"></span></li>
+      <li class="stat" id="st-setup" data-level="wait"><svg class="i" aria-hidden="true"><use href="#i-wait"/></svg>
+        <span class="stat-label">Setup</span><span class="stat-value" id="r-setup">Checking ...</span>
+        <span class="stat-detail" id="r-setup-detail"></span></li>
+      <li class="stat" id="st-mods" data-level="wait"><svg class="i" aria-hidden="true"><use href="#i-wait"/></svg>
+        <span class="stat-label">Other mods</span><span class="stat-value" id="r-mods">Checking ...</span>
+        <span class="stat-detail" id="r-mods-detail"></span></li>
+    </ul>
+    <div class="play-wrap">
+    <div class="play-row">
+      <button class="primary" id="play"><svg class="i idle" aria-hidden="true"><use href="#i-play"/></svg>
+        <svg class="i spin" aria-hidden="true"><use href="#i-spin"/></svg>Play</button>
+      <span id="play-state" class="msg" aria-live="polite"></span>
+    </div>
+    <div class="howto">
+    <p class="howto-title" id="howto-h">How to start a match</p>
+    <ol aria-labelledby="howto-h">
+      <li><span>When Steam asks how to start MCC, choose the option with <b>anti-cheat off</b>.</span></li>
+      <li><span>In MCC open <b>Multiplayer &gt; Custom Multiplayer</b> (offline custom games only).</span></li>
+      <li><span>Select the <b>BOTS</b> tile next to START (or press <b>B</b>) to pick your bots.</span></li>
+    </ol>
+    </div>
+    </div>
+    <label class="check" id="clean-wrap" hidden>
+      <input type="checkbox" id="clean" checked>
+      <span>Start without those mods this time. They are moved aside and put back when MCC closes.</span>
+    </label>
+    <div class="log" id="log-play" aria-live="polite"></div>
+  </section>
+
+  <div class="col">
+    <section class="card" id="setup-card" aria-labelledby="setup-h">
+      <div class="card-head"><h2 id="setup-h">First-time setup</h2><span class="count" id="setup-count"></span></div>
+      <p class="help setup-intro" id="setup-intro">Builds the 3D bots, emblems, effects and map pictures from your own copy
+        of the game. Runs once and takes a few minutes.</p>
+      <progress id="setup-meter" max="1" value="0" aria-labelledby="setup-h"></progress>
+      <p id="setup-done" class="done" hidden><svg class="i" aria-hidden="true"><use href="#i-ok"/></svg>All parts are ready.</p>
       <ol class="steps" id="steps"></ol>
       <div class="actions">
-        <button id="setup">Run setup</button>
-        <button id="setup-force" title="Builds every part again from your copy of MCC: for missing or broken 3D bots, pictures or effects, or after installing more MCC games">Repair</button>
-        <span id="setup-state" class="dim" aria-live="polite"></span>
+        <button id="setup" class="accent"><svg class="i sm spin" aria-hidden="true"><use href="#i-spin"/></svg>Run setup</button>
+        <button id="setup-force" aria-describedby="repair-help"><svg class="i sm idle" aria-hidden="true"><use href="#i-repair"/></svg>
+          <svg class="i sm spin" aria-hidden="true"><use href="#i-spin"/></svg>Repair</button>
+        <button class="quiet" id="uninstall" hidden><svg class="i sm" aria-hidden="true"><use href="#i-trash"/></svg>Uninstall</button>
+        <span id="setup-state" class="msg" aria-live="polite"></span>
       </div>
+      <p class="help repair" id="repair-help">Repair builds every part again: for missing or broken 3D bots, pictures or
+        effects, or after installing more MCC games.</p>
       <div class="log" id="log-setup"></div>
     </section>
+
+    <details class="card" id="folder-card">
+      <summary><h2 id="folder-h">Game folder</h2><svg class="i chev" aria-hidden="true"><use href="#i-chev"/></svg>
+        <span class="path" id="r-folder-short"></span></summary>
+      <div class="folder-body">
+        <div>
+          <p class="path" id="r-folder" data-level="dim"></p>
+          <p class="help" id="r-folder-how"></p>
+        </div>
+        <div class="actions">
+          <button id="mcc-browse"><svg class="i sm" aria-hidden="true"><use href="#i-folder"/></svg>Choose folder ...</button>
+          <button id="mcc-auto" hidden>Use automatic</button>
+        </div>
+        <form id="mcc-form">
+          <label class="field-label" for="mcc-path">Or paste the folder path (the one with MCC, halo1, halo3 ... in it)</label>
+          <div class="input-row">
+            <input id="mcc-path" type="text" spellcheck="false" autocomplete="off">
+            <button type="submit">Use</button>
+          </div>
+        </form>
+        <span id="mcc-state" class="msg" aria-live="polite"></span>
+      </div>
+    </details>
   </div>
 
-  <section aria-labelledby="tools-h" style="align-self:start">
-    <h2 id="tools-h">Tools</h2>
-    <div class="tool"><button data-task="observer">Observer</button>
-      <p>Watch and replay matches: every player, what each bot saw and decided, your own stats. Import and export
-        recorded games.</p></div>
-    <div class="tool"><button data-task="lidar_sim">LiDAR Simulator</button>
-      <p>Pick a map and watch the bots map it, no game needed: speed, pause, spots to cover. Bots play better on a
-        mapped map.
-        <span id="r-lidar"></span></p></div>
-    <div class="tool"><button data-task="lidar_view">LiDAR Viewer</button>
-      <p>Your LiDAR match live in 3D (BOTS panel &gt; LiDAR mode, open this any time during the match), or a map's
-        stored scan. The Simulator has its own window.</p></div>
-    <div class="tool"><button data-task="paint">Paint the nav</button>
-      <p>Advanced: mark where bots may and may not walk on a map.</p></div>
-    <p class="note" id="tool-state" aria-live="polite"></p>
+  <section class="card wide tools-sec" aria-labelledby="tools-h">
+    <div class="card-head"><h2 id="tools-h">Tools</h2><span class="count hint">Each opens in its own window</span>
+      <p class="msg" id="tool-state" aria-live="polite"></p></div>
+    <ul class="tools">
+      <li><button class="tool" data-task="observer" aria-labelledby="n-observer" aria-describedby="d-observer">
+        <span class="tool-icon"><svg class="i" aria-hidden="true"><use href="#i-eye"/></svg></span>
+        <svg class="i sm ext" aria-hidden="true"><use href="#i-ext"/></svg><span class="chip run">Open</span>
+        <span class="tool-text"><span class="tool-name"><span id="n-observer">Observer</span></span>
+          <span class="tool-desc" id="d-observer">Replay matches: what each bot saw and decided, and your own stats.</span></span></button></li>
+      <li><button class="tool" data-task="lidar_sim" aria-labelledby="n-sim" aria-describedby="d-sim r-lidar">
+        <span class="tool-icon"><svg class="i" aria-hidden="true"><use href="#i-radar"/></svg></span>
+        <svg class="i sm ext" aria-hidden="true"><use href="#i-ext"/></svg><span class="chip run">Open</span>
+        <span class="tool-text"><span class="tool-name"><span id="n-sim">LiDAR Simulator</span></span>
+          <span class="tool-desc" id="d-sim">Watch bots map any map, no game needed. Mapped maps play better.</span>
+          <span class="meter"><span class="tool-desc" id="r-lidar"></span><span class="meter-bar"><span id="lidar-bar"></span></span></span></span></button></li>
+      <li><button class="tool" data-task="lidar_view" aria-labelledby="n-view" aria-describedby="d-view">
+        <span class="tool-icon"><svg class="i" aria-hidden="true"><use href="#i-cube"/></svg></span>
+        <svg class="i sm ext" aria-hidden="true"><use href="#i-ext"/></svg><span class="chip run">Open</span>
+        <span class="tool-text"><span class="tool-name"><span id="n-view">LiDAR Viewer</span></span>
+          <span class="tool-desc" id="d-view">Your LiDAR match live in 3D, or a map's stored scan.</span></span></button></li>
+      <li><button class="tool" data-task="paint" aria-labelledby="n-paint" aria-describedby="d-paint">
+        <span class="tool-icon"><svg class="i" aria-hidden="true"><use href="#i-brush"/></svg></span>
+        <svg class="i sm ext" aria-hidden="true"><use href="#i-ext"/></svg><span class="chip run">Open</span>
+        <span class="tool-text"><span class="tool-name"><span id="n-paint">Paint the nav</span></span>
+          <span class="tool-desc" id="d-paint">Advanced: mark where bots may and may not walk on a map.</span></span></button></li>
+    </ul>
   </section>
 </main>
+
 <footer>
-  <button id="folder">Open the install folder</button>
-  <button id="docs">Read the guide</button>
-  <button id="uninstall" hidden>Uninstall</button>
-  <span>Not affiliated with or endorsed by Microsoft.</span>
+  <nav class="more" aria-label="More">
+    <button class="quiet" id="folder"><svg class="i sm" aria-hidden="true"><use href="#i-folder"/></svg>Open the install folder</button>
+    <button class="quiet" id="docs"><svg class="i sm" aria-hidden="true"><use href="#i-book"/></svg>Read the guide</button>
+  </nav>
+  <span class="upd"><span id="updstate"></span><button class="quiet" id="updcheck" title="Check GitHub for a new version now">Check</button>
+    <label class="updauto" title="Download and install new versions when the launcher opens (never while MCC runs)"><input type="checkbox" id="updauto"> Auto-update</label></span>
+  <span class="legal" title="Project Proving Grounds is not affiliated with or endorsed by Microsoft."><span class="version" id="version"></span>Not endorsed by Microsoft.</span>
 </footer>
-<div class="confirm" id="uninstall-ask" role="alertdialog" aria-labelledby="uninstall-q" hidden>
-  <p id="uninstall-q">Remove Project Proving Grounds from this PC? MCC itself is not changed. Every window of the mod
-    closes, then the uninstaller asks whether to keep your LiDAR scans and recorded matches.</p>
+
+<dialog id="uninstall-ask" aria-labelledby="uninstall-t" aria-describedby="uninstall-q">
+  <h2 id="uninstall-t">Uninstall Project Proving Grounds?</h2>
+  <p id="uninstall-q">MCC itself is not changed. Every window of the mod closes, then the uninstaller asks whether to keep
+    your LiDAR scans and recorded matches.</p>
+  <p id="uninstall-state" class="msg" aria-live="polite"></p>
   <div class="actions">
     <button id="uninstall-yes" class="danger">Uninstall</button>
     <button id="uninstall-no">Cancel</button>
-    <span id="uninstall-state" aria-live="polite"></span>
   </div>
-</div>
+</dialog>
 <script>
 const $ = id => document.getElementById(id);
 const STEP_NAMES = {"bots": "Bots", "recording": "Match recording", "map art": "Map pictures", "logos": "Game logos", "3D bots": "3D bots",
                     "effects": "Effects", "looks": "Looks"};
-let state = null, stepNote = {};
+const ICONS = {ok: "i-ok", warn: "i-warn", bad: "i-bad", wait: "i-wait", busy: "i-spin"};
+let state = null, stepNote = {}, folderWasMissing = null;
 
 async function post(path, body) {
   const r = await fetch(path, {method: "POST", headers: {"X-Launcher": "1", "Content-Type": "application/json"},
@@ -151,49 +443,79 @@ async function post(path, body) {
   return r.json().catch(() => ({ok: false, message: "no answer"}));
 }
 
-function setText(id, text, cls) { const e = $(id); e.textContent = text; e.className = cls || ""; }
+// a message's text and level (ok, warn, bad, dim: its colour and icon)
+function setText(id, text, level) { const e = $(id); e.textContent = text; e.dataset.level = level || ""; }
+const cap = t => t ? t[0].toUpperCase() + t.slice(1) : t;
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
+// a status tile: its level (icon and colour), value and detail
+function setStatus(key, level, value, detail) {
+  const row = $("st-" + key);
+  row.dataset.level = level;
+  row.querySelector("use").setAttribute("href", "#" + ICONS[level]);
+  row.querySelector("svg").classList.toggle("spinning", level === "busy");
+  $("r-" + key).textContent = value;
+  $("r-" + key + "-detail").textContent = detail || "";
+}
 
 function render(s) {
   state = s;
-  $("version").textContent = "version " + s.version;
-  if (s.mcc) setText("r-game", "Found" + (s.mcc_running ? " (running)" : "")
-                     + (s.missing_games.length ? `; not installed: ${s.missing_games.join(", ")} (bots play in the games you have)` : ""), "ok");
-  else if (s.mcc_choice) setText("r-game", "Your chosen folder is not there any more: choose it again, or use automatic", "bad");
-  else setText("r-game", "Not found: choose its folder below, or install Halo: The Master Chief Collection through Steam", "bad");
-  const how = s.mcc_env ? "set by HB_MCC" : s.mcc_choice ? "chosen by you" : "found automatically";
-  setText("r-folder", s.mcc ? `${s.mcc} (${how}` + (s.mcc_steam || s.wine ? ")" : "; Play starts this copy directly, Steam must be running)")
-                     : s.mcc_choice || "None yet", s.mcc ? "" : "dim");
-  if (s.mcc_found.length > 1) $("r-folder").textContent += `. Copies in your Steam libraries: ${s.mcc_found.join(", ")}`;
+  $("version").textContent = "Version " + s.version;
+  const setupBusy = !!(s.running.setup || s.running.setup_force);
+  if (s.mcc) setStatus("game", "ok", s.mcc_running ? "Found, running" : "Found",
+                       s.missing_games.length ? `Not installed: ${s.missing_games.join(", ")}. The bots play in the games you have.` : "");
+  else if (s.mcc_choice) setStatus("game", "bad", "Not found", "The folder you chose is not there any more: choose it again in Game folder, or use automatic.");
+  else setStatus("game", "bad", "Not found", "Choose its folder in Game folder, or install Halo: The Master Chief Collection through Steam.");
+
+  // game folder: open while the game is not found (and when it is lost again), folded away otherwise
+  const how = s.mcc_env ? "Set by HB_MCC" : s.mcc_choice ? "Chosen by you" : "Found automatically";
+  setText("r-folder", s.mcc || s.mcc_choice || "None yet", s.mcc ? "" : "dim");
+  $("r-folder-short").textContent = s.mcc || "Not found";
+  $("r-folder-short").title = s.mcc || "";                  // (the whole path when the line is cut short)
+  let note = s.mcc ? how + (s.mcc_steam || s.wine ? "." : ". Play starts this copy directly; Steam must be running.") : "";
+  if (s.mcc_found.length > 1) note += (note ? " " : "") + `Copies in your Steam libraries: ${s.mcc_found.join(", ")}.`;
+  $("r-folder-how").textContent = note;
+  if (folderWasMissing !== !s.mcc) { if (!s.mcc) $("folder-card").open = true; folderWasMissing = !s.mcc; }
+  $("folder-card").toggleAttribute("data-attention", !s.mcc);
   $("mcc-auto").hidden = !s.mcc_choice;
   $("mcc-browse").hidden = s.wine;
   $("uninstall").hidden = !s.installed;
-  const ready = s.setup.filter(x => x[1]).length;
-  setText("r-setup", ready === s.setup.length ? "Ready" : `${ready} of ${s.setup.length} parts ready: run the first-time setup below`,
-          ready === s.setup.length ? "ok" : "warn");
+
+  const ready = s.setup.filter(x => x[1]).length, total = s.setup.length;
+  if (setupBusy) setStatus("setup", "busy", "Working ...", "The first-time setup is running.");
+  else if (ready === total) setStatus("setup", "ok", "Ready", "");
+  else setStatus("setup", "warn", `${ready} of ${total} parts ready`, "Run the first-time setup.");
   if (s.conflicts.length) {
-    setText("r-mods", `${s.conflicts.length} file(s) from other mods can clash: ` + s.conflicts.map(c => c.file).join(", "), "warn");
+    setStatus("mods", "warn", `${plural(s.conflicts.length, "file", "files")} can clash`, s.conflicts.map(c => c.file.replace(/\\/g, "\\​")).join(", "));   // (a long path wraps at its folders)
     $("clean-wrap").hidden = false;
   } else {
-    setText("r-mods", "None that clash" + (s.workshop ? ` (${s.workshop} Workshop item(s), only loaded when MCC starts with mods)` : ""), "ok");
+    setStatus("mods", "ok", "None that clash", s.workshop ? `${plural(s.workshop, "Workshop item", "Workshop items")}, loaded only when MCC starts with mods.` : "");
     $("clean-wrap").hidden = true;
   }
-  $("r-lidar").textContent = `Mapped so far: ${s.lidar.mapped} of ${s.lidar.total} maps.`;
+  $("r-lidar").textContent = `${s.lidar.mapped} of ${s.lidar.total} maps mapped`;
+  $("lidar-bar").style.width = (s.lidar.total ? 100 * s.lidar.mapped / s.lidar.total : 0) + "%";
+
+  $("setup-count").textContent = `${ready} of ${total} ready`;
+  $("setup-meter").max = total; $("setup-meter").value = ready;
   const list = $("steps"); list.innerHTML = "";
-  const allDone = ready === s.setup.length && !Object.values(stepNote).some(Boolean) && !s.running.setup && !s.running.setup_force;
+  const allDone = ready === total && !Object.values(stepNote).some(Boolean) && !setupBusy;
   $("setup-done").hidden = !allDone; list.hidden = allDone;
-  $("setup").hidden = allDone;
+  $("setup").hidden = allDone; $("setup-intro").hidden = allDone; $("setup-meter").hidden = allDone;
   for (const [name, done, why] of s.setup) {
     const li = document.createElement("li");
     const note = stepNote[name];
-    const icon = note && note.startsWith("failed") ? ["!", "bad"] : note === "working" ? ["...", "warn"]
-      : why ? ["-", "dim"] : done ? ["OK", "ok"] : ["-", "dim"];
-    li.innerHTML = `<span class="${icon[1]}">${icon[0]}</span><span>${STEP_NAMES[name] || name}</span><span class="dim"></span>`;
-    li.lastChild.textContent = note && note !== "working" ? note : why ? `not needed: ${why}`
-      : done ? "ready" : (note === "working" ? "working ..." : "not yet");
+    const st = note && note.startsWith("failed") ? "failed" : note === "working" ? "working"
+      : note && note.startsWith("skipped") || why ? "skipped" : done ? "done" : "todo";
+    li.dataset.state = st;
+    li.innerHTML = `<svg class="i sm" aria-hidden="true"><use href="#${{failed: "i-bad", working: "i-spin", skipped: "i-skip", done: "i-ok", todo: "i-todo"}[st]}"/></svg>`
+      + `<span class="step-name"></span><span class="step-note"></span>`;
+    li.children[1].textContent = STEP_NAMES[name] || name;
+    li.children[2].textContent = cap(note && note !== "working" ? note : why ? `not needed: ${why}`
+      : done ? "ready" : (note === "working" ? "working ..." : "not yet"));
     list.appendChild(li);
   }
   for (const [task, run] of Object.entries(s.running)) {
-    const b = task.startsWith("setup") ? $("setup") : task === "play" ? $("play") : document.querySelector(`[data-task="${task}"]`);
+    const b = task.startsWith("setup") ? $(task === "setup" ? "setup" : "setup-force") : task === "play" ? $("play") : document.querySelector(`[data-task="${task}"]`);
     if (b) b.setAttribute("aria-busy", run ? "true" : "false");
   }
 }
@@ -219,7 +541,7 @@ async function follow(task, box, stateEl) {
     }
     $(box).scrollTop = $(box).scrollHeight;
     if (!r.running) {
-      setText(stateEl, r.code === 0 ? "Done." : `Stopped with a problem (see the lines above).`, r.code === 0 ? "ok" : "bad");
+      setText(stateEl, r.code === 0 ? "Done." : "Stopped with a problem: see the failed step and the log below.", r.code === 0 ? "ok" : "bad");
       break;
     }
     await new Promise(res => setTimeout(res, 700));
@@ -233,17 +555,19 @@ async function chooseMcc(body) {
   const r = await post("/mcc", body);
   setText("mcc-state", r.ok ? (body.auto ? "Back to automatic." : `Using ${r.message}. Run Repair if it is a different copy.`)
                             : r.message, r.ok ? "ok" : "bad");
+  $("mcc-path").setAttribute("aria-invalid", !r.ok && !body.browse && !body.auto ? "true" : "false");
   if (r.ok) $("mcc-path").value = "";
   refresh();
 }
+$("mcc-path").setAttribute("aria-describedby", "mcc-state");
 $("mcc-browse").onclick = () => chooseMcc({browse: true});
 $("mcc-auto").onclick = () => chooseMcc({auto: true});
 $("mcc-form").onsubmit = e => { e.preventDefault(); chooseMcc({path: $("mcc-path").value}); };
 
 $("play").onclick = async () => {
   if (state && state.wine) { location.href = "steam://rungameid/976730"; setText("play-state", "Steam starts MCC: choose the anti-cheat off option. The bots load as it starts.", "dim"); return; }
-  if (state && !state.mcc) { setText("play-state", "Choose the MCC folder above first, or install MCC through Steam.", "bad"); return; }
-  if (state && state.setup.some(x => !x[1])) setText("play-state", "Starting (the first-time setup is not finished: the 3D bots or pictures may be missing) ...", "warn");
+  if (state && !state.mcc) { setText("play-state", "Choose the MCC folder in Game folder first, or install MCC through Steam.", "bad"); $("folder-card").open = true; return; }
+  if (state && state.setup.some(x => !x[1])) setText("play-state", "Starting. The first-time setup is not finished, so the 3D bots or pictures may be missing ...", "warn");
   else setText("play-state", "Starting MCC ...", "dim");
   const r = await post("/run/play", {clean: !$("clean-wrap").hidden && $("clean").checked});
   if (!r.ok) { setText("play-state", r.message, "bad"); return; }
@@ -258,8 +582,9 @@ async function runSetup(task) {
 $("setup").onclick = () => runSetup("setup");
 $("setup-force").onclick = () => runSetup("setup_force");
 for (const b of document.querySelectorAll("[data-task]")) {
+  const name = $(b.getAttribute("aria-labelledby")).textContent;
   b.onclick = async () => {
-    setText("tool-state", `Opening ${b.textContent} ...`, "dim");
+    setText("tool-state", `Opening ${name} ...`, "dim");
     const tab = state && state.wine ? window.open("about:blank") : null;   // (Linux: the tool's page opens in a tab)
     const r = await post("/run/" + b.dataset.task);
     if (tab && r.ok && r.port) {
@@ -269,24 +594,68 @@ for (const b of document.querySelectorAll("[data-task]")) {
       }
       tab.location = url;
     } else if (tab) tab.close();
-    setText("tool-state", r.ok ? `${b.textContent}: its window opens in a moment.` : r.message, r.ok ? "dim" : "bad");
+    setText("tool-state", r.ok ? `${name}: its window opens in a moment.` : r.message, r.ok ? "dim" : "bad");
   };
 }
 $("folder").onclick = () => post("/folder");
-$("docs").onclick = () => post("/docs");
+$("docs").onclick = async () => { const r = await post("/docs"); if (r.ok && r.opened === false) window.open(r.url, "_blank"); };
 function askUninstall(open) {
-  $("uninstall-ask").hidden = !open;
   setText("uninstall-state", "");
-  (open ? $("uninstall-no") : $("uninstall")).focus();
+  if (open) { $("uninstall-ask").showModal(); $("uninstall-no").focus(); }
+  else { $("uninstall-ask").close(); $("uninstall").focus(); }
 }
 $("uninstall").onclick = () => askUninstall(true);
 $("uninstall-no").onclick = () => askUninstall(false);
-$("uninstall-ask").onkeydown = e => { if (e.key === "Escape") askUninstall(false); };
+$("uninstall-ask").addEventListener("close", () => $("uninstall").focus());   // (Esc closes it too)
 $("uninstall-yes").onclick = async () => {
   const r = await post("/uninstall");
   if (!r.ok) { setText("uninstall-state", r.message, "bad"); return; }
   setText("uninstall-state", "Closing the mod's windows; the uninstaller opens in a moment ...", "dim");
 };
+// ---- updates (tools/updater.py): told, never forced; automatic only when the player turns it on
+let upd = null;
+function ago(unix) {
+  if (!unix) return "never";
+  const s = Math.max(0, Date.now() / 1000 - unix);
+  const when = new Date(unix * 1000).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  return s < 90 ? "just now" : s < 3600 ? `${Math.round(s / 60)} min ago` : when;
+}
+function showUpdate(u) {
+  upd = u;
+  const job = u.job || {};
+  const bar = $("updbar");
+  const busy = job.state === "downloading" || job.state === "installing" || job.state === "failed";
+  bar.hidden = !(busy || u.available && sessionStorage.getItem("upd-later") !== u.latest);
+  $("updlater").hidden = busy;
+  if (job.state === "downloading") {
+    const pct = job.total ? Math.round(100 * job.done / job.total) : 0;
+    $("updmsg").textContent = `Downloading version ${u.latest.replace(/^v/, "")} ... ${pct}%`;
+  } else if (job.state === "installing") {
+    $("updmsg").textContent = "Installing the update. The launcher closes and opens again when it is done.";
+  } else if (job.state === "failed") {
+    $("updmsg").textContent = job.error;
+  } else {
+    $("updmsg").textContent = `Version ${u.latest.replace(/^v/, "")} is available. You have ${u.current}.`;
+  }
+  $("updnow").disabled = job.state === "downloading" || job.state === "installing";
+  $("updnow").hidden = u.wine || !u.can_install;
+  $("updnow").textContent = job.state === "failed" ? "Try again" : "Update";
+  $("updstate").textContent = (u.available ? `Update available` : u.latest ? "Up to date" : "Updates") +
+    ` · checked ${ago(u.checked)}` + (u.error ? `. ${u.error}` : "");
+  $("updauto").checked = !!u.auto;
+}
+async function loadUpdate() { try { showUpdate(await (await fetch("/update")).json()); } catch (e) {} }
+$("updcheck").onclick = async () => { $("updstate").textContent = "Checking ..."; showUpdate(await post("/update/check")); };
+$("updauto").onchange = async (e) => { showUpdate(await post("/update/auto", { on: e.target.checked })); };
+$("updlater").onclick = () => { if (upd) sessionStorage.setItem("upd-later", upd.latest); $("updbar").hidden = true; };
+$("updnotes").onclick = () => { if (upd) post("/open", { url: upd.url }); };
+$("updnow").onclick = async () => {
+  const r = await post("/update/install");
+  if (r.ok === false && r.message) { $("updmsg").textContent = r.message; return; }
+  loadUpdate();
+};
+loadUpdate();
+setInterval(loadUpdate, 2000);
 refresh().then(() => {
   if (location.search.includes("setup=1") && state && state.mcc && state.setup.some(x => !x[1])) runSetup("setup");
 });

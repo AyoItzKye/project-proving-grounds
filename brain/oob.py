@@ -7,6 +7,7 @@ as the maps define them (KNOWN, below), and the spots learned where they show:
          second one lands within R of it, or at once if no enemy was alive within ALONE u
   flag the player's bug report naming it ("out of bounds", "oob", "kill zone", "soft kill", "kill barrier"): at once,
          where he stood
+Neither on a Forge layout whose own .mvar was read (its kill zones all known: Oob.learn False).
 
 Kept per map or Forge layout in maps/<map>/oob.json: {"spots": [[x, y, z, source, t, note]], "candidates": [...]}.
 Terrain.set_oob (brain/terrain.py) makes the counted spots a soft wall: a step into a cell within R (and DZ of its
@@ -47,6 +48,7 @@ NEAR, SIGHT, ALONE, FALL = 6.0, 80.0, 80.0, 3.0   # (ALONE as SIGHT: a sniper 60
 # data has as solid is no out of bounds until a second death there)
 FULL = 0.9                         # health and shield a second before: nothing had hurt him
 AT_ONCE = 3                        # this many deaths inside a second: a reset, not a zone
+BLAST_S = 3.0                      # s: a candidate's twin dies at least this long after it (not in the same blast)
 WORDS = re.compile(r"out of bounds|\boob\b|kill ?zone|soft ?kill|kill ?barrier|kill ?boundar", re.I)
 SLAB = 0.5                         # u: a soft kill surface's triangles count this far each side
 EDGE = 2.0                         # u: a death this near a known volume is its (the last read was before he got in)
@@ -59,16 +61,24 @@ def path_of(map_name):
     return os.path.join(ROOT, map_name, "oob.json")
 
 
-def volumes(map_name):
+def volumes(map_name, phase=None):
     """The known kill / soft kill / safe volumes of a map or Forge layout ("<map>/variants/<v>"): its base map's
-    killzones.json and the layout's own."""
+    killzones.json and the layout's own. phase: the Invasion phase running (its gates' volumes still stand)."""
     out, base = [], map_name.replace("\\", "/").partition("/")[0]
     for m in dict.fromkeys((base, map_name)):
         try:
             out += json.load(open(os.path.join(ROOT, m, "killzones.json"), encoding="utf-8")).get("volumes", [])
         except (OSError, ValueError):
             pass
-    return [v for v in out if not v.get("condition")]
+    # a map variant's game-type volumes (.mvar gametype_specific) are the game type's, not the map's. Invasion's phase
+    # gates (inv_gates, spawn sequence = the phase they close) stand until their phase is taken: Boneyard's laser lines
+    # kill, Spire's soft kill boxes keep attackers out of the spire; for good they put Spire's phase 2 territories,
+    # core and delivery point out of bounds and no attacker ever stood on them (live 20261104-222857); never, the sim's
+    # Boneyard attackers took the lasers' gaps and stood under phase 1's territories all round (6 of 6 rounds lost)
+    # ponytail: any other game type's volume (inv_slayer) is left out, not avoided; one mask for both teams
+    gate = lambda v: phase is not None and v.get("forge_label") == "inv_gates" and v.get("seq", 1) >= phase
+    return [v for v in out if not v.get("condition") and v.get("placed_at_start", True)
+            and (not v.get("gametype_specific") or gate(v))]
 
 
 def _axes(v):
@@ -267,14 +277,37 @@ class Oob:
         s.spots, s.candidates, s.known = d["spots"], d["candidates"], d["known"]   # (known: deaths in known volumes)
         s.volumes = volumes(map_name)          # the map's own kill zones (killzones.json)
         s.hist, s.version = {}, 0              # (id -> [(t, pos, health, shield, riding)] last 2 s); bumped on change
+        # A Forge layout whose own map variant file was read (brain/mvar.write filed its killzones.json): every kill
+        # zone it has is known, its own and its base map's, so a death in none of them was a kill nobody was seen
+        # making (a grenade or a rocket round cover), not out of bounds. Learned there, they walled the ways to the
+        # objectives: Spire 20261105-004256 a spot 5 u from phase 2's territory; S3 / S4 three along the Spartans'
+        # lane to phase 1's territory A (its way 61.7 -> 72.2 u), phase 1 lost both rounds of S5 (045139) after 8 of 8
+        # taken; Boneyard spots on the stairs to phase 1's platform (249.0, 102.5) and the east ramp (262.2, 73.5).
+        # Nor a player's flag: it is filed where he stands, and a report names out of bounds about something else too
+        # (Spire 20261105-201917 at 342.8 s, from the spire's top: "... flies it into the fucking soft kill boundary
+        # it should be fucking detecting ...", the Falcon): a soft wall 4 u round the core's stand. The spots learned
+        # there before, deaths and flags, are dropped.
+        # ponytail: base maps (scenario + BSP kill zones) still learn; drop it there too once one shows the same
+        layout = "/" in map_name.replace("\\", "/")
+        s.learn = not (layout and os.path.exists(os.path.join(ROOT, map_name, "killzones.json")))
+        if not s.learn and (s.spots or s.candidates):
+            s.spots, s.candidates = [], []
+            s.version += 1                     # (saved so, at the brain's next save)
+
+    def set_phase(s, T, phase):
+        """The Invasion phase now (None: not Invasion): its standing gates' volumes join the known ones, on T too."""
+        if phase != getattr(s, "_phase", None):
+            s._phase, s.volumes = phase, volumes(s.map, phase)
+            T.set_oob(s.spots, None, s.volumes)
 
     def _add(s, x, y, z, source, t, note=""):
         s.spots.append([round(x, 2), round(y, 2), round(z, 2), source, round(t, 1), note[:80]])
         s.version += 1
 
     def flag(s, text, pos, t):
-        """the player's bug report: a spot where he stood when it names out of bounds. True if it did."""
-        if not pos or not WORDS.search(text or ""):
+        """the player's bug report: a spot where he stood when it names out of bounds (not on a layout whose kill zones
+        are all known: learn False). True if it did."""
+        if not pos or not s.learn or not WORDS.search(text or ""):
             return False
         s._add(pos[0], pos[1], pos[2], "flag", t, text)
         return True
@@ -311,6 +344,8 @@ class Oob:
                 s.version += 1
                 out.append((pos[0], pos[1], pos[2], True))
                 continue
+            if not s.learn:
+                continue                                     # (every kill zone of this layout known: Oob.learn)
             if max(e[1][2] for e in h) - pos[2] >= FALL:
                 continue                                     # a fall (LiDAR's deadly drops have it)
             foes = [q for tm, q in living if tm != team or tm < 0]
@@ -320,7 +355,10 @@ class Oob:
             if near and (sees is None or any(sees(q, pos) for q in near)):
                 continue                                     # (no sight lines to test: anyone within SIGHT could)
             alone = not any(math.dist(q, pos) < ALONE for q in foes)
-            twin = next((c for c in s.candidates if math.dist(c[:2], pos[:2]) < R and abs(c[2] - pos[2]) < DZ), None)
+            # (a second death there later: two in the same blast are one event, a grenade or a rocket out of sight;
+            # live Spire 20261105-004256, two Spartans at 232.1 s, 5 u from phase 2's territory)
+            twin = next((c for c in s.candidates if math.dist(c[:2], pos[:2]) < R and abs(c[2] - pos[2]) < DZ
+                         and now - c[3] > BLAST_S), None)
             counted = alone or twin is not None
             if counted:
                 s._add(pos[0], pos[1], pos[2], "death", now, "alone" if alone else "twice")

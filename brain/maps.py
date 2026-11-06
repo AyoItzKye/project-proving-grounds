@@ -343,6 +343,20 @@ def data_names(m):
     return [m["name"]]
 
 
+def people_walked(names, kinds=None):
+    """Cells stood on, from the maps' LiDAR "walk" (0.25 u x 0.1 u keys): every record, or only those of the given kinds
+    (tools/lidar.py KIND_*: 0 bot, 1 human, 3 crouched human...)."""
+    out = set()
+    for nm in names:
+        lp = os.path.join(ROOT, nm, "lidar.json")
+        if os.path.exists(lp):
+            d = read_json(lp)
+            c, zs = d.get("cell", 0.25), d.get("zstep", 0.1)
+            out |= {(round(w[0] * c / 0.25), round(w[1] * c / 0.25), round(w[2] * zs / 0.1)) for w in d.get("walk", ())
+                    if kinds is None or (w[3] if len(w) > 4 else 0) in kinds}
+    return out
+
+
 def _build(m, window):
     """A new terrain for map m over window (None: the whole level); terrain() keeps it, grow() makes one bigger."""
     from .terrain import Terrain
@@ -379,9 +393,12 @@ def _build(m, window):
         m["live_blocks"], m["shields"] = nav_pieces([p for p in pieces_of(m["variant"]) if piece_key(p[0], p[1]) not in dyn],
                                                     m["variant"].get("game") or "reach")
     blocks = list(blocks) + list(m.get("live_blocks") or [])
+    # cells people stood on (LiDAR "walk" of a person, standing or crouched: the bots' own records are no proof a body
+    # fits; Spire's variant had bot records under the rock lip its attackers stalled at, S10)
+    walked = people_walked(names, kinds=(1, 3))
     T = Terrain(m["heightmap"], m["bases"], extra_floor=floor, blocks=blocks, slit_rule=m["name"].startswith(SLIT_GAMES),
                 stair_rule=m["name"].startswith(("h4_", "h2a_")),
-                window=window)
+                window=window, walked=walked)
     T.add_links(m["teleporters"])
     if not m["name"].startswith(("h2_", "h3_", "reach_", "odst_", "h2a_", "h4_")):  # jump links, for skilled bots (CE jump physics; ponytail:
         T.build_jumps()                  # Halo 2's jump is not measured yet, so no gap jumps there)
@@ -429,14 +446,7 @@ def _build(m, window):
         if T.inside(z.center.x, z.center.y):
             c = Vec(z.center.x, z.center.y, T.floor_in_band(z.center.x, z.center.y, z.zmin, z.zmax))
             z.center = snap(c)           # and on ground players reach (Sidewinder's Mid sat in rock)
-    T.people_walked = set()              # cells people stood on (LiDAR "walk", 0.25 u x 0.1 u): never a learned wall
-    for nm in names:
-        lp = os.path.join(ROOT, nm, "lidar.json")
-        if os.path.exists(lp):
-            d = read_json(lp)
-            c, zs = d.get("cell", 0.25), d.get("zstep", 0.1)
-            T.people_walked |= {(round(w[0] * c / 0.25), round(w[1] * c / 0.25), round(w[2] * zs / 0.1))
-                                for w in d.get("walk", ())}
+    T.people_walked = people_walked(names)   # cells anyone stood on: never a learned wall (Terrain.learn_stuck)
     for nm in names:                     # (a built-in map's variant: the base's learned spots too)
         learned = os.path.join(ROOT, nm, "los_learned.json")
         if os.path.exists(learned):
@@ -445,6 +455,25 @@ def _build(m, window):
         if os.path.exists(learned):
             for x, y, z in read_json(learned):
                 T.learn_stuck(Vec(x, y, z), sure=True)
+    kinds = {}                           # windows and fences (tools/lidar_walls.py): walls you see through, fences you
+    for nm in names:                     # shoot through too (Terrain.set_wall_kinds, sees, shot_los)
+        wk = os.path.join(ROOT, nm, "wall_kinds.json")
+        if os.path.exists(wk):
+            kinds = read_json(wk)
+            break
+    from .terrain import piece_wall_kinds   # and placed pieces' own (a Forge railing, glass, an energy pane)
+    pk = piece_wall_kinds(blocks)
+    learned = []                         # and spots rounds went through (Terrain.learn_shot_through): fences
+    for nm in names:
+        lf = os.path.join(ROOT, nm, "walls_learned.json")
+        learned += read_json(lf) if os.path.exists(lf) else []
+    pk["fence"] += [c[:4] for c in learned if not c[4]]
+    pk["fence_floor"] += [c[:4] for c in learned if c[4]]
+    if any(pk.values()):
+        kinds = dict(kinds, **{k: list(kinds.get(k, [])) + v for k, v in pk.items()})
+    if any(kinds.get(k) for k in ("window", "fence", "window_floor", "fence_floor")):
+        T.set_wall_kinds(kinds)
+    T.walls_learned = [list(c) for c in learned]
     if m.get("shields"):                 # Forge shields (brain/forge.py): sight-line stops and one-way barriers
         from .forge import apply_shields
         apply_shields(T, m["shields"])
@@ -510,12 +539,13 @@ def swap(m):
 def save_learned(m):
     """Write what bots learned the level data misses to the map folder, so the next match starts
     knowing it: blocked sight lines (Terrain.learn_blocked), spots they could not walk through
-    (Terrain.learn_stuck)."""
+    (Terrain.learn_stuck), spots rounds went through (Terrain.learn_shot_through)."""
     T = _TERRAIN.get(m["name"])
     if T is None:
         return
     import json
-    for name, data in (("los_learned.json", T.blocked), ("nav_learned.json", T.stuck)):
+    for name, data in (("los_learned.json", T.blocked), ("nav_learned.json", T.stuck),
+                       ("walls_learned.json", [tuple(c) for c in getattr(T, "walls_learned", [])])):
         if data:
             tmp = os.path.join(ROOT, m["name"], name + ".tmp")
             json.dump(sorted(data), open(tmp, "w"))

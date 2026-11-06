@@ -444,6 +444,25 @@ static void __fastcall h_hr_update(uint8_t* actions) {
                     // +0x7C: the aim assist block (weights +0x8C / +0x90; FUN_18010e8f8). the player's passed the
                     // action check whole, but pulled the bot's shots toward his target: no weights, no assist
                     memset(act + 0x8C, 0, 8);
+                    // the red reticle's target (shared.h hb_target), as the player's own action carries it (live,
+                    // Boardwalk Infection, logs/tmp/aa_watch.py, his reticle red on a zombie): +0x78 1, +0x7C node,
+                    // +0x80 the man's unit, +0x88 weight 1.0, +0x8C 0, +0x9C flags 4; within melee reach his input
+                    // also puts the man in interaction slot 1 as the melee target (+0x60 type 0xE, +0x68 the unit).
+                    // Cleared for bots before: no sword press lunged (issue #3)
+                    int tgt = hb_target(a.buttons);
+                    if (tgt >= 0 && tgt < HB_MAX_PLAYERS && hr_live(tls, tgt)) {
+                        uint32_t th = *(uint32_t*)(hr_player(tls, tgt) + 0x28);
+                        if (th != 0xFFFFFFFFu && hr_object(tls, th)) {
+                            *(uint32_t*)(act + 0x78) = 1;
+                            *(uint32_t*)(act + 0x7C) = 0;
+                            *(uint32_t*)(act + 0x80) = th;
+                            *(float*)(act + 0x88) = 1.0f;
+                            memset(act + 0x8C, 0, 0x10);
+                            *(uint32_t*)(act + 0x9C) = 4;
+                            *(uint16_t*)(act + 0x60) = 0xE;
+                            *(uint32_t*)(act + 0x68) = th;
+                        }
+                    }
                     // applied only when the int at +0 is 1 and +4 equals the unit's life counter
                     // (unit +0x288; FUN_180047050), as in Halo 3: player 0's template carries his
                     *(int32_t*)act = 1;

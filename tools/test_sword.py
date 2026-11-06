@@ -52,7 +52,8 @@ def main():
         t += 1 / 30
     if not fwd or sum(fwd) / len(fwd) < 0.6 or sum(strafe) / len(strafe) > 0.3:
         fails.append(f"sword rush: forward {sum(fwd) / max(len(fwd), 1):.2f}, strafe {sum(strafe) / max(len(strafe), 1):.2f}")
-    # in reach: lunge at once with him in front, by where it looks, not the aim plan's crosshair; not behind
+    # in reach: lunge the moment the reticle is red (bot.red_reticle: the sword's 6 deg cone plus his body), by where it
+    # looks, not the aim plan's crosshair; not 0.35 rad off (a swing at the air: owner, issue #3), not behind
     def lunges(off, d, ticks=3):
         lb = Bot(5, 0, make_profile("top", "rusher", random.Random(5)), m, random.Random(5))
         lb.game = "h3"
@@ -68,7 +69,7 @@ def main():
                          lambda p, q: True, lambda p, q, **kw: q, [])
             presses += bool(a.fire)
         return presses
-    for off, d, want in ((0.35, 1.4, True), (0.0, 0.8, True), (3.0, 1.0, False), (0.0, 2.4, False)):
+    for off, d, want in ((0.18, 1.4, True), (0.35, 1.4, False), (0.0, 0.8, True), (3.0, 1.0, False), (0.0, 2.4, False)):
         if bool(lunges(off, d)) != want:
             fails.append(f"sword, a man {d} u off and {off:.2f} rad off its look: lunged {not want} (want {want})")
     if fails:
