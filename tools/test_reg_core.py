@@ -548,8 +548,13 @@ def check_ff_dlc():
             return (s.path + bytes(128))[:n]
 
     out = []
+    # (Installation 04, live Nov 6 s179: levels\dlc\cex_ff_halo\cex_ff_halo, read as not Firefight: no bots; and every
+    # Reach PvP map the project knows stays PvP)
+    pvp = [d[6:] for d in os.listdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "maps"))
+           if d.startswith("reach_") and not d.startswith("reach_ff")]
     for path, want in ((b"levels\\dlc\\ff_unearthed\\ff_unearthed", True), (b"levels\\firefight\\ff50_park\\ff50_park", True),
-                       (b"levels\\multi\\70_boneyard\\70_boneyard", False), (b"levels\\dlc\\dlc_slayer\\dlc_slayer", False)):
+                       (b"levels\\dlc\\cex_ff_halo\\cex_ff_halo", True),
+                       *((f"levels\\dlc\\{n}\\{n}".encode(), False) for n in pvp)):
         if Fake(path).firefight() != want:
             out.append(f"ff_dlc: {path} read as Firefight {not want} (want {want})")
     src = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "play.py"), encoding="utf-8").read()

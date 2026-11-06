@@ -1591,10 +1591,11 @@ class LiveReach(LiveH3):
         return out
 
     def firefight(s):
-        # (the DLC Firefight maps lie elsewhere: levels\dlc\ff_unearthed\ff_unearthed, live Nov 6: read as not Firefight,
-        # so no bots joined there, GitHub #12; every Firefight map's own name starts ff_)
+        # (the DLC Firefight maps lie elsewhere: levels\dlc\ff_unearthed\ff_unearthed and levels\dlc\cex_ff_halo\cex_ff_halo
+        # (Installation 04), live Nov 6: read as not Firefight, so no bots joined there, GitHub #12. The game mode byte reads
+        # 2, multiplayer, as in PvP; no PvP map's name has "ff_")
         path = s.g.read(s.g.base + s.CACHE_HEADER + 0xE0, 128).partition(bytes(1))[0]
-        return path.startswith(b"levels\\firefight\\") or path.replace(b"/", b"\\").rsplit(b"\\", 1)[-1].startswith(b"ff_")
+        return path.startswith(b"levels\\firefight\\") or b"ff_" in path.replace(b"/", b"\\").rsplit(b"\\", 1)[-1]
 
     # unit's side byte: Spartan players 1, Elite players 7, the Covenant AI 3 (live Beachhead Nov 6, Classic and Versus)
     UNIT_TEAM = 0x1CA

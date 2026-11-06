@@ -39,6 +39,9 @@ inline float mcc_probe_x(float W, float H, int k, bool ff = false) {
     ui_page p = mcc_content(W, H); return p.x0 + (ff ? (k ? 1136 : 655) : (k ? 976 : 736)) * p.s;
 }
 inline ui_rect mcc_probe_rows(float W, float H) { return ui_at(mcc_content(W, H), 0, 164, 0, 308); }
+// the Firefight lobby's title past where the post-game report's ends: "...CUSTOM FIREFIGHT" reaches it, "POSTGAME
+// CARNAGE" (to ~686) does not (live Nov 6, 1920x1080 window: 482 of 5040 pixels letter-white in the lobby, 0 after)
+inline ui_rect mcc_ff_title_probe(float W, float H) { return ui_at(mcc_content(W, H), 720, 72, 900, 100); }
 // the BOTS tile: the next slot right of START, MCC's own gap (5) and START's size
 inline ui_rect bots_tile_rect(float W, float H, bool ff = false) {
     return ff ? ui_at(mcc_content(W, H), 1376, 158, 1611, 316) : ui_at(mcc_content(W, H), 1216, 158, 1451, 316);

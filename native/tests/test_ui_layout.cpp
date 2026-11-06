@@ -73,6 +73,10 @@ int main() {
         check(ui_inside(ft, W, H) && !ui_overlap(ft, frow) && !ui_overlap(ft, fs), "Firefight tile off screen or on MCC's", W, H);
         check(near(ft.y0, fs.y0, 0.5f) && near(ft.x1 - ft.x0, fs.x1 - fs.x0, 0.5f) && ft.x0 > fs.x1, "Firefight tile anchor", W, H);
         check(mcc_probe_x(W, H, 1, true) + 6 <= W && mcc_probe_x(W, H, 0, true) >= 6, "Firefight probe", W, H);
+        // the Firefight title probe: on screen, past "POSTGAME CARNAGE" (to x 686 of the page), above the tiles
+        ui_rect tp = mcc_ff_title_probe(W, H);
+        check(ui_inside(tp, W, H) && tp.x0 >= c.x0 + 700 * c.s && tp.y1 < fs.y0 && tp.x1 > tp.x0 + 20,
+              "Firefight title probe off screen, on the post-game title or on the tiles", W, H);
     }
     if (fails) { printf("%d failures\n", fails); return 1; }
     printf("ui layout OK\n");

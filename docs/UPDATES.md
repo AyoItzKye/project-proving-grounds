@@ -5,6 +5,17 @@ What changed in each version. Download the newest one from the [Releases page](h
 Click a version to see what changed since the one before it.
 
 <details open>
+<summary><b>0.2.2 s180</b> (November 6, 2026): Firefight bots respawn, Installation 04</summary>
+
+### Fixed
+- **Firefight** ([#12](https://github.com/AyoItzKye/project-proving-grounds/issues/12)):
+  - Bots now respawn when they die, the same way you do: after the same wait, at the same spawn point, and each respawn uses one of your team's shared lives. When the team runs out of lives, they stay down, just like you.
+  - Bots now join on Installation 04 too.
+  - The BOTS tile no longer covers the last stat on the Firefight post-game screen.
+
+</details>
+
+<details>
 <summary><b>0.2.2 s179</b> (November 6, 2026): Halo 3 trip mines, Firefight teammates that fight like teammates</summary>
 
 ### Fixed

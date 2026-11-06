@@ -127,7 +127,19 @@ static bool frame_pixel(const uint8_t* p, DXGI_FORMAT f) {
     return b > 55 && b > r + 25 && g > r + 15;
 }
 
+static bool white_pixel(const uint8_t* p, DXGI_FORMAT f) {   // (MCC's title letters)
+    int r, g, b;
+    if (f == DXGI_FORMAT_B8G8R8A8_UNORM || f == DXGI_FORMAT_B8G8R8A8_UNORM_SRGB) { b = p[0]; g = p[1]; r = p[2]; }
+    else if (f == DXGI_FORMAT_R10G10B10A2_UNORM) {
+        uint32_t v = *(const uint32_t*)p; r = (v & 1023) >> 2; g = ((v >> 10) & 1023) >> 2; b = ((v >> 20) & 1023) >> 2;
+    } else { r = p[0]; g = p[1]; b = p[2]; }
+    return r > 200 && g > 200 && b > 200;
+}
+
 static UINT g_probe_rows0, g_probe_rows1, g_probe_solid0, g_probe_solid1;
+static ID3D11Texture2D* g_title;
+static UINT g_title_w, g_title_h;
+static DXGI_FORMAT g_title_fmt;
 static LONG g_probe_ff_logged = -1;
 static void probe_lobby(IDXGISwapChain* sc) {
     ID3D11Texture2D* back = nullptr;
@@ -173,11 +185,38 @@ static void probe_lobby(IDXGISwapChain* sc) {
         // (its video behind the tiles; "a line only" made the tile blink there, s175-s176)
         ok = rows > h * 7 / 10 && solid < h * 6 / 10;
     }
+    // Firefight's post-game report has the lobby's tile row (map, time, waves, difficulty, skull combo, and a 6th, TIME
+    // MULTIPLIER, under the BOTS tile till s179) and opens no file on Back: its title tells them apart (ui_layout.h)
+    UINT title = 0;
+    if (ok && g_ff_lobby) {
+        ui_rect tb = mcc_ff_title_probe(W, H);
+        UINT tl = (UINT)tb.x0, tt = (UINT)tb.y0, tw = (UINT)(tb.x1 - tb.x0), th = (UINT)(tb.y1 - tb.y0);
+        if (!g_title || g_title_w != tw || g_title_h != th || g_title_fmt != bd.Format) {
+            if (g_title) g_title->Release();
+            D3D11_TEXTURE2D_DESC sd{};
+            sd.Width = tw; sd.Height = th; sd.MipLevels = 1; sd.ArraySize = 1; sd.Format = bd.Format;
+            sd.SampleDesc.Count = 1; sd.Usage = D3D11_USAGE_STAGING; sd.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+            g_title = nullptr;
+            g_dev->CreateTexture2D(&sd, nullptr, &g_title);
+            g_title_w = tw; g_title_h = th; g_title_fmt = bd.Format;
+        }
+        D3D11_MAPPED_SUBRESOURCE m;
+        D3D11_BOX box{tl, tt, 0, tl + tw, tt + th, 1};
+        if (g_title && tl + tw <= bd.Width && tt + th <= bd.Height) {
+            g_ctx->CopySubresourceRegion(g_title, 0, 0, 0, 0, back, 0, &box);
+            if (SUCCEEDED(g_ctx->Map(g_title, 0, D3D11_MAP_READ, 0, &m))) {
+                for (UINT y = 0; y < th; y++)
+                    for (UINT x = 0; x < tw; x++) title += white_pixel((const uint8_t*)m.pData + y * m.RowPitch + x * 4, bd.Format);
+                g_ctx->Unmap(g_title, 0);
+            }
+        }
+        ok = title * 100 > tw * th * 3;                   // (letters: 9.6% of the box in the lobby, 0 after a match)
+    }
     back->Release();
     if (ok != g_lobby_visible || g_ff_lobby != g_probe_ff_logged) {      // (evidence: which row was read, what it found)
-        logf("lobby probe: %s lobby, %ux%u, OPTIONS %u (%u solid) START %u (%u solid) of %u rows -> %s",
+        logf("lobby probe: %s lobby, %ux%u, OPTIONS %u (%u solid) START %u (%u solid) of %u rows, title %u -> %s",
              g_ff_lobby ? "Firefight" : "custom game", bd.Width, bd.Height, g_probe_rows0, g_probe_solid0, g_probe_rows1,
-             g_probe_solid1, h, ok ? "on screen" : "not seen");
+             g_probe_solid1, h, title, ok ? "on screen" : "not seen");
         g_probe_ff_logged = g_ff_lobby;
     }
     g_lobby_visible = ok;
