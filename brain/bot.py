@@ -318,6 +318,7 @@ AIR_PULL_S, AIR_RUN_FLOOR = 1.2, 1.5
 BOMB_ROOM_R = 4.0     # u: an enemy known this near an objective room is in it (Bot.bomb_room; Spire's two are 7.6 u apart)
 AIR_CEIL = 3.0       # u: off a run, floors this far over an aircraft still count as ones to climb over (Bot.air_guard)
 AIR_VTOL_CLIMB = 3.0  # u/s: a Falcon's / Hornet's climb on its vertical input (trace 20261105-201917: 3.0-3.2 u/s up)
+AIR_ARRIVE_R = 10.0  # u: an aircraft this near where it goes (flat, on its level) is there (drive: it sets down, gets out)
 AIR_ROOF_M = 2.5     # u: an aircraft's middle stays this far under the map's roof (Terrain.air_roof; Bot.air_roof_guard)
 # (in Reach that right button is the Banshee's boost, not a weapon: his speed held 8.8 u/s, not held 4.3, every hold of
 # 1 s or more faster; logs/tmp/owner_rmb_speed.py.) Reach's fuel rod is cycled to like a secondary: 10 shots from 10-31
@@ -788,13 +789,24 @@ class Bot:
         from . import invasion
         return any(dist(q, c) < 0.5 for c in invasion.climbs_for((s.map or {}).get("name")))
 
-    @staticmethod
-    def climb_passed(me, q):
-        """A way up is passed once on it (1 u, the nav takes it from there) or gone up it (3 u over its start). Not 5 u
-        short of it, nor once the bot is nearer the core than its start (the core 37 u up, the whole foot of the spire is
-        nearer): both dropped every cannon before its pad (replayed on live Spire 20261106-225937: 437 of 1072 picks
-        dropped at once), and the bots walked past cannon 3 to the lift."""
-        return (me.pos - q).flat() < 1.0 or me.pos.z > q.z + 3.0
+    CLIMB_PAD_WAIT = 2.5   # s: on a way up's start this long without going up, it is given up (a cannon not spawned yet)
+
+    def climb_passed(s, me, q):
+        """A way up is passed once gone up it (3 u over its start), or after CLIMB_PAD_WAIT s standing on it (1 u) without
+        going up. Not 5 u short of it, nor once the bot is nearer the core than its start (the core 37 u up, the whole foot
+        of the spire is nearer): both dropped every cannon before its pad (replayed on live Spire 20261106-225937: 437 of
+        1072 picks dropped at once). Nor on reaching it: passed at 1 u, the bots turned for a lift before the cannon took
+        them (live Spire 20261107-015605: 6 bots on a pad, 1 launched)."""
+        if me.pos.z > q.z + 3.0:
+            return True
+        now = getattr(s, "now", 0.0)
+        if (me.pos - q).flat() < 1.0:
+            on = getattr(s, "climb_on", None)
+            if on is None or (on[0] - q).length() > 0.5:
+                s.climb_on = on = (q, now)
+            return now - on[1] > s.CLIMB_PAD_WAIT
+        s.climb_on = None
+        return False
 
     def lead(s, me, snap):
         """Who an escort goes with: our carrier (a person too), else the runner the director named (Order.target)."""
@@ -3194,7 +3206,11 @@ class Bot:
         # 2.5 u under gate 3 for 30 s and more, never out)
         race_out = snap.mode == "race" and s.game != "reach" and (getattr(s, "ground_end", False) or (
             target.z - me.pos.z > 1.5 and (target - me.pos).flat() < 6.0))
-        arrived = ((dist(me.pos, target) < 6 and snap.mode != "race") or end or race_out) and s.order.role != "ferry"
+        # (an aircraft sets down where there is room: within AIR_ARRIVE_R of where it goes and on its level. Spire's core
+        # stands amid the top's structures, the Falcon landed 7-8 u off it, 6 u read as not there, and it circled the top
+        # 140 s between the roof and the structures; live 20261107-015605)
+        near = dist(me.pos, target) < 6 or (air and (me.pos - target).flat() < AIR_ARRIVE_R and abs(me.pos.z - target.z) < 4.0)
+        arrived = ((near and snap.mode != "race") or end or race_out) and s.order.role != "ferry"
         s.ground_end = False
         # (a runner at the wheel gets out at their flag, whatever it boarded as: live Avalanche 070402, runners took a
         # Mongoose, Warthog or Wraith as the team's crew, then drove 1-3 u under the flag platform, 4 u below it, for

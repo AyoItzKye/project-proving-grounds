@@ -102,8 +102,16 @@ def main():
     near = ps(2, Vec(c3.x + 3.0, c3.y, c3.z))          # 3 u off it, nearer the core than its start
     if rb.objective_point(near) != c3:
         fails.append("a cannon via dropped 3 u short of the pad")
-    if rb.objective_point(ps(2, Vec(c3.x + 0.5, c3.y, c3.z))) != CORE:
-        fails.append("a cannon via not passed on its pad")
+    rb.now = 10.0                                       # on the pad: held there for the launch, given up after 2.5 s
+    pad = ps(2, Vec(c3.x + 0.5, c3.y, c3.z))
+    if rb.objective_point(pad) != c3:
+        fails.append("a cannon via dropped on reaching its pad (turned away before the launch)")
+    rb.now = 11.5
+    if rb.objective_point(pad) != c3:
+        fails.append("a cannon via dropped after 1.5 s on its pad")
+    rb.now = 13.0
+    if rb.objective_point(pad) != CORE:
+        fails.append("a cannon via kept 3 s on a pad that never launched")
     rb.via_left = [c3]
     if rb.objective_point(ps(2, Vec(c3.x + 6.0, c3.y, c3.z + 8.0))) != CORE:
         fails.append("a cannon via not passed once launched")

@@ -7,7 +7,14 @@ Click a version to see what changed since the one before it.
 <details open>
 <summary><b>0.2.2 s181</b> (November 6, 2026): call bots into your vehicle, a smarter Spire attack and Banshee, careful grenades, Flood survivors that use their shotguns</summary>
 
-s181 was updated four times, on November 6 and 7. Everything new and fixed since 0.2.2 s180 is below, the newest first.
+s181 was updated five times, on November 6 and 7. Everything new and fixed since 0.2.2 s180 is below, the newest first.
+
+<!-- build: 20261107-0230 -->
+#### Fifth update (November 7, early)
+
+**Fixed**
+- **Halo: Reach Invasion, Spire**: a bot sent to a man cannon now stays on its pad until it launches, instead of turning for a grav lift the moment it got there.
+- **Aircraft landing**: a bot flying to the objective sets down where there is room near it (within about 10 units) and gets out, instead of circling over Spire's top.
 
 <!-- build: 20261107-0100 -->
 #### Fourth update (November 7)
