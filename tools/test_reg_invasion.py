@@ -7,7 +7,7 @@ logs/tmp/invasion_regress/traces and logs/bug_reports). Every check passes on th
               alone on phase 1's south territory fighting Spartan 5 4.6 u off stays in the box; B13 from 2.8 u off it
               fights its way in
  2 melee      no carrier melee with the core (test_core_melee): B12 527.13 s, bot 5 carrying, Elite 11 at arm's length
- 3 spire      the core is gone for up the spire: the owner's Spire 20261105-201917 phase 3 (0.2.1), the attackers' spots
+ 3 spire      the core is gone for up the spire: the Spire trace 20261105-201917 phase 3 (0.2.1), the attackers' spots
               under and round the spire: the nav way from each ends ON the core 35 u up (0.2.1's 4-level heightmap had
               no floor at the core's stand, every way ended under it); no Warthog for it (test_trip_ok, S7 060020)
  4 routes     the walkway, plank and run-up fixes: the plank route's end on the -6 walkway (B14 61.2 s, test_route_end),
@@ -100,7 +100,7 @@ def spire():
     o = oob.Oob(SPIRE_V)
     o.set_phase(T, 3)
     core = Vec(-178.24, -405.33, -22.9)                       # the world rows' core, 264.4 s on
-    # the level's own floor under the core (the heightmap, no people's walks: the owner's PC had none up there):
+    # the level's own floor under the core (the heightmap, no people's walks: the test PC had none up there):
     # 0.2.1's kept the lowest 4 levels, -62.6 / -58.8 / -57.0 / -55.9 inside the spire, and lost the stand's -23.4
     import numpy as np
     hm = np.load(os.path.join(HERE, "..", "maps", "reach_35_island", "heightmap.npz"))

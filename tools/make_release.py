@@ -114,7 +114,12 @@ PRIVATE = {
 # an Xbox user id (0x0009 and 12 hex digits, any suffix): only the made-up ones the tests use pass
 XBOX_ID = r"(?i)(?<![0-9a-f.])(?:0x)?(0009[0-9a-f]{12})(?![0-9a-f])"     # (not digits after a decimal point)
 MADE_UP_IDS = {"0009000012345678", "0009deadbeef0001"}
-QUOTES = r"(?i)\bowner\b"        # development quotes still in comments (counted, removed in the comment pass)
+# a development note naming the person who tests the mod (a quote of theirs, their game, a dated credit): stops the
+# build; game ownership in code (a zone's owner team, a mine's owner handle, a dialog's owner window) is not one
+_O = "own" + "er"                                                     # (split: this file never matches itself)
+_DATED = r"(?:issue|oct|nov|live)\b"
+OWNER = (rf"(?i)\bthe {_O}\b|(?<!its ){_O}'s\b|\({_O}(?:\)|[,:]\s*(?:{_DATED}|\"))|\b{_O}(?::\s*\"|,\s*{_DATED}| \+)|"
+         rf"\b{_O} \({_DATED}|\"{_O}\"\s*:|found_by=\"{_O}\"")
 TEXT = (".py", ".cpp", ".h", ".c", ".md", ".txt", ".json", ".bat", ".html", ".js", ".css", ".java", ".ini", ".cfg",
         ".toml", ".yml", ".yaml", ".gitignore")
 
@@ -190,13 +195,13 @@ def load_terms(path=None):
 
 
 def scan_text(text, terms=()):
-    """{kind: count} of private data in one file's text (terms: personal terms), and the count of development quotes."""
+    """{kind: count} of private data in one file's text (terms: personal terms), and the count of notes on the tester."""
     found = {k: len(re.findall(p, text)) for k, p in PRIVATE.items()}
     # (a GitHub account in a link, the project's own pages, is public by nature: not counted as a personal term)
     bare = re.sub(r"(?i)github\.com/[\w-]+", "github.com/", text)
     found["personal term"] = sum(len(re.findall(re.escape(t), bare, re.I)) for t in terms)
     found["Xbox id"] = sum(1 for m in re.findall(XBOX_ID, text) if m.lower() not in MADE_UP_IDS)
-    return {k: n for k, n in found.items() if n}, len(re.findall(QUOTES, text))
+    return {k: n for k, n in found.items() if n}, len(re.findall(OWNER, text))
 
 
 def scan(folder, terms=None):
@@ -216,6 +221,8 @@ def scan(folder, terms=None):
             found, q = scan_text(text, terms)
             if "third_party" in p:               # (other projects' credits name their authors' public e-mails)
                 found.pop("e-mail", None)
+            elif q:
+                found["note on the tester"] = q
             quotes += q
             if found:
                 problems.append((os.path.relpath(p, folder), found))
@@ -304,7 +311,7 @@ def missing_imports(out):
 
 def report(folder):
     problems, quotes, n = scan(folder)
-    print(f"privacy scan: {n} text files, {len(problems)} with private data, {quotes} development quotes left")
+    print(f"privacy scan: {n} text files, {len(problems)} with private data, {quotes} notes on the tester")
     for f, found in problems[:40]:
         print(f"  {f}: " + ", ".join(f"{k} x{c}" for k, c in found.items()))
     return not problems

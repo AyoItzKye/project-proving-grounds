@@ -1,5 +1,5 @@
 """The Nov 7 pass: the collaborator's fork ported (a sniper kept while it has a shot, magazines learned in fights, the
-animated head as the aim point), the DMR over the AR (Reach, Halo 4), the owner's Spire flags (the blitz keeps the climb
+animated head as the aim point), the DMR over the AR (Reach, Halo 4), the Spire run's flags (the blitz keeps the climb
 spread and the vehicle calls, a climb kept to its pad, a pilot's wait not read as stuck, a pilot waiting for a person,
 a Falcon onto the spire top from outside), Halo 4's Mantis (read as a vehicle, rockets, the stomp) and the bot adds that
 a paused game swallowed (botctl.idle, play.add_bot).

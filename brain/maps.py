@@ -199,7 +199,7 @@ LAUNCH_RISE = 10.0   # u: a link rising this much is a launch (no jump gets a pe
 PAD_TRIGGER = 1.2    # u: a ride people started this near a launch's marker starts at its trigger
 # a climb of LIFT_RISE+ from within LIFT_COLUMN of a gravity lift's base (Bot.lift_near's radius) is the lift's ride, one
 # way, however low: Blood Cavern's back lift rises 2.8 u, read as a jump back down, and the nav sent bots into its top,
-# where it pushes up (owner's flag, Nov 6 16:50: bots kept trying to enter its exit end); Lockout's and Ivory Tower's low
+# where it pushes up (flagged Nov 6 16:50: bots kept trying to enter its exit end); Lockout's and Ivory Tower's low
 # lifts the same
 LIFT_RISE, LIFT_COLUMN = 2.0, 2.0
 
@@ -381,13 +381,13 @@ def _build(m, window):
     paint = pdata.get("layers", {})
     # jumps the player drew on the painter's view (tools/paint.py "jumps"): people's jumps, one way, never
     # filtered
-    painted = [dict(take_off=list(j[:3]), land=list(j[3:6]), kind="jump", painted=1, human=1, found_by="owner")
+    painted = [dict(take_off=list(j[:3]), land=list(j[3:6]), kind="jump", painted=1, human=1, found_by="person")
                for j in pdata.get("jumps", []) if len(j) == 6]
-    # drops the player showed onto something that breaks the fall (maps/<map>/drops.json; Spire's heat vents): his
-    # too, with a run-up (soft: onto a vent)
+    # drops the player showed onto something that breaks the fall (maps/<map>/drops.json; Spire's heat vents):
+    # people's too, with a run-up (soft: onto a vent)
     for nm in names:
         df = os.path.join(ROOT, nm, "drops.json")
-        painted += [dict(k, kind="jump", painted=1, human=1, found_by="owner", soft=1)
+        painted += [dict(k, kind="jump", painted=1, human=1, found_by="person", soft=1)
                     for k in (read_json(df).get("drops", []) if os.path.exists(df) else [])]
     floor = list(floor) + [tuple(c) for c in paint.get("walk", [])]
     from .placed import static_boxes             # placed crates, walls, rocks the level mesh lacks (brain/placed.py); a

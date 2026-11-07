@@ -53,7 +53,7 @@ def main():
     if not fwd or sum(fwd) / len(fwd) < 0.6 or sum(strafe) / len(strafe) > 0.3:
         fails.append(f"sword rush: forward {sum(fwd) / max(len(fwd), 1):.2f}, strafe {sum(strafe) / max(len(strafe), 1):.2f}")
     # in reach: lunge the moment the reticle is red (bot.red_reticle: the sword's 6 deg cone plus his body), by where it
-    # looks, not the aim plan's crosshair; not 0.35 rad off (a swing at the air: owner, issue #3), not behind
+    # looks, not the aim plan's crosshair; not 0.35 rad off (a swing at the air: issue #3), not behind
     def lunges(off, d, ticks=3):
         lb = Bot(5, 0, make_profile("top", "rusher", random.Random(5)), m, random.Random(5))
         lb.game = "h3"

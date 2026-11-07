@@ -1,7 +1,7 @@
-"""Vehicle regression checks, built from the owner's Spire Invasion of Nov 5 (install 0.2.1 = 4031edb, trace
-reach_35_island_20261105-201917; his flags at 322-348 s: "they dont touch the fucking banshee at all", "the falcon
-asshole is still flying to the soft kill top of the fucking map and not trying to pick up any teammates", "teammates
-still fucking ignore my empty gun on my warthog", "the flying bots no longer use object detection"). One assert-based
+"""Vehicle regression checks, built from a Spire Invasion playtest of Nov 5 (install 0.2.1 = 4031edb, trace
+reach_35_island_20261105-201917; flags at 322-348 s: the bots never touched the Banshee, the Falcon pilot still flew
+to the soft kill top of the map without picking up teammates, teammates still ignored the empty gun on the player's
+Warthog, the flying bots no longer used object detection). One assert-based
 check per behavior; each failed on the code before its fix (fix-vehicles branch):
 
 1. banshee_taken: an empty Banshee 1 u from an attacker on his objective job is taken (director.crew_orders, busy pool;
@@ -85,7 +85,7 @@ def banshee_taken():
 
 
 def person_gun():
-    # 142.6 s: the owner (id 0) at the wheel of his Warthog, #7 a defender 6 u off (post 56 u away), #5 22 u off
+    # 142.6 s: the player (id 0) at the wheel of a Warthog, #7 a defender 6 u off (post 56 u away), #5 22 u off
     H = 3890610684
     hog = (-152.2, -350.7, -55.4)
     bots = {i: bot(i) for i in (5, 7)}
@@ -101,7 +101,7 @@ def person_gun():
                     inv_attackers=1)
     d.rider_calls(142.6, snap, list(bots.values()), {b.id: snap.player(b.id) for b in bots.values()})
     assert (bots[7].order.role, bots[7].order.target) == ("ride", H), \
-        f"the defender 6 u from the owner's empty gun: {bots[7].order.role} (want ride)"
+        f"the defender 6 u from the player's empty gun: {bots[7].order.role} (want ride)"
     assert bots[5].order.role == "defender", "a defender 22 u off was called (CALL_R 12)"
 
 

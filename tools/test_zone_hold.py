@@ -74,7 +74,7 @@ def run(seed, attacking=True, role="defender", start=None, dash=False, inertia=F
 
 def on_the_way(seed):
     """An attacker on the clock 18 u from its territory, a man 14 u off on the other side shooting at it: it shoots him
-    on its way in (the owner's Spire 20261105-233940 at 297.9 s: attackers stopped to fight 15-30 u off their territory).
+    on its way in (the Spire trace 20261105-233940 at 297.9 s: attackers stopped to fight 15-30 u off their territory).
     (distance to the zone at the start, at the end, share of fight ticks with the view on him)"""
     m = get_map(M)
     L = invasion.layout(m["objects"])

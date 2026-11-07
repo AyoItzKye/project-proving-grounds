@@ -1981,7 +1981,7 @@ class Roomba:
         if s.phase == "run":                       # jump on the spot: within a tick's travel, or passing it
             d = math.dist(pos[:2], to[:2])
             # past the take-off along the run-up line (run -> to), not along the jump: a jump that turns from its run-up
-            # (the owner's Construct jump from (0.51, -3.84, 11.82): run-up north, landing south-east) read "passed" at the
+            # (a recorded Construct jump from (0.51, -3.84, 11.82): run-up north, landing south-east) read "passed" at the
             # run-up itself and the bot went run-up, run, run-up ... standing still, 290 bot-seconds live
             passed = (to[0] - pos[0]) * (to[0] - run[0]) + (to[1] - pos[1]) * (to[1] - run[1]) <= 0
             jump = d < 0.6 * (rec.phys.run if rec.phys else 2.25) / HZ or (d < 0.3 and passed)

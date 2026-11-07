@@ -660,7 +660,7 @@ static void f_update(h4f_game& G, uint8_t* actions) {
             // and the match's own clock near zero (player +0xA94 H2A, +0xA8C Halo 4, 60 a second: brain/live.py LiveH4F
             // MATCH), so a pause or a stall later in a match never holds a tick. Halo 4 too: Flood picks its first round's
             // Flood from the players there at the start; the bots joined 0.3-8 s later, so the first round had none and
-            // the game ended it at once (the owner's three Flood games, Nov 4: all 16 removed at full health ~14.7 s,
+            // the game ended it at once (three Flood games, Nov 4: all 16 removed at full health ~14.7 s,
             // no Flood all round 1, two in round 2)
             int clock = f_player(tls, 0) ? *(int32_t*)(f_player(tls, 0) + (G.id == 6 ? 0xA94 : 0xA8C)) : -1;
             bool hold = g_prejoin && g_shm->bots_enabled && clock >= 0 && clock < 60 && !f_any_bot(tls);

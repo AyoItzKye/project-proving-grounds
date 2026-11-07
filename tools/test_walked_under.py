@@ -1,5 +1,5 @@
-"""People's walks under a lone floor win (brain/terrain.py walked_under). The owner's report 20261105-161417 (live
-Boneyard B28, 436.8 s): "Elites keep getting stuck on this stair case". The level data had a flat -9.0 slab over
+"""People's walks under a lone floor win (brain/terrain.py walked_under). The report 20261105-161417 (live
+Boneyard B28, 436.8 s): Elites kept getting stuck on this staircase. The level data had a flat -9.0 slab over
 x 254.5-255.5, y 54-55.5 where people (and every bot) stood at -10.0: the nav put bots on the slab and sent them up a
 route into the stair's side (spells 9-22 s at (253.3-255.6, 53.3-54.8), B27 / B28).
 

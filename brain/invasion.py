@@ -59,8 +59,8 @@ def layout(objs, shapes=None, styles=None):
     # a map variant read from its file (brain/mvar.py) gives each object's spawn sequence as "phase": on Bungie's own
     # Boneyard and Breakpoint files inv_objective 1, 2, 3 are the phase 1 and 2 territories and the delivery point,
     # inv_obj_flag 3 the core's stand, 2 Breakpoint's bomb (DERIVED, haloreach/map_variants). Respawn zones: inv_res_zone
-    # by team and sequence where the map has them so (the issue #2 player: "I only use Inv_res_zone on the hills because
-    # Inv_Res_ph1 to 3 don't work in customs") when it has no inv_res_p1..p3 (Boneyard has both: its p1..p3 hold)
+    # by team and sequence where the map has them so (issue #2: custom maps use Inv_res_zone alone, as Inv_Res_ph1 to 3
+    # do not work in customs) when it has no inv_res_p1..p3 (Boneyard has both: its p1..p3 hold)
     zoned = [] if any(of(f"inv_res_p{ph}") for ph in (1, 2, 3)) else [
         f for f in of("inv_res_zone") if f.get("phase") in (1, 2, 3) and f["team"] in (0, 1)]
     for ph in (1, 2, 3):
@@ -134,16 +134,16 @@ def layout(objs, shapes=None, styles=None):
         kind = "one_way" if one_way else ("gate" if f["type"] in ("inv_gates", "inv_platform") else "solid")
         bars.append(dict(key=f"inv{k}", a=a, b=b, z0=p.z + z0, z1=p.z + z1, kind=kind, name=name, pos=p,
                          through=Vec(-fx, -fy, 0.0) if one_way else None))
-    # the phase's man cannons: an inv_mancannon spawns in its sequence's phase (Spire's three: 3, the owner's Nov 6 run:
+    # the phase's man cannons: an inv_mancannon spawns in its sequence's phase (Spire's three: 3, a Nov 6 playtest:
     # phase 3 only); phase_link_gates closes the people's links off them before then
     launchers = [(_v(f["pos"]), f.get("phase", f.get("seq"))) for f in flags if f.get("type") == "inv_mancannon"]
     return dict(attackers=att, defenders=dfn, phases=phases, core=stand, res=res, barriers=bars, zone_r=zone_r,
                 bomb=bomb, bomb_phase=(bp if staged else 2) if bomb is not None else None, launchers=launchers)
 
 
-# the ways up to a phase 3 core on high (the owner's Spire tour, Nov 6 19:11-19:38: he found the attackers all
-# funnelling into one way up; 12 of 16 climbs went by lift 2): where each starts
-# (his places), the attackers' runners spread over them (director.assign_roles: the via of a runner)
+# the ways up to a phase 3 core on high (a Spire playtest, Nov 6 19:11-19:38: the attackers all funnelled
+# into one way up; 12 of 16 climbs went by lift 2): where each starts
+# (the playtest's places), the attackers' runners spread over them (director.assign_roles: the via of a runner)
 CLIMBS = {"reach_35_island": [(-172.15, -401.02, -62.49), (-177.67, -400.60, -62.38), (-142.14, -391.64, -53.68),
                               (-161.15, -381.07, -57.29), (-191.63, -389.23, -57.24)]}   # lift 2, lift 1, cannons 1-3
 CLIMB_UP = 15.0           # u: a core this high over a climb's start is taken by one of them
@@ -154,7 +154,7 @@ def climbs_for(map_name):
     return [Vec(*p) for p in CLIMBS.get((map_name or "").split("/")[0].split("@")[0], ())]
 
 
-# rides whose landing a phase changes (the owner's Spire run Nov 6: in phase 2 every spire grav lift lands
+# rides whose landing a phase changes (a Spire playtest Nov 6: in phase 2 every spire grav lift lands
 # on the lower building's roof, (-173.8, -399.3, -55.9); in phase 3 to the spire's top): {base map: [(take-off
 # x, y, within u, landing over z, from phase)]}: a people's link off that lift landing over that height is closed before
 LIFT_PHASES = {"reach_35_island": [(-177.67, -400.60, 3.0, -40.0, 3), (-172.15, -401.02, 3.0, -40.0, 3)]}

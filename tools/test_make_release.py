@@ -73,6 +73,23 @@ def main():
         open(os.path.join(tmp, "tools", "map_features.py"), "w").write("def g():\n    import reach_export\n")
         if R.missing_imports(tmp):
             fails.append(f"3. false alarm: {R.missing_imports(tmp)}")
+        # 4. a note on the tester (a quote, their game, a dated credit) stops the scan; game ownership in code does
+        # not ("own" + "er": this file is in the release and must pass the scan itself)
+        o = "own" + "er"
+        notes = (f'# (the {o}, Nov 6: "have them follow the player")', f"# the {o}'s Spire tour", f"# ({o}, issue #3)",
+                 f'{{"{o}": "31 kills"}}', f'found_by="{o}"', f"# {o} + 4 Normal", f"# Easy ({o})",
+                 f"# {o}'s Blood Cavern Flood 20261105", f'# 1.5 u climbed ({o}: "not allowing")', f"# ({o}, Nov 4)")
+        code = ("def one_flag_" + o + "(flag):", "s." + o + "[k] = t", "uint64_t " + o + "_id = 0;",
+                "ImGui::SetKey" + o.title() + "(k, id);", "a zone's " + o + " team", "# the person's weapon pickups",
+                f"s.{o}, s.held = {{}}, {{}}", f"call(dlg, 3, wt.HWND({o} or None))", f"for k, (tag_ix, {o}, pos) in x:",
+                f"# its {o}'s player handle at +0xBC", f"team_of.get({o} & 0xFFFF, -1)", f"b.raw(32)  # ({o} / share ids)")
+        for i, text in enumerate(notes + code):
+            open(os.path.join(tmp, "brain", f"n{i}.py"), "w").write(text + "\n")
+        flagged = {os.path.basename(f) for f, found in R.scan(tmp, [])[0] if "note on the tester" in found}
+        want_flag = {f"n{i}.py" for i in range(len(notes))}
+        if flagged != want_flag:
+            fails.append(f"4. notes on the tester: missed {sorted(want_flag - flagged)}, "
+                         f"false alarms {sorted(flagged - want_flag)}")
     if fails:
         print("FAIL")
         for f in fails:

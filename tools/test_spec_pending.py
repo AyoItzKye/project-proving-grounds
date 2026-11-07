@@ -1,6 +1,6 @@
-"""SPEC CHANGES AWAITING THE OWNER (Code Master TS-18: a changed test is a spec change, in its own commit with its
+"""SPEC CHANGES AWAITING REVIEW (Code Master TS-18: a changed test is a spec change, in its own commit with its
 reason, reviewed). Two expectations changed in ffbfb4d together with the behaviour, not in their own commit; they live
-here, apart from the suites they came from, until the player answers keep or revert.
+here, apart from the suites they came from, until a review answers keep or revert.
 
 1. An SMG at 8 units (Medium band), from test_brain_tactics 8.
    Before ffbfb4d: taps, the trigger held at most 2 ticks ("at Medium it still taps").
@@ -65,7 +65,7 @@ def main():
             fails.append(f"shotgun at {d} units: fired = {not want}")
     if fails:
         sys.exit("FAIL: " + "; ".join(fails))
-    print("spec pending OK (2 expectations await the owner)")
+    print("spec pending OK (2 expectations await review)")
 
 
 if __name__ == "__main__":

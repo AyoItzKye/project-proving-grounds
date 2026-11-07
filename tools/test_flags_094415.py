@@ -59,7 +59,7 @@ def main():
     # 2. the shotgun up close
     gaps = [b.fire_gap("shotgun", 2.0) for _ in range(20)]
     if max(gaps) > 0.25:
-        fails.append(f"shotgun at 2 u: gaps up to {max(gaps):.2f} s (want 0.2-0.24, the owner's cadence)")
+        fails.append(f"shotgun at 2 u: gaps up to {max(gaps):.2f} s (want 0.2-0.24, the playtest cadence)")
     # 3. a Falcon calls a runner 25 u off; a Warthog does not
     for kind, seats, want in (("falcon", 3, True), ("warthog", 3, False)):
         drv = Bot(10, 0, make_profile("top", "rusher", random.Random(2)), M, random.Random(2))

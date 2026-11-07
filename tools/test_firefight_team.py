@@ -1,6 +1,6 @@
-"""Firefight teammates (the owner, Nov 6: "have them follow the player around, if player dies have them roam or find a
-safe spot"): with the player alive every bot escorts him; with him down they hold the map's two safe spots nearest where
-he fell (its holds and named points), split between them, not the open middle.
+"""Firefight teammates (Nov 6): they follow the player around; if the player dies they roam or find a safe spot. With
+the player alive every bot escorts the player; with the player down they hold the map's two safe spots nearest where
+the player fell (its holds and named points), split between them, not the open middle.
 
 usage: python -I tools/test_firefight_team.py      -> "firefight team OK"
 """

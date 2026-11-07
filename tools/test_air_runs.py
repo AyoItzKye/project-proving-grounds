@@ -85,7 +85,7 @@ def main():
                                                             occupied=True, riders=1, team=0)]))
     if any("pull up" in n for n in b.notes):
         fails.append(f"under Exile's ship heading over the low ground: {b.notes} (want no pull-up)")
-    # 6. Spire (the owner's Forge run, Nov 6: vehicles.AIR_ENVELOPE): his ceiling, and the bomb runs into Invasion phase
+    # 6. Spire (a Forge run, Nov 6: vehicles.AIR_ENVELOPE): its ceiling, and the bomb runs into Invasion phase
     # 2's objective rooms, attacking with nobody in them, defending only with enemies in them; flown, the passes go in
     # and the fuel rod (Reach's bomb) is let go
     from brain import vehicles
@@ -108,7 +108,7 @@ def main():
     b.air_roof_guard(me, a, Snapshot(60.0, [me], vehicles=[dict(handle=77, kind="banshee", pos=(-150.0, -400.0, -15.0),
                                                                  occupied=True, riders=1, team=0)]))
     if a.pitch > -0.3:
-        fails.append(f"over the owner's Spire ceiling (z -17.2) at -15: pitch {a.pitch} (want nose down)")
+        fails.append(f"over the Spire Forge run's ceiling (z -17.2) at -15: pitch {a.pitch} (want nose down)")
     bm = air_replay.fly(S, Vec(-150.0, -400.0, -44.0), math.pi, lambda t: [], 40.0, team=0, seed=2, snap_kw=inv)
     if bm["room"] < 200 or bm["rods"] < 1:
         fails.append(f"Spire phase 2 bomb runs, flown 40 s: {bm['room']} pass ticks, {bm['rods']} fuel rods (want 200+, 1+)")

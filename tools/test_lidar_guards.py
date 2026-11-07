@@ -105,7 +105,7 @@ def main():
         fails.append("7. a lift-throw fall spot still refuses a walker's step onto floor")
     if not rec2.near_fall(2.6, 8.6, 8.7):
         fails.append("7. the same spot no longer counts for the frontier / pocket filters")
-    # 6. the owner's Construct jump that turns from its run-up (live: bots stood at the run-up, run / run-up / run ...)
+    # 6. a playtest's Construct jump that turns from its run-up (live: bots stood at the run-up, run / run-up / run ...)
     lk = dict(kind="jump", take_off=[0.51, -3.84, 11.82], land=[2.73, -6.22, 6.41], runup=[0.33, -4.84, 11.82],
               found_by="human", human=1, bot_ok=0, bot_fail=0, path=[])
     rb6 = lidar.Roomba(4, random.Random(6))

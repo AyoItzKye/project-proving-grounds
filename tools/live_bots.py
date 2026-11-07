@@ -83,10 +83,10 @@ BOT_CROUCH = ("ce", "h3", "h4")
 
 
 def horn_call(now, players, vehicles, person, horn):
-    """{vehicle handle: bot id or None} the person's horn calls this tick (owner request Nov 6: aimed at a
-    bot, the horn calls him in): a press at the wheel (not a gun seat) picks the teammate bot on
-    foot nearest his view line within HORN_CONE and HORN_R (None: nobody there, director.honk_orders takes the nearest),
-    and the call holds HORN_HOLD s or until he leaves the wheel. horn: botctl.owner_horn (None: not decoded here)."""
+    """{vehicle handle: bot id or None} the person's horn calls this tick (requested Nov 6: aimed at a bot, the horn
+    calls it in): a press at the wheel (not a gun seat) picks the teammate bot on foot nearest the person's view line
+    within HORN_CONE and HORN_R (None: nobody there, director.honk_orders takes the nearest), and the call holds
+    HORN_HOLD s or until the person leaves the wheel. horn: botctl.owner_horn (None: not decoded here)."""
     p = next((q for q in players if q.id == person and q.alive), None)
     v = next((x for x in vehicles if p is not None and x["handle"] == p.vehicle), None)
     at_wheel = v is not None and not p.gunner_seat
@@ -1185,8 +1185,8 @@ def main():
                     last_items = now
                     item_check(live, directors, bots, snap, now)
                 # (no loadout asks in Infection / Flood: Halo 4 Flood took them, slots 3-4 handing survivors a DMR and a
-                # magnum where everyone else spawned with the shotgun, the owner's Ragnarok game: "why did this guy have a
-                # DMR?"; the game's own loadout, as a person who picks none)
+                # magnum where everyone else spawned with the shotgun, seen in a Ragnarok game as a survivor holding a
+                # DMR; the game's own loadout, as a person who picks none)
                 if palette and snap.mode == "infection":
                     for i, st in loadout_state.items():     # (asked before the mode was read: back to the game's own)
                         if st.get("asked") not in (None, 0) and botctl.set_loadout(m, i, 0, o.game):

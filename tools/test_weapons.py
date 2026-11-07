@@ -129,7 +129,7 @@ def main():
         if got != want:
             fails.append(f"{case}: {guns}, magazines {mag}: slot {got} (want {want})")
     # 3. up close the AR comes out of a precision rifle bot's pocket (Halo 3's BR; in Reach and Halo 4 the DMR stays in
-    #    hand at every range since the owner's Nov 7 rule, bot.DMR_OVER_AR, CMB-98); at range the rifle goes back in hand
+    #    hand at every range since the Nov 7 design rule, bot.DMR_OVER_AR, CMB-98); at range the rifle goes back in hand
     kit = Kit(["battle_rifle", "assault_rifle"])
     run("strong", kit, 2.0, 2.0, game="h3")
     if kit.weapons[kit.held] != "assault_rifle":

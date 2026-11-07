@@ -28,7 +28,7 @@ DIR = os.path.join(ROOT, "logs", "bug_reports")
 OBSERVER = "http://localhost:8799/"
 STAMP = re.compile(r"^\d{8}-\d{6}$")     # a single report botcore saved, not filed yet
 # where everyone was at each attach_new call (wall clock): a report takes the places nearest its own save, not the
-# filing tick's (a filing retried 3.7 s later stored the owner mid-flight from a man cannon, 22 u off; Forge run Nov 6)
+# filing tick's (a filing retried 3.7 s later stored the player mid-flight from a man cannon, 22 u off; Forge run Nov 6)
 _SEEN = []
 
 

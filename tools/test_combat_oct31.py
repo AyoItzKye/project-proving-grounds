@@ -72,7 +72,7 @@ def main():
     if fwd < 0.5 or n < 3:
         fails.append(f"sword at 1.5 u: forward {fwd:.2f}, {n} presses in 0.7 s (want forward 0.5+, 3+ presses)")
     if presses(fight(mk(), "sword", 1.75, 0.3), 2) < 1:
-        fails.append("Halo 3 sword, a man 1.75 u ahead: no press (the owner's kills from 1.2-2.0 u)")
+        fails.append("Halo 3 sword, a man 1.75 u ahead: no press (playtest kills from 1.2-2.0 u)")
     # Reach: the sword tag's autoaim range, 2.25 u (HREK energy_sword.weapon; the red reticle, issue #3)
     if presses(fight(mk(game="reach"), "sword", 2.1, 0.3), 2) < 1:
         fails.append("Reach sword, a man 2.1 u ahead: no press (its red reticle reaches 2.25 u)")

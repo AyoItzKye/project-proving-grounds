@@ -449,9 +449,9 @@ def main():
         got = plan_now(b, foes, seen, goal, hit, me_kw, **snap_kw)[4]
         if got != want:
             fails.append(f"{tier} {kind}, goal {goal[0]}: {got!r} (want {want!r})")
-    # ... a Halo 4 Flood survivor never raises the hardlight shield at a lunging Flood (it shoots him: the owner's Blood
-    #     Cavern Flood 20261105-225014, "using the hardlight shield more than shooting"); in Slayer a top bot still blocks
-    #     a sword lunge
+    # ... a Halo 4 Flood survivor never raises the hardlight shield at a lunging Flood (it shoots him: the Blood Cavern
+    #     Flood playtest 20261105-225014 used the hardlight shield more than it shot); in Slayer a top bot still
+    #     blocks a sword lunge
     lunger = foe(A + Vec(3.0, 0, 0), yaw=math.pi, weapon="sword")
     for snap_kw, want in ((dict(mode="infection", infected=1), None), ({}, "hardlight: block it")):
         b = bot("top", "h4", "hardlight_shield")
@@ -459,7 +459,7 @@ def main():
         got = plan_now(b, [lunger], (2,), ("fight", 2), False, {}, **snap_kw)[4]
         if got != want:
             fails.append(f"hardlight vs a sword lunge {snap_kw or 'slayer'}: {got!r} (want {want!r})")
-    # ... the owner's three cases (Nov 5): a short block when it cannot shoot back first: magazine empty (then a melee),
+    # ... the three design cases (Nov 5): a short block when it cannot shoot back first: magazine empty (then a melee),
     #     swarmed by two lunging Flood, or backed into a corner
     lunger2 = foe(A + Vec(2.5, 1.0, 0), i=3, yaw=math.pi, weapon="sword")
     for foes_, seen_, kw, want in (

@@ -75,8 +75,8 @@ def mode_of(game, live):
         if mode is None and game in ("h2a", "reach"):
             mode = (H2A_ICONS if game == "h2a" else REACH_ICONS).get(live.engine_icon())
         if mode is None and getattr(live, "zombie_seen", False):
-            mode = "infection"       # an infected-only gun in a hand (live.ZOMBIE_TAGS): Halo 4 Flood "read off as
-        return mode                  # Slayer" (owner, issue #3), whatever its variant is called
+            mode = "infection"       # an infected-only gun in a hand (live.ZOMBIE_TAGS): Halo 4 Flood read off as
+        return mode                  # Slayer (issue #3), whatever its variant is called
     except Exception:
         return None
 
@@ -336,16 +336,16 @@ class Watch:
         named = {p.id: p.weapon for p in snap.players if p.alive and p.weapon not in (None, "", "none", "unknown")}
         if "sword" in named.values():
             # a sword in a hand by name (every game names it now; Halo 3 by the map's tag names): the name decides from
-            # here on, not the raw tag. Live Rat's Nest, the owner's game: round 2's three zombies held a sword whose
+            # here on, not the raw tag. Live Rat's Nest playtest: round 2's three zombies held a sword whose
             # tag was not round 1's zombie tag, so all 16 read survivors and the zombies stood in the holds with them
-            # (his "confused on their teams", "something is broken here")
+            # (flagged: the bots were confused about their teams)
             s.by_name = True
         if getattr(s, "by_name", False):
             tags = {}
         if not tags:
             # (Halo 4 Flood, H2A, Reach in a free for all: their readers carry no raw gun tag; the gun's name tells the
             # same, the infected's prongs or sword read "sword". Before, nothing split: every survivor fought every
-            # other, owner, issue #3)
+            # other, issue #3)
             tags = {p.id: p.weapon for p in snap.players if p.alive and p.weapon not in (None, "", "none", "unknown")}
             # by name the zombies' kind is their sword: the fewest-held rule took a survivor's sidearm (live Reach
             # Boardwalk: one sword, two shotguns, one magnum -> the magnum; Halo 4 Flood on Adrift, its opening DMRs
@@ -503,7 +503,7 @@ def carry_goal(mode, snap, team, pos):
     return min(goals, key=lambda g: dist(g, pos)) if goals else None
 
 
-# Infection's survivors "cower into buildings with as minimal entrances as possible" (owner, issue #3): holds are rooms
+# Infection's survivors take cover in buildings with as few entrances as possible (issue #3): holds are rooms
 # found on the nav. From each node of a HOLD_LATTICE-cell lattice the floor within HOLD_R by walk is its room; the nodes
 # at the edge of that walk are the ways out, each joined group of them an entrance (its middle a door). Kept: rooms of
 # HOLD_AREA or more, rooms people stood in first, roofed first, then the fewest entrances, then the narrowest (exposure:
@@ -559,7 +559,7 @@ def find_holds(T, R=HOLD_R, lattice=HOLD_LATTICE):
                         walked=not walked or any(_walked(T, walked, v) for v in best)))
     # rooms people stood in first (a map with people's walks; the others after, a short LiDAR session misses real ones:
     # Damnation's 316 walked cells are in 2 of its 47): a pit under a walkway, "roofed" by it, ways in only drops, came
-    # first, and three survivors pushed 35 s into the wall at its rim for posts in it (owner's Blood Cavern flags, Nov 6:
+    # first, and three survivors pushed 35 s into the wall at its rim for posts in it (Blood Cavern flags, Nov 6:
     # the same three bots stuck at one spot, pushing at a wall)
     out.sort(key=lambda o: (not o["walked"], not o["roof"], o["entrances"], o["exposure"]))
     return out
@@ -586,7 +586,7 @@ def holds(T, name, wait=False):
 
 
 def pick_holds(hs, k, apart=HOLD_APART):
-    """k holds for k survivor groups (the owner: "split into separate groups in their own areas of the map"): the best,
+    """k holds for k survivor groups (separate groups in their own areas of the map): the best,
     then each next best at least `apart` from those taken (closer ones if the map has too few)."""
     out = []
     for gap in (apart, apart / 2, 0.0):

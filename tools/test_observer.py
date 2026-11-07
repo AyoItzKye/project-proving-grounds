@@ -26,8 +26,8 @@ def get(u):
 
 
 def recordings(fails):
-    """The newest 5 unsaved matches are kept (tools/play.py match_trace, tools/recording.py; the owner, Nov 3: "record
-    by default 5 games, and the newest one should overwrite the oldest"): a new match deletes the oldest unsaved beyond
+    """The newest 5 unsaved matches are kept (tools/play.py match_trace, tools/recording.py; Nov 3: record
+    5 games by default, the newest overwriting the oldest): a new match deletes the oldest unsaved beyond
     that, a kept one and hand-named traces stay, and the game list names a match by its start and difficulty."""
     import tempfile
     sys.path.insert(0, HERE)
@@ -73,8 +73,8 @@ def recordings(fails):
 
 
 def other_copies(fails):
-    """Games another copy of the mod recorded are listed (Nov 4, the owner: "when I press refresh on observer, no list
-    of games pops up": his install's Observer read the install's logs, no games, while the brain ran from the working
+    """Games another copy of the mod recorded are listed (Nov 4: pressing refresh in the Observer listed no
+    games: the install's Observer read the install's logs, no games, while the brain ran from the working
     repo's botcore.dll and recorded into the repo's logs). Copies list themselves per user (tools/recording.py
     COPIES); the other copy's games are listed with their folder, readable, keepable in their own logs, and an empty
     list has the page's empty state."""

@@ -1,8 +1,8 @@
-"""Boarding and anti-tank play (at 603.3 s in his Scorpion). On h3_cyberdyne:
+"""Boarding and anti-tank play (at 603.3 s in a player's Scorpion). On h3_cyberdyne:
 
 1. a Normal bot on foot, an enemy's Scorpion 4 u off side on and slow: it goes to board it (over the fight with its
    driver); the same Scorpion running at it nose first at 6 u/s, or one 9 u off looking at it: no; 9 u off, slow, its
-   driver looking away: yes (the owner's Boneyard board), not at 3 u/s nor 13 u off
+   driver looking away: yes (a Boneyard playtest board), not at 3 u/s nor 13 u off
 2. Easy never boards (it never plans); CE has no boarding
 3. going to board: it walks to the tank's front and presses Use beside it
 4. aboard an enemy's vehicle: melee and one grenade, no driving; in Reach melee alone, a press every 0.55 s

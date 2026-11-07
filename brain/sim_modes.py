@@ -29,8 +29,8 @@ from . import invasion, modes
 from .core import TICK, Vec, dist
 
 TAKE_S, PHASE_S, ARM_S, PICKUP_R = 10.0, 180.0, 3.0, 1.2
-# the dropped core goes home after this long with a defender on it and no attacker (the owner's Tempest variant: "Core
-# Return Time 30 s"; ASSUMED for every map, and that stepping off starts it again: live Spire 20261105-143525 a person
+# the dropped core goes home after this long with a defender on it and no attacker (the tested Tempest variant: Core
+# Return Time 30 s; ASSUMED for every map, and that stepping off starts it again: live Spire 20261105-143525 a person
 # 11.5 s on it did not return it)
 CORE_RETURN_S = 30.0
 # a moving hill's stay; a loose ball's time before it goes home (INFERRED: Halo 3 and Reach's ball reset default, not

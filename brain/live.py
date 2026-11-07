@@ -46,7 +46,7 @@ TAG_ALIAS = {"sniper_rifle": "sniper", "rocket_launcher": "rockets", "energy_swo
              "new_flag": "flag", "skull": "ball", "oddball": "ball",   # the objectives in hand (Halo 4, H2A)
              # the infected's own swords (Halo 4 Flood's storm_flood_sword, H2A's h2a_energy_sword_infected): lunge
              # like the sword (their tags: autoaim range 2.25, angle 6, as the sword's); unnamed, a Flood played its
-             # prongs as a gun (band 5-25 u: backed off inside 5 u, swung from across the room; owner, issue #3)
+             # prongs as a gun (band 5-25 u: backed off inside 5 u, swung from across the room; issue #3)
              "flood_sword": "sword", "energy_sword_infected": "sword"}
 # the infected's own weapons by their tag names: seeing one in a hand says Infection / Flood whatever the variant's
 # name (brain/modes.py mode_of)
@@ -835,7 +835,7 @@ class LiveH3(LiveH2):
     def _melee_name(s, tag):
         """Halo 3: a weapon's name by the map's own tag names (tools/reach_tag_names.py reads Halo 3's .map files too):
         "objects\\weapons\\...\\X\\X" at the tag's index, else None. Rat's Nest places no sword, so Infection's zombies
-        held "unknown" and played their swords as guns (band 5-25 u: backed off inside 5 u, swung from far; owner,
+        held "unknown" and played their swords as guns (band 5-25 u: backed off inside 5 u, swung from far;
         issue #3)."""
         names = s.__dict__.get("_h3_tag_names")
         if names is None:
@@ -1791,7 +1791,7 @@ class LiveH4F(LiveReach):
     AMMO_AT = None              # (rounds not decoded here: Reach's +0x2C6 / +0x2CA are not these games')
     # the vehicles' object types: 1, and Halo 4's giants, 13 (the Mantis: halo4.dll's own object type table at
     # 0x180d8f410 lists biped 0, vehicle 1 ... creature 12, giant 13; logs/tmp/h4_object_types.py). Read as type 1 only,
-    # the Mantis was in no vehicle list: no bot went for it, and the owner in it rode "?" (Ragnarok 20261106-234103).
+    # the Mantis was in no vehicle list: no bot went for it, and a player in it rode "?" (Ragnarok 20261106-234103).
     # Halo 4 only: this class reads H2A too, whose type 13 is not known to be a giant
     @property
     def VEHICLE_TYPES(s):

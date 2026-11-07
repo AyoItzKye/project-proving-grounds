@@ -47,7 +47,7 @@ def main():
     bad = [(round(q.x, 2), round(q.y, 2)) for q in way(TV, Vec(-128.7, -344.3, -61.5)) if under(q)]
     if bad:
         fails.append(f"Spire's Invasion layout, from (-128.7, -344.3): the way runs under the rock at {bad[:3]}")
-    # 4. the same rock's low faces (knee to eye walled, open at 0.85): the owner's 233940 flag at 85 s, TheSkull wedged
+    # 4. the same rock's low faces (knee to eye walled, open at 0.85): the 233940 flag at 85 s, TheSkull wedged
     #    at (-131.38, -346.0); the way from the attackers' side ran 0.28 u past the face at (-125.9, -342.1)
     for a in (Vec(-118.0, -340.0, -60.8), Vec(-110.0, -346.0, -60.8)):
         pts = way(TV, a, 60)

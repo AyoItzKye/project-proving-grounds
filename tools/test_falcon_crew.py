@@ -1,5 +1,5 @@
-"""A pilot gets gunners as people do, built from the owner's bug report (live Spire Invasion 20261105-143525, 1040 s: "How
-come spartan isnt attempting to get gunners on his falcon"; team 1, phase 3, the pilot Needler502 #14):
+"""A pilot gets gunners as people do, built from a bug report (live Spire Invasion 20261105-143525, 1040 s: a Spartan
+pilot never tried to get gunners on its Falcon; team 1, phase 3, the pilot Needler502 #14):
 
 1. a pilot waiting for the teammate called to its gun sets down for him (1031-1035 s: the Falcon sat 2 u over the
    ground, the floors rule climbed it to 5-7 u over Cyber117 #6 walking under it at 1 u, and he never got in); and lifts

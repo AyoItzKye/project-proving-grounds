@@ -1,5 +1,5 @@
-"""Jetpack fuel like a person (owner, live Spire 20261105-143525 at 969.6 s: "a spartan still not allowing their jetpack to
-recharge before using it"). The trace (logs/tmp/jetfuel.py): bots 2, 4 and 8 pressed "jetpack up the ledge" for 4.0 s,
+"""Jetpack fuel like a person (live Spire 20261105-143525 at 969.6 s: a Spartan still did not let its jetpack
+recharge before using it). The trace (logs/tmp/jetfuel.py): bots 2, 4 and 8 pressed "jetpack up the ledge" for 4.0 s,
 let go 0.6-0.7 s, pressed again, 930-970 s: every press after the first on a tank of 0.09-0.11 (the tag's model: the
 0.1 minimum after 0.7 s of 0.15/s recharge), the game's on-state up only 27-36 of ~105 ticks a press, 0.1-1.5 u
 climbed. Of the match's 275 presses, 66 started under half a tank.

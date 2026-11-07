@@ -1,5 +1,5 @@
-"""The owner's Halo 4 ca_blood_cavern Infection games, Nov 4 ("idiots keep getting stuck on this wall", F9 at
-143 s): 187 wall pushes of 2 s or more, 824 s, in his two games; about 130 within 1.5 u of one spot, the ledge at (-8.1, 6.4, 2.75).
+"""Halo 4 ca_blood_cavern Infection playtests, Nov 4 (bots kept getting stuck on this wall, F9 at 143 s): 187 wall
+pushes of 2 s or more, 824 s, in the two games; about 130 within 1.5 u of one spot, the ledge at (-8.1, 6.4, 2.75).
 1. the lid rule (brain/terrain.py _build_nav): the nav's way from that ledge to the hold below (-15.8, 12.7) dropped
    2.6 u at once into the floor under the ledge (the column has the ledge's own floor at 2.69 over it). Without the
    rule the way drops through the floor (the live frames); with it it walks round to a real drop. No floor people

@@ -266,7 +266,7 @@ class Director:
             return None
         if snap.mode == "infection":
             # the infected, at survivors grouped and holding well (two or more together, standing): all rally, then
-            # charge at once (owner, issue #3: "instead of trickling in one at a time")
+            # charge at once (issue #3: they came in one at a time)
             from .modes import zombie_team, survivor_clusters
             if zombie_team(snap) != s.team:
                 return None
@@ -722,7 +722,7 @@ class Director:
             alive = [b for b in alive if b.id not in bz.get("ids", ())]
         # Easy plays for itself: no place in the team's plan or the commander's orders. Slayer: it wanders the
         # map; objective games: straight at the objective (a flag carrier still runs home, below)
-        # (Firefight: every teammate goes with the person, Easy too: the owner's "have them follow the player around")
+        # (Firefight: every teammate goes with the person, Easy too: they follow the player around)
         for b in [b for b in alive if b.p.teamwork <= 0 and not snap.player(b.id).has_flag and snap.mode != "firefight"]:
             alive.remove(b)
             point = s.straight_objective(snap, snap.player(b.id).pos)
@@ -959,10 +959,9 @@ class Director:
             t_call = (getattr(drv, "called_aboard", {}).get(h) or ((), -99.0))[1] if drv is not None else now
             was = called.get(h, ()) if now - t_call < (12.0 if sp["move"] == "air" else 6.0) else ()
 
-            # (a person at its wheel: he drives where he likes, so a defender takes his gun wherever his post is. Live
-            # Spire 20261105-201917, 113-215 s: the owner drove his Warthog among his team's defenders, two of them 1-9
-            # u off it for 20 s each, posts 35-60 u away, and nobody took the gun: "teammates still ignore my empty gun
-            # on my warthog"; Oct 31 230307 at 354 s the same)
+            # (a person at its wheel drives where they like, so a defender takes the gun wherever its post is. Live
+            # Spire 20261105-201917, 113-215 s: a player drove a Warthog among the team's defenders, two of them 1-9 u
+            # off it for 20 s each, posts 35-60 u away, and nobody took its empty gun; Oct 31 230307 at 354 s the same)
             person = drv is None and any(p.vehicle == h and p.alive and not p.is_bot and not getattr(p, "gunner_seat", False)
                                          for p in snap.players)
 
@@ -1025,8 +1024,9 @@ class Director:
         from . import vehicles
         v = next((q for q in snap.vehicles if q["handle"] == me.vehicle), None)
         air = v is not None and (vehicles.spec(v["kind"]) or {}).get("move") == "air"
-        # (an aircraft sets down by him and waits longer: the owner's Falcon pickups sat 16-25 s on the floor 3-6 u from
-        # the gunner, Nov 6; the bot pilot left after 8 s with him 6-12 u off, live Spire 20261106-185412 at 1038 s)
+        # (an aircraft sets down by a person and waits longer: a player's Falcon pickups sat 16-25 s on the floor 3-6 u
+        # from the gunner, Nov 6; the bot pilot left after 8 s with the gunner 6-12 u off, live Spire 20261106-185412 at
+        # 1038 s)
         if at and at[1] is not None and now - at[1] > (s.PICKUP_WAIT_AIR if air else s.PICKUP_WAIT):
             skip[at[0]], b.pickup_at, at = now, None, None
         # an aircraft's way is over the ground, height costs it little: its detour is measured flat, and on a trip one
@@ -1328,9 +1328,9 @@ class Director:
         from . import vehicles
         honks = list(getattr(snap, "honks", ()))
         picks = getattr(snap, "honk_at", None) or {}
-        # a honk (live_bots: a person stopped by us, or his horn) calls from 20 u; an aircraft of ours set down calls
-        # those within LAND_CALL_R (owner Nov 6: bots get in an aircraft that lands
-        # close to them; his Falcon pickups: down on the floor 3-6 u from the gunner, 16-25 s)
+        # a honk (live_bots: a person stopped by us, or their horn) calls from 20 u; an aircraft of ours set down calls
+        # those within LAND_CALL_R (Nov 6: bots get in an aircraft that lands
+        # close to them; a player's Falcon pickups: down on the floor 3-6 u from the gunner, 16-25 s)
         calls = [(h, picks.get(h), 20.0) for h in honks] + [(h, None, LAND_CALL_R) for h in s.landed_aircraft(now, snap)
                                                            if h not in honks]
         for h, picked, reach in calls:
@@ -1453,9 +1453,9 @@ class Director:
                 s.ff_last, s.ff_lead = people[0].pos, people[0].id   # (assign_roles: the escorts' lead, Bot.lead)
                 return [("escort", people[0].pos, "aggression")] * n
             s.ff_lead = None
-            # the player is down (the owner, Nov 6: "if player dies have them roam or find a safe spot"): they hold the
-            # map's safe spots nearest where he fell (its holds and named points), two spots so they are not stacked,
-            # and fight from there until he is back (they ran into the open middle before)
+            # the player is down (Nov 6: when the player dies they roam or find a safe spot): they hold the map's safe
+            # spots nearest where the player fell (its holds and named points), two spots so they are not stacked, and
+            # fight from there until the player is back (they ran into the open middle before)
             last = getattr(s, "ff_last", None) or mid
             spots = sorted([q for h in s.map["holds"].values() for q in h] + list(s.map["points"].values()),
                            key=lambda q: dist(q, last))
@@ -1765,7 +1765,7 @@ class Director:
             infected = zombie_team(snap)
             havens = [z for z, r, o in (snap.obj_zones or [])]
             if infected == s.team:
-                # (owner, issue #3: "run directly at players, or wait around corners for unsuspecting prey"; the
+                # (issue #3: run directly at players, or wait around corners for unsuspecting prey; the
                 # rally and charge at a group holding well is desperate's / blitz_tick's)
                 ambush = [q for q in s.ambush_spots(snap, foes, n // 3) if s.ambush_fresh(now, q)]
                 slots += [("defender", q, "camping") for q in ambush]
@@ -1792,7 +1792,7 @@ class Director:
         return s.slayer_slots(now, snap, n)
 
     def ambush_fresh(s, now, q):
-        """A corner is waited at AMBUSH_S at most, then left AMBUSH_S to the hunt (the owner's Flood games: waits of
+        """A corner is waited at AMBUSH_S at most, then left AMBUSH_S to the hunt (Flood playtests: waits of
         53-279 s, the longest whole rounds, at corners nobody came round)."""
         key = (round(q.x), round(q.y))
         t0 = s.__dict__.setdefault("_ambush_t", {}).get(key)
@@ -1801,8 +1801,8 @@ class Director:
         return now - t0 < AMBUSH_S
 
     def ambush_spots(s, snap, foes, k):
-        """Up to k corners to wait round for survivors (the infected; owner, issue #3: "wait around corners for
-        unsuspecting prey"): the ways into the hold a survivor is in (modes.find_holds doors, HOLD_R by walk from its
+        """Up to k corners to wait round for survivors (the infected; issue #3: wait around corners for
+        unsuspecting prey): the ways into the hold a survivor is in (modes.find_holds doors, HOLD_R by walk from its
         middle) that the hold's middle does not see, never two within 2 u."""
         if k <= 0 or not foes:
             return []
@@ -1828,7 +1828,7 @@ class Director:
         return out
 
     def climb_via(s, b, snap, point, used):
-        """A runner's way up to a phase 3 core on high (invasion.CLIMBS: the owner's Spire tour, his ways up): its via,
+        """A runner's way up to a phase 3 core on high (invasion.CLIMBS: a Spire playtest's ways up): its via,
         the start of the least-used way, then the nearest to it, among those no farther from the core than it is (a via
         behind it is dropped at once: Bot.objective_point). Kept while it is still one of them. () where none."""
         from . import invasion

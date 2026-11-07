@@ -91,7 +91,7 @@ def add_bot(m, machine, team, name, game):
     """botctl.add_bot with this install's look, clan and emblem for the name, waited through a paused game (botcore
     takes commands on the game's thread: none in the pause menu). Prints the outcome; True when the game made it. A
     timeout read as ok before, and the next add overwrote the one not yet taken: of 3 bots asked for in ODST Firefight
-    (Nov 7, 00:07, the owner in the pause menu saving a bug report) only the last one joined."""
+    (Nov 7, 00:07, the player in the pause menu saving a bug report) only the last one joined."""
     r = botctl.add_bot(m, machine, team, name, game, look=looks.look(name, game), clan=looks.clan_of(name),
                        emblem=looks.emblem_of(name))
     if r.get("timeout"):

@@ -45,7 +45,7 @@ EXPLOSIVE_AIMED = {"rockets", "spartan_laser", "fuelrod", "incineration_cannon",
                    "missile_pod", "binary_rifle"}
 SNIPERS = {"sniper", "beam_rifle", "binary_rifle", "focus_rifle"}
 LUNGERS = {"sword", "gravity_hammer"}
-# a Flood survivor's hardlight shield (the owner, Nov 5): short blocks, the gun between them
+# a Flood survivor's hardlight shield (Nov 5): short blocks, the gun between them
 SURV_BLOCK_S = 0.6       # one block
 SURV_SHOOT_S = 1.2       # the gun before the next block
 SURV_MELEE_R = 1.8       # the melee on the let-go reaches him
@@ -65,8 +65,8 @@ HELD = {"sprint"}
 JET_RISE = 5.3      # u: the player's jetpack climb from standing (Reach: 5.3 u in 3.9 s; 7.6 with a jump first)
 # the tank a flight starts on (Kit.plan), an emergency excepted: a person lets the pack refill. Live Spire 20261105-143525,
 # 930-970 s: bots 2, 4 and 8 pressed "jetpack up the ledge" 0.6-0.7 s after each 4 s hold, on the tag's 0.1 minimum
-# (0.09-0.11 in the model), the game's on-state up 27-36 of ~105 ticks, 0.1-1.5 u climbed (owner: "not allowing their
-# jetpack to recharge before using it"); 66 of the match's 275 presses under half a tank. Refill from empty: 6 s (0.15/s)
+# (0.09-0.11 in the model), the game's on-state up 27-36 of ~105 ticks, 0.1-1.5 u climbed (flagged: the
+# jetpack never left to recharge); 66 of the match's 275 presses under half a tank. Refill from empty: 6 s (0.15/s)
 JET_FULL = 0.9
 
 # How each kind takes its button, per game (the player: "be able to differentiate between equipment you press once to
@@ -591,8 +591,8 @@ class Kit:
             if k == "armor_lock" and not survivor:
                 return (k, "self", None, 2.0 if x["lunge"] is None else 1.2, "armor lock: " + (
                     "rocket / laser" if x["incoming"] else "vehicle" if x["splatter"] else "lunge"))
-            # (a survivor never shields a lunge: the Flood lunge all game, and a shield up is a gun down. Live, the
-            # owner's Blood Cavern Flood 20261105-225014: "using the hardlight shield more than shooting", 104 blocks;
+            # (a survivor never shields a lunge: the Flood lunge all game, and a shield up is a gun down. Live, a
+            # Blood Cavern Flood playtest 20261105-225014: the shield was used more than the gun, 104 blocks;
             # it shoots the lunger, as armor lock's rule for survivors already said)
             if k == "hardlight_shield" and x["splatter"] is None and (
                     x["lunge"] is None and x["incoming"] is not None or x["lunge"] is not None and lvl >= 2 and not survivor):
@@ -600,8 +600,8 @@ class Kit:
                 return (k, "self", None, 1.5, "hardlight: block it")
             if k == "hardlight_shield" and survivor and x["lunge"] is not None and x["splatter"] is None:
                 # a survivor shoots the Flood; a short block (SURV_BLOCK_S, then SURV_SHOOT_S of gun before the next)
-                # only in the owner's three cases (Nov 5): reloading or out of ammo ("shield block > melee": the melee
-                # comes on the let-go, Kit.act), swarmed by 2+ lunging Flood ("looking for openings to shoot"), or
+                # only in three cases (Nov 5): reloading or out of ammo (a block, then a melee: the melee
+                # comes on the let-go, Kit.act), swarmed by 2+ lunging Flood (blocking between openings to shoot), or
                 # backed into a corner
                 i = me.weapons.index(me.weapon) if me.weapon in (me.weapons or []) else -1
                 empty = 0 <= i < len(me.mag or []) and me.mag[i] == 0 or 0 <= i < len(me.ammo or []) and me.ammo[i] == 0
@@ -616,7 +616,7 @@ class Kit:
                 return (k, "dash", dash(danger), 0.1, "dash out of the line")
             if k == "thruster" and x["lunge"] is not None:
                 # a sword or prongs lunging at us: a thrust sideways out of it, cover or not (the cover rule is for a
-                # gunfight: open ground is no danger from a lunge). Live, the owner's Flood games: survivors with
+                # gunfight: open ground is no danger from a lunge). Live, Flood playtests: survivors with
                 # thrusters met a Flood within 4.5 u for 162-231 s a game and never thrust away
                 return (k, "dash", side(x["lunge"]), 0.1, "thrust out of the lunge")
             if k == "bubble_shield" and x["lunge"] is None:
@@ -761,8 +761,8 @@ class Kit:
                 return (k, "dash", me.pos + (x["target"].pos - me.pos).norm() * 3.0, 0.1, "dash in to close")
             if (k in ("thruster", "evade") and 6.5 <= d < (14.0 if x["hit"] else INFECTED_DASH_R)
                     and snap.mode == "infection" and me.weapon in LUNGERS):
-                # the infected run a survivor down with every dash they have (owner, Nov 4: "the flood should use their
-                # thrusters a little more"; live, his three Flood games: 13-21 thrusts in 16-20 Flood bot-minutes
+                # the infected run a survivor down with every dash they have (Nov 4: the Flood should use their
+                # thrusters more; live, three Flood playtests: 13-21 thrusts in 16-20 Flood bot-minutes
                 # while 213-274 s were spent 4-14 u from a survivor and closing). Shot at: in, across his aim; else
                 # straight at him from INFECTED_DASH_R; the dash-in above takes the last metres. The charge paces it
                 # (Halo 4's thruster needs a full one: ~5 s apart)
@@ -997,7 +997,7 @@ class Kit:
         # (5 u: guide 20 EQ-SPRINT-03; from 15 u a shotgun sprinted 45 m at a man it could not shoot meanwhile). Not at a
         # sword or hammer, who comes to us (a shotgun holds its ground for him, Bot.fight braced), and only on a move at
         # him: a sprint steers the view to its way (sprint_steer), and the hold's strafe turned survivors' backs to the
-        # Flood, the gun silent (owner's Blood Cavern Flood, Nov 6 16:48: 1.5-4 u off the Flood, shotgun out, 85 deg off
+        # Flood, the gun silent (Blood Cavern Flood, Nov 6 16:48: 1.5-4 u off the Flood, shotgun out, 85 deg off
         # him and 0-1% of ticks fired)
         gun_on_blade = tgt is not None and tgt.weapon in LUNGERS and me.weapon not in LUNGERS
         if (x["fight"] and tgt is not None and me.weapon in CQB and 1.2 < dist(tgt.pos, me.pos) < 5.0
@@ -1087,7 +1087,7 @@ class Kit:
                 # (Promethean Vision: a pulse every 10 s at most, EQ-PV-02; its unseen trigger would pulse it nonstop)
                 s.cool[k] = now + (10.0 if k == "promethean_vision" else 1.0 if s.energy is not None else 2.0)
                 if why.startswith("survivor:"):
-                    s.cool[k] = now + hold + SURV_SHOOT_S        # the gun again between blocks (the owner's openings)
+                    s.cool[k] = now + hold + SURV_SHOOT_S        # the gun again between blocks (the openings)
                 note = f"{k}: {why}"
                 holding = True
         if holding:
@@ -1158,7 +1158,7 @@ class Kit:
                 note = f"{k}: did not lock, fighting on"
             elif k in ("armor_lock", "hardlight_shield") and why.startswith("survivor:"):
                 # a survivor's short block: never stretched by the danger (Flood are always near: the stretch held the
-                # shield up all game, the owner's Blood Cavern 225014); its let-go a melee when it came for an empty gun
+                # shield up all game, Blood Cavern playtest 225014); its let-go a melee when it came for an empty gun
                 act.fire, act.forward, act.strafe = False, 0.0, 0.0
                 if now >= s.hold_until - 0.04:
                     s.hold_until = now

@@ -351,7 +351,7 @@ def check_forge_items():
 
 def check_h3_deployed():
     # Halo 3's thrown equipment for snap.deployed (#9): the deployed tag "objects\equipment\X\X" (not the X_equipment
-    # pickup, not a grenade), its owner's team from the player handle at +0xBC, kept first-seen time
+    # pickup, not a grenade), its thrower's team from the player handle at +0xBC, kept first-seen time
     import struct
     from brain.live import LiveH3, NONE
 
@@ -395,8 +395,8 @@ def check_h3_deployed():
 
 def check_flood_shotgun():
     # Halo 4 Flood survivors: the magnum on a sword Flood on his way in, the shotgun out before he is in its reach
-    # (owner's Cliffside, trace 20261106-144807: 41% of the Flood that reached a survivor found the magnum out, swapped
-    # to 1.3 s before; then at RUSH_R 10 u the owner's Wraparound 20261106-160121: the shotgun out from 10 u, 0 shots at
+    # (Cliffside, trace 20261106-144807: 41% of the Flood that reached a survivor found the magnum out, swapped
+    # to 1.3 s before; then at RUSH_R 10 u the Wraparound trace 20261106-160121: the shotgun out from 10 u, 0 shots at
     # 3-10 u, flagged as worse). Against a gunner the magnum still wins at Medium band (PvP unchanged)
     M = get_map("h4_z05_cliffside")
     out = []
@@ -428,10 +428,10 @@ def check_flood_shotgun():
 
 
 def check_flood_sprint():
-    # Halo 4's sprint and a sword (owner's Blood Cavern Flood, Nov 6 16:48: shotgun out, a Flood 1.2-6 u off, survivors
-    # held sprint 74% of those ticks, the view on the way, not on him, the gun silent): a gun never sprints at a sword or
-    # hammer; at a gunner a close-range gun sprints in only on a move at him (the dodge's 45 deg diagonal counts); a sword
-    # still sprints at a sword
+    # Halo 4's sprint and a sword (a Blood Cavern Flood playtest, Nov 6 16:48: shotgun out, a Flood 1.2-6 u off,
+    # survivors held sprint 74% of those ticks, the view on the way, not on him, the gun silent): a gun never sprints at
+    # a sword or hammer; at a gunner a close-range gun sprints in only on a move at him (the dodge's 45 deg diagonal
+    # counts); a sword still sprints at a sword
     from brain.bot import WEAPON_RANGE
     from brain.equipment import Kit
     M = get_map("h4_ca_blood_cavern")
@@ -466,7 +466,7 @@ def check_flood_sprint():
 
 
 def check_glimpse_keep():
-    # a defender's fight on a man lost from sight a moment (owner's Blood Cavern Nov 6 16:48, Zealot343: a tick behind a
+    # a defender's fight on a man lost from sight a moment (Blood Cavern, Nov 6 16:48, Zealot343: a tick behind a
     # pillar cut the fight 3.27 -> 1.32 under its post's 1.72 and it walked to its post, the Flood 4 u off): kept for
     # GLIMPSE_S, then the post's leash as before
     from brain.bot import GLIMPSE_S
@@ -489,7 +489,7 @@ def check_glimpse_keep():
 
 
 def check_lift_one_way():
-    # a low gravity lift's ride is one way (owner's Blood Cavern flag, Nov 6 16:50: bots kept trying to enter the back
+    # a low gravity lift's ride is one way (Blood Cavern flag, Nov 6 16:50: bots kept trying to enter the back
     # lift's exit end: its 2.8 u ride, read as a jump, was walked back down into its top)
     from brain.maps import anchor_launches
     from brain.terrain import jump_ways
@@ -507,7 +507,7 @@ def check_lift_one_way():
 
 
 def check_spire_phase_links():
-    # Spire's phase rules (the owner's run, Nov 6: the man cannons appear in phase 3 only; in phase 2 the spire lifts
+    # Spire's phase rules (a playtest run, Nov 6: the man cannons appear in phase 3 only; in phase 2 the spire lifts
     # take you to the lower building's roof): their people's links are closed before phase 3 and open in it
     from brain import invasion
     name = "reach_35_island/variants/v3977bae2"
@@ -526,8 +526,8 @@ def check_spire_phase_links():
 
 
 def check_spire_climbs():
-    # the Spire core run: the attackers' runners spread over the ways up (the owner's tour, Nov 6: all of them funnelled
-    # into one way up; 12 of 16 climbs by lift 2), and a gun on the way is no detour off it (his flag: the core was not
+    # the Spire core run: the attackers' runners spread over the ways up (a playtest tour, Nov 6: all of them funnelled
+    # into one way up; 12 of 16 climbs by lift 2), and a gun on the way is no detour off it (the flag: the core was not
     # their priority)
     from brain import invasion
     from brain.director import Director
@@ -561,7 +561,7 @@ def check_spire_climbs():
 
 
 def check_nade_clear():
-    # no grenade with a teammate (a person too) within 4 u of where it goes, or walking into it within a second (owner's
+    # no grenade with a teammate (a person too) within 4 u of where it goes, or walking into it within a second (the
     # Spire flag Nov 6, grenade team kills; replayed, 29 of the 51
     # deaths with an own-team throw aimed by them in the 3 s before had every such throw held)
     me = PlayerState(1, 0, "me", Vec(0, 0, 0))
@@ -578,7 +578,7 @@ def check_nade_clear():
 
 
 def check_corner_drop():
-    # a diagonal drop squeezing between two cells shut at our height is priced as a lid (Blood Cavern, owner's games
+    # a diagonal drop squeezing between two cells shut at our height is priced as a lid (Blood Cavern playtests,
     # Nov 6: six survivors pushed 1660 rows at (-4.7, 2.5, 3.9) on the drop to the new hold by the back lift)
     from brain.terrain import LID_COST
     T = terrain(get_map("h4_ca_blood_cavern"))

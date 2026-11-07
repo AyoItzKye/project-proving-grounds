@@ -29,7 +29,7 @@ int main() {
         {1920, 1080, 976, 158, 1211, 108, 984, 193, 1022},   // 16:9 (monitor 2, borderless / windowed / exclusive)
         {1440, 900, 732, 164, 908, 90, 820, 159, 851},       // 16:10 windowed
         {1920, 540, 968, 79, 1085, 534, 492, 578, 512},      // 32:9 windowed (Back row measured on the lobby)
-        {3440, 1440, 1741, 211, 2055, 584, 1312, 694, 1366}, // 21:9 the owner's
+        {3440, 1440, 1741, 211, 2055, 584, 1312, 694, 1366}, // 21:9 (3440 x 1440 monitor)
     };
     for (const seen& m : SEEN) {
         ui_rect st = mcc_lobby_start(m.W, m.H), bk = mcc_footer_back(m.W, m.H);

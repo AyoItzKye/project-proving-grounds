@@ -1,4 +1,4 @@
-"""The owner's issue #3 (Halo 3 Infection on Rat's Nest, Scaling; Halo 4 Flood), each part failing on the code before:
+"""Issue #3 (Halo 3 Infection on Rat's Nest, Scaling; Halo 4 Flood), each part failing on the code before:
 1. a sword at a man 4.3 u off: no grenade, so no own-grenade "bubble" round him (own_grenade turned every step toward
    him away for 3 s), and the run goes at him
 2. a sword at arm's length: no bend round the man it runs at (give_way bent round every player within 1.3 u)
@@ -99,7 +99,7 @@ def main():
             fails.append(f"{tier} sword v sword at 1.0 u: press at {first}, melee at {mel} (want the follow-up {want})")
     if any(a.melee for _, a, _ in fight(mk(), "gravity_hammer", 1.0, 0.8, foe_weapon="sword")):
         fails.append("the hammer pressed melee")
-    # 4b. a shotgun against a sword holds its ground (owner's Wraparound Flood, Nov 6 16:01: survivors walked at the
+    # 4b. a shotgun against a sword holds its ground (a Wraparound Flood playtest, Nov 6 16:01: survivors walked at the
     # Flood 44% of the time from 3-10 u and fired nothing there)
     for tier in ("strong", "top"):
         ticks = fight(mk(tier, game="h4"), "shotgun", 5.0, 1.0, foe_weapon="sword")
@@ -215,9 +215,9 @@ def main():
             info.append(f"infected charge: {roles}")
             if dz.blitz["go"] is None or roles != ["hunter"] * 3:
                 fails.append(f"infected at the rally: go {dz.blitz['go']}, roles {roles} (want all hunters together)")
-    # 7b. holds people stood in come first (owner's Blood Cavern Nov 6 16:48: the best "holds" were the pit under the back
-    #     walkway, z 0.1-0.6, ways in only drops, nobody ever stood there; three survivors pushed 35 s at its rim for their
-    #     posts): the 4 groups' holds are rooms people walked, none on that floor
+    # 7b. holds people stood in come first (a Blood Cavern playtest, Nov 6 16:48: the best "holds" were the pit
+    #     under the back walkway, z 0.1-0.6, ways in only drops, nobody ever stood there; three survivors pushed 35 s
+    #     at its rim for their posts): the 4 groups' holds are rooms people walked, none on that floor
     bc = get_map("h4_ca_blood_cavern")
     bh = modes.pick_holds(modes.find_holds(terrain(bc)), 4)
     pit = [h for h in bh if h["pos"].x < -8.5 and -9.0 < h["pos"].y < 21.0 and h["pos"].z < 1.0]

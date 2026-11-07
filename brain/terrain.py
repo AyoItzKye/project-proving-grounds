@@ -82,7 +82,7 @@ def walked_under(floors, x0, y0, cell, walked):
     """People's walks ~1 u under a lone floor layer nobody walked on: the walked level wins (in place, on the
     (L, h, w) floors; returns the cells changed). The mesh merges surfaces closer than LAYER_GAP into one level at the
     higher: live Boneyard B27 / B28, a flat -9.0 slab over the -10.0 ground at the stair's foot (254.5-255.5, 54-55.5)
-    held bots standing at -10 on it and sent them up a route into the stair's side (the owner's report 161417).
+    held bots standing at -10 on it and sent them up a route into the stair's side (report 161417).
     Seeds: a walk with no layer within 0.3, the nearest layer UNDER_LO-UNDER_HI over it with no walk on it, and its
     four neighbours the same flat level (a crate's edge cell is not: its other side is the ground); from each, the flat
     patch at that level within UNDER_R. ponytail: one patch height per seed; a sloped phantom stays."""
@@ -253,7 +253,7 @@ def climb_ok(z_from, z_to):
     return -MAX_DROP <= z_to - z_from <= MAX_RISE
 
 
-# --- three kinds of wall (owner, Nov 4: "windows get enemy info, fences still act as walls but can be shot through"):
+# --- three kinds of wall (Nov 4: windows let enemies be seen, fences still act as walls but can be shot through):
 # solid stops walking, sight and shots; a window (glass) walking and shots (unless it breaks), not sight; a fence
 # (grate, chain-link, railing, mesh, bars) walking only. By a level's shader / a Forge piece's face material / a piece's
 # name (tools/lidar_walls.py reads the maps' collision; Terrain.set_wall_kinds)
@@ -818,7 +818,7 @@ class Terrain:
 
     def air_levels(s):
         """(low, high): an aircraft's attack-run and travel heights over the ground under it, from the map's own shape
-        (the owner: "automatically determine low flight height and high fly height by distance from ground"). Low: over
+        (determined automatically by the distance from the ground). Low: over
         the knee-to-roof clutter near the ground (the median of how much higher the top surface gets within 3 u of a
         spot, + 1.5 u), so a strafing run clears crates, rocks and rails. High: over the buildings and hills a straight
         trip passes (the median rise within 8 u, + 3 u). Measured over open sky only (cells whose
@@ -1153,7 +1153,7 @@ class Terrain:
         # stairs (stair_rule): their risers step over MAX_RISE, so the nav walled off Adrift's flag decks (live:
         # runners stood under the flag 4-7 u off for minutes, no pull in 178 s)
         stairs = s._stairs() if s.stair_rule else None
-        # a gravity lift's column: a drop into it from over it meets what pushes up (owner's Blood Cavern flag, Nov 6
+        # a gravity lift's column: a drop into it from over it meets what pushes up (Blood Cavern flag, Nov 6
         # 16:50, the back lift: bots kept trying to enter its exit end; the route off its top dropped 3 u into its column)
         in_lift = None
         if getattr(s, "lift_pads", None):
@@ -1206,8 +1206,8 @@ class Terrain:
                             if s.lid_rule:
                                 # the landing column has floor between the landing and our own height: the ledge (a
                                 # bridge, a walkway) goes on over it, so a body walks onto that floor and never falls
-                                # through it (Halo 4 ca_blood_cavern, the owner's "stuck on this wall": paths dropped 2.6 u off
-                                # the ledge at (-8.1, 6.4) into the floor under it; 75% of 824 s of wall pushes in his
+                                # through it (Halo 4 ca_blood_cavern, flagged stuck on a wall: paths dropped 2.6 u off
+                                # the ledge at (-8.1, 6.4) into the floor under it; 75% of 824 s of wall pushes in the
                                 # two games). Priced LID_COST, not cut: at the 0.25 u cells a one-cell slot people drop
                                 # through reads the same (cut, Lockout lost 17-43 walked cells). A floor a little over
                                 # ours there (a rail's or a wall's top) is priced as a rail: a drop over it is a jump
@@ -1223,7 +1223,7 @@ class Terrain:
                                 if dj and di and s.corner_rule:
                                     # a diagonal drop between two cells both shut at our height (a wall's or rail's
                                     # top over our floor, or our floor there walled): the corner no body fits through,
-                                    # priced as a lid (Blood Cavern, owner's games Nov 6: from (-8.1, 8.9) and (-4.8,
+                                    # priced as a lid (Blood Cavern, playtests Nov 6: from (-8.1, 8.9) and (-4.8,
                                     # 2.7) routes dropped diagonally past a parapet's ends, survivors pushed 35 s and
                                     # 1660 rows at them)
                                     shut = np.ones(len(jj), bool)

@@ -131,7 +131,7 @@ def main():
     dr.honk_orders(7.0, snap, [pb, hb], {5: pas, 3: hold2})
     if pb.order.role != "give_seat" or hb.order.role != "board":
         fails.append(f"give up the seat: passenger {pb.order.role}, holder {hb.order.role}")
-    # the person's horn (owner request Nov 6: aimed at a bot, the horn calls him): the bot his view is
+    # the person's horn (a Nov 6 request: aimed at a bot, the horn calls it): the bot the person's view is
     # on gets the call over a nearer one, and the call holds its seconds (live_bots.horn_call)
     sys.path.insert(0, HERE)
     import live_bots
@@ -151,7 +151,7 @@ def main():
     if bots[4].order.role != "ride" or bots[2].order.role == "ride":
         fails.append(f"horn at bot 4: 4 {bots[4].order.role}, 2 {bots[2].order.role} (want 4 on the gun, 28 u off)")
     # a Falcon of ours set down: the bots on foot within LAND_CALL_R take both guns, one 15 u off does not; up in the
-    # air it calls nobody (owner request Nov 6: bots get in an aircraft that lands close to them)
+    # air it calls nobody (a Nov 6 request: bots get in an aircraft that lands close to them)
     from brain.director import LAND_CALL_R
     T = dr.terrain()
     gz = T.ground(30.0, -60.0)
@@ -182,8 +182,8 @@ def main():
         if left != out:
             fails.append(f"Falcon gunner {up} u up by his objective: got out {left} (want {out})")
     # a Reach Warthog gunner aims from the chaingun's mount, 0.536 u behind the origin (vehicles.GUN_FORWARD): at a man 10 u
-    # to its left the view goes 3 deg back toward him from where the origin's line would (the owner, Spire Nov 6: "Turret
-    # gunner aim is still off to the right sometimes")
+    # to its left the view goes 3 deg back toward him from where the origin's line would (a Spire playtest, Nov 6: the
+    # turret gunner's aim was still off to the right sometimes)
     from brain.bot import Belief
     gb = Bot(3, 0, make_profile("top", "rusher", random.Random(3)), m, rng=random.Random(3))
     gb.game, gb.enter_riders = "reach", 1

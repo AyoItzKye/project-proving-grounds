@@ -333,7 +333,7 @@ def banshee_runs(fails):
         fails.append(f"Banshee 15 u past him: {b.att}, fire {mid.fire} (want still extending, not turned back)")
     low = fly(man + Vec(-23.0, 0.0, 9.0), west, 15.0)          # far enough but 9.6 u up (no flying learned here: 9 u)
     if b.att[0] != "pass" or low.pitch <= 0:
-        fails.append(f"Banshee 23 u past him, 9.6 u up: {b.att}, pitch {low.pitch:.2f} (want still climbing: the owner's "
+        fails.append(f"Banshee 23 u past him, 9.6 u up: {b.att}, pitch {low.pitch:.2f} (want still climbing: playtest "
                      f"runs start 10-35 u up, PASS_START_MIN 12)")
     yaw = west
     for k in range(45):                               # 23 u past him: the turn back east, over 1.5 s

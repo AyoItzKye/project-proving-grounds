@@ -1,4 +1,4 @@
-"""The owner's Nov 4 Infection / Flood games (Halo 3 Deadlock, Halo 4 Blood Cavern x2 and Creeper), each part failing
+"""The Nov 4 Infection / Flood playtests (Halo 3 Deadlock, Halo 4 Blood Cavern x2 and Creeper), each part failing
 on the code before:
 1. the infected never go for guns lying about (Halo 3's zombies chose items 49% of their decisions)
 2. an infected with a thruster (or Reach's evade) in a fight 6.5-11 u from a survivor dashes in at him (13-21 thrusts in
@@ -83,7 +83,7 @@ def main():
     got = [d.ambush_fresh(t, q) for t in (0.0, D.AMBUSH_S - 1, D.AMBUSH_S + 1, 2 * D.AMBUSH_S + 1)]
     if got != [True, True, False, True]:
         fails.append(f"ambush corner over time: {got} (want waited {D.AMBUSH_S:.0f} s, then left as long)")
-    # 6. (the owner's Rat's Nest flags) round 1's zombie tag learned, round 2's zombies hold a sword of another tag:
+    # 6. (the Rat's Nest flags) round 1's zombie tag learned, round 2's zombies hold a sword of another tag:
     #    by name they are the infected
     from brain import modes
     w3 = modes.Watch("infection", {}, "h3")
@@ -94,7 +94,7 @@ def main():
     w3.update(None, sn, 9.0, raw=[dict(index=i, pos=(0, 0, 0), wtag=0xCC if i in (2, 4) else 0xBB) for i in range(6)])
     if [p.team for p in sn.players] != [0, 0, 1, 0, 1, 0]:
         fails.append(f"Halo 3 round 2, swords of a new tag: teams {[p.team for p in sn.players]} (want the sword holders 1)")
-    # 7. (the owner's Ragnarok flag 590.6 s) an infected at its corner fights a survivor 8 u off, 12 u from the corner:
+    # 7. (the Ragnarok flag 590.6 s) an infected at its corner fights a survivor 8 u off, 12 u from the corner:
     #    it runs at him; a survivor at its post still holds
     for team, weapon, want in ((1, "sword", True), (0, "shotgun", False)):
         cm = get_map("h3_construct")
