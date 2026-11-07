@@ -14,13 +14,13 @@ s181 was updated five times, on November 6 and 7. Everything new and fixed since
 
 **Fixed**
 - **Halo: Reach Invasion, Spire**: a bot sent to a man cannon now stays on its pad until it launches, instead of turning for a grav lift the moment it got there.
-- **Aircraft landing**: a bot flying to the objective sets down where there is room near it (within about 10 units) and gets out, instead of circling over Spire's top.
+- **Aircraft landing**: a bot flying to the objective sets down where there is room near it (within about 10 units) and gets out, instead of circling over Spire's top (tested, not yet seen in a real match).
 
 <!-- build: 20261107-0100 -->
 #### Fourth update (November 7)
 
 **New**
-- **Halo 4, the Mantis**: bots get in it and use all of it: the machine gun, the rockets (held on a vehicle to lock on) and the stomp on anyone and any vehicle beside it.
+- **Halo 4, the Mantis**: bots get in it and use all of it: the machine gun, the rockets (held on a vehicle to lock on) and the stomp on anyone and any vehicle beside it (tested, not yet seen in a real match).
 - **Aiming at the head**: in Reach and Halo 4 bots aim where an enemy's head really is, as it moves when he strafes and crouches. Their aim is as good as before, just aimed at the right spot.
 - **LiDAR mode** records where people and bots drive and fly, and the LiDAR Viewer shows it (V).
 
@@ -30,7 +30,7 @@ s181 was updated five times, on November 6 and 7. Everything new and fixed since
 **Fixed**
 - **Halo: Reach Invasion, Spire**: the attackers spread over both grav lifts and the man cannons during their all-out pushes on the core too, and walk onto a man cannon's pad instead of past it.
 - **Vehicles during a push**: while the team pushes the objective together, bots still get into your landed aircraft and its guns, a free power vehicle (like a Banshee) still gets a driver, and empty guns still get gunners.
-- **Falcons**: a bot pilot no longer jumps out when you take its gun, waits a moment when you stand next to it, and flies onto the top of Spire from outside instead of up under it.
+- **Falcons**: a bot pilot flies onto the top of Spire from outside instead of up under it. It also no longer jumps out when you take its gun, and waits a moment when you stand next to it (tested, not yet seen in a match with a person).
 - **Snipers and reloads**: bots no longer trade a sniper rifle that still has rounds for another gun, and reload magazines they had only seen part empty.
 - **Breakpoint**: bots on the bridge see, and shoot at, players on the tower ledge.
 - **Bots joining**: all the bots you asked for join even if you open the pause menu while they do (Halo 3: ODST Firefight had one of three).

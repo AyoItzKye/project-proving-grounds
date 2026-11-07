@@ -114,7 +114,7 @@ For everything that works, game by game, see the [bot status sheet](BOT_STATUS.p
 - **Transport Warthog**: Bots drive it; only the front passenger seat is handled so far.
 - **Revenant**: Bots drive it, but get stuck on the terrain often.
 - **Wraith**: Bots drive and fire it, but wait for a crew and get stuck on the terrain. They also board enemy Wraiths and take out the driver.
-- **Falcon**: Bots fly it onto Spire's top from outside now instead of under it, wait for you when you're beside it, and stay in when you take a gun.
+- **Falcon**: Bots fly it onto Spire's top from outside now instead of under it. A pilot should also wait for you when you're beside it and stay in when you take a gun, but I haven't checked that with a person in a match yet.
 - **Sabre**: Bots can fly it, but don't use its missiles or other moves yet.
 - **Seraph**: Bots can fly it, but don't use its weapons yet.
 - **Mounted turrets**: Bots man the turrets and fire, but miss most shots and don't carry a turret they've ripped off.
