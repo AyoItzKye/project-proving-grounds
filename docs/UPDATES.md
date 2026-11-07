@@ -7,7 +7,26 @@ Click a version to see what changed since the one before it.
 <details open>
 <summary><b>0.2.2 s181</b> (November 6, 2026): call bots into your vehicle, a smarter Spire attack and Banshee, careful grenades, Flood survivors that use their shotguns</summary>
 
-s181 was updated three times on November 6. Everything new and fixed since 0.2.2 s180 is below, the newest first.
+s181 was updated four times, on November 6 and 7. Everything new and fixed since 0.2.2 s180 is below, the newest first.
+
+<!-- build: 20261107-0100 -->
+#### Fourth update (November 7)
+
+**New**
+- **Halo 4, the Mantis**: bots get in it and use all of it: the machine gun, the rockets (held on a vehicle to lock on) and the stomp on anyone and any vehicle beside it.
+- **Aiming at the head**: in Reach and Halo 4 bots aim where an enemy's head really is, as it moves when he strafes and crouches. Their aim is as good as before, just aimed at the right spot.
+- **LiDAR mode** records where people and bots drive and fly, and the LiDAR Viewer shows it (V).
+
+**Changed**
+- **DMR over the assault rifle** (Reach, Halo 4): a bot with a loaded DMR uses it at every range, never drops a DMR for an assault rifle, and gives up the assault rifle for a DMR.
+
+**Fixed**
+- **Halo: Reach Invasion, Spire**: the attackers spread over both grav lifts and the man cannons during their all-out pushes on the core too, and walk onto a man cannon's pad instead of past it.
+- **Vehicles during a push**: while the team pushes the objective together, bots still get into your landed aircraft and its guns, a free power vehicle (like a Banshee) still gets a driver, and empty guns still get gunners.
+- **Falcons**: a bot pilot no longer jumps out when you take its gun, waits a moment when you stand next to it, and flies onto the top of Spire from outside instead of up under it.
+- **Snipers and reloads**: bots no longer trade a sniper rifle that still has rounds for another gun, and reload magazines they had only seen part empty.
+- **Breakpoint**: bots on the bridge see, and shoot at, players on the tower ledge.
+- **Bots joining**: all the bots you asked for join even if you open the pause menu while they do (Halo 3: ODST Firefight had one of three).
 
 <!-- build: 20261106-2300 -->
 #### Third update (November 6, night)

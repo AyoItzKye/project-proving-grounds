@@ -334,11 +334,13 @@ class Director:
         return {b.id: s.spread(goal, k, 3.0) for k, b in enumerate(near)}
 
     def blitz_team(s, snap):
-        """Who goes: every bot that plays for the team (not Easy), alive, on foot, not carrying."""
+        """Who goes: every bot that plays for the team (not Easy), alive, on foot, not carrying, not on its way to a
+        vehicle's seat (a gun, a seat, a driver's job: vehicle_orders, which the blitz no longer shuts out)."""
         out = []
         for b in s.bots.values():
             p = snap.player(b.id)
-            if p is not None and p.alive and not p.has_flag and p.vehicle in (None, -1) and b.p.teamwork > 0:
+            if (p is not None and p.alive and not p.has_flag and p.vehicle in (None, -1) and b.p.teamwork > 0
+                    and b.order.role not in ("ride", "board", "drive")):
                 out.append(b)
         return out
 
@@ -396,7 +398,11 @@ class Director:
                     at >= BLITZ_READY * len(goers):
                 bz["go"] = now
                 s.event(now, "blitz", "blitz: go")
-        role, used = s.blitz_role(snap), {}
+        role, used, climbs_used = s.blitz_role(snap), {}, {}
+        # (Invasion phase 3, attacking a core on high: the goers spread over its ways up as the normal plan's runners do,
+        # climb_via. The blitz gave them none, the nav's cheapest each: live Spire 20261106-225937, the Spartans in a
+        # blitz 89% of phase 3, 24 climbs by lift 1, 8 by lift 2, 1 by a man cannon)
+        climbing = role == "runner" and snap.mode == "invasion" and snap.inv_phase == 3 and snap.inv_attackers == s.team
         held = s.regather(now, snap, bz, goers) if bz["go"] is not None else {}
         for b in goers:
             # (one already nearer the objective than the rally is in: never called back to gather. The sim, Spire
@@ -408,7 +414,8 @@ class Director:
                 b.set_order(Order("defender", held[b.id]), sure=True)
                 s.roles[b.id] = "defender"
             else:
-                via = s.prong_via(b, snap, bz["target"], bz["prongs"], used)
+                via = (s.climb_via(b, snap, bz["target"], climbs_used) if climbing else ()) or \
+                    s.prong_via(b, snap, bz["target"], bz["prongs"], used)
                 b.set_order(Order(role, bz["target"], via=via), sure=True)
                 s.roles[b.id] = role
             b.blitz_until = now + 0.5             # (refreshed each tick while the blitz lasts)
@@ -709,7 +716,9 @@ class Director:
     def assign_roles(s, now, snap):
         alive = [b for b in s.bots.values() if snap.player(b.id).alive]
         bz = getattr(s, "blitz", None)
+        blitzing = []
         if bz is not None:                       # (the blitz's own orders: blitz_tick)
+            blitzing = [b for b in alive if b.id in bz.get("ids", ())]
             alive = [b for b in alive if b.id not in bz.get("ids", ())]
         # Easy plays for itself: no place in the team's plan or the commander's orders. Slayer: it wanders the
         # map; objective games: straight at the objective (a flag carrier still runs home, below)
@@ -720,6 +729,8 @@ class Director:
             s.roles[b.id] = "runner" if point is not None else "free"
             b.order, b.via_left = (Order("runner", point) if point is not None else Order("free")), []
         if not alive:
+            if blitzing:                         # (the whole team in the blitz: its vehicles still get their crews)
+                s.vehicle_orders(now, snap, blitzing)
             return
         slots = s.role_slots(now, snap, len(alive))
         free = list(alive)
@@ -801,7 +812,11 @@ class Director:
             s.roles[b.id] = "free"
             b.set_order(Order("free"))
         s.backup_orders(now, snap, alive)
-        s.vehicle_orders(now, snap, alive)
+        # the blitz's goers too: a landed aircraft's or a horn's call, a power vehicle's driver, a gun. Shut out, the whole
+        # team in a blitz left a person's landed Falcon unmanned 24 s with five of them 4-12 u off, a bot's Falcon took off
+        # gunnerless and an empty Banshee stood 79 s (live Spire 20261106-225937). Called, one leaves the blitz
+        # (blitz_team: not while on its way to a seat)
+        s.vehicle_orders(now, snap, alive + blitzing)
 
     BACKUP_R, BACKUP_REACH, BACKUP_MAX = 12.0, 40.0, 3   # u: enemies this near a post we hold; helpers this far; at most
     BACKUP = True                                        # (False: the play before, for A/B)

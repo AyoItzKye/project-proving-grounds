@@ -128,11 +128,16 @@ def main():
         got = b.choose_weapon(5.0, snap[0], kind, 2, Snapshot(5.0, snap))
         if got != want:
             fails.append(f"{case}: {guns}, magazines {mag}: slot {got} (want {want})")
-    # 3. up close the AR comes out of a DMR bot's pocket; at range the DMR goes back in hand
+    # 3. up close the AR comes out of a precision rifle bot's pocket (Halo 3's BR; in Reach and Halo 4 the DMR stays in
+    #    hand at every range since the owner's Nov 7 rule, bot.DMR_OVER_AR, CMB-98); at range the rifle goes back in hand
+    kit = Kit(["battle_rifle", "assault_rifle"])
+    run("strong", kit, 2.0, 2.0, game="h3")
+    if kit.weapons[kit.held] != "assault_rifle":
+        fails.append("Halo 3, BR + AR at 2 units: no switch to the AR")
     kit = Kit(["dmr", "assault_rifle"])
     run("strong", kit, 2.0, 2.0)
-    if kit.weapons[kit.held] != "assault_rifle":
-        fails.append("DMR + AR at 2 units: no switch to the AR")
+    if kit.weapons[kit.held] != "dmr":
+        fails.append("Reach, DMR + AR at 2 units: the AR came out (DMR_OVER_AR)")
     kit = Kit(["dmr", "assault_rifle"])
     kit.held = 1
     run("strong", kit, 2.0, 9.0)
@@ -212,17 +217,20 @@ def main():
             fails.append(f"{tier} {w} at {d} units: zoom {z} (want {want})")
     # 9b. backing off or hunting with a man close by: the guns still go by his range, not the all-rounder (live
     #     Boardwalk: three AR -> DMR swaps with a man 2-3.4 units away on a retreat or hunt tick)
-    for d, want_keep in ((2.0, True), (12.0, False)):
-        for kind in ("retreat", "hunt"):
-            b = Bot(1, 0, make_profile("strong", "rusher", random.Random(1)), MAP, random.Random(1))
-            b.game, b.notes, b.now = "reach", [], 5.0
-            foe_pos = Vec(A.x - d, A.y, A.z)
-            b.per.beliefs[2] = Belief(foe_pos, Vec(), 4.5, True, "eyes")
-            me = PlayerState(1, 0, "bot", A, alive=True, weapon="assault_rifle", weapons=["dmr", "assault_rifle"])
-            snap = Snapshot(5.0, [me, PlayerState(2, 1, "human", foe_pos, alive=True)])
-            got = b.choose_weapon(5.0, me, kind, A + Vec(5.0, 0, 0), snap)
-            if (got == -1) != want_keep:
-                fails.append(f"{kind} with a man at {d} units: weapon slot {got} (want {'keep the AR' if want_keep else 'the DMR'})")
+    #     (Halo 3's BR + AR; Reach's DMR is held at every range since Nov 7: DMR_OVER_AR, the AR never kept)
+    for game, rifle in (("h3", "battle_rifle"), ("reach", "dmr")):
+        for d, want_keep in ((2.0, game != "reach"), (12.0, False)):
+            for kind in ("retreat", "hunt"):
+                b = Bot(1, 0, make_profile("strong", "rusher", random.Random(1)), MAP, random.Random(1))
+                b.game, b.notes, b.now = game, [], 5.0
+                foe_pos = Vec(A.x - d, A.y, A.z)
+                b.per.beliefs[2] = Belief(foe_pos, Vec(), 4.5, True, "eyes")
+                me = PlayerState(1, 0, "bot", A, alive=True, weapon="assault_rifle", weapons=[rifle, "assault_rifle"])
+                snap = Snapshot(5.0, [me, PlayerState(2, 1, "human", foe_pos, alive=True)])
+                got = b.choose_weapon(5.0, me, kind, A + Vec(5.0, 0, 0), snap)
+                if (got == -1) != want_keep:
+                    fails.append(f"{game}, {kind} with a man at {d} units: weapon slot {got} "
+                                 f"(want {'keep the AR' if want_keep else 'the ' + rifle})")
     # 9c. review findings (logs/verify/review_ef3105a_613bffb.md):
     #   F1 the finishing hold keeps only a gun that can hit at his range (a shotgun or sword at 15 units goes)
     for game, w, alt in (("ce", "shotgun", "pistol"), ("h2", "sword", "battle_rifle")):

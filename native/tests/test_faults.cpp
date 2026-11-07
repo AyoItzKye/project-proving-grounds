@@ -245,6 +245,16 @@ int main() {
     on_roof[0x16C] = 4;
     pick = f_near_vehicle(G, tls, unit);
     if (pick != ((0x0A0Au << 16) | 4)) { printf("FAIL 8: Halo 4 picked %08x by a wreck (want 0a0a0004)\n", pick); fails++; }
+    // ... a giant (type 13, Halo 4's Mantis) is boarded in Halo 4; H2A's type 13 is not
+    ents[4][4] = 13;
+    pick = f_near_vehicle(G, tls, unit);
+    if (pick != ((0x0A0Au << 16) | 4)) { printf("FAIL 8: Halo 4 passed over a giant (picked %08x)\n", pick); fails++; }
+    {
+        h4f_game A = g_h2a;
+        pick = f_near_vehicle(A, tls, unit);
+        if (pick != 0xFFFFFFFFu) { printf("FAIL 8: H2A boarded a type 13 object (%08x)\n", pick); fails++; }
+    }
+    ents[4][4] = 1;
 
     // 9. Halo 3 boarding (objects at TLS +0x38: +0x20 count, +0x48 entries of 0x18: +0 salt, +3 type, +0x10 the object;
     // object +0x10 parent, +0x50 position, +0x5C forward, +0x68 up)

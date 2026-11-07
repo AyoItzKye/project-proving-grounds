@@ -76,6 +76,8 @@ class PlayerState:
     ability_on: bool = False   # that ability is running (armor lock held, jetpack on, camo on ...)
     decoy: bool = False        # a hologram (the game's truth: bots tell it only from what it does)
     tracker: bool = True       # enemies show on this player's motion tracker (the match settings: live.tracker())
+    head_pos: object = None    # Vec: the animated head (Reach / Halo 4 on foot: live.py's head readers), None not read
+    view_pos: object = None    # Vec: Halo 4's view point that head goes with (its place is not the feet), None not read
 
 
 @dataclass

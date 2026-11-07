@@ -62,6 +62,8 @@ def add_bot(m, machine, team=0xFF, name="", game="ce", look=None, clan="", emble
     mask]): its armor drawn from the game's own Armory, the none mask's slots set to the game's "none" (Reach,
     botcore s74 / s78), or None: the player's look. clan: its clan tag; emblem: its MCC emblem (the 5 ids of
     brain/emblems.ids, None: MCC's default), both what MCC shows for it (native/report.cpp)."""
+    if not idle(m, 60.0):            # (its name and look go in buffers the last add may not have read yet)
+        return dict(timeout=True, **status(m))
     m[OFF_NAME:OFF_NAME + 32] = name[:15].encode("utf-16-le").ljust(32, b"\0")
     if len(m) >= OFF_EMBLEM:                     # (botcore v10 and later)
         m[OFF_CLAN:OFF_CLAN + 16] = clan[:7].encode("utf-16-le").ljust(16, b"\0")
@@ -224,7 +226,21 @@ def status(m):
                 cmd=cmd, seq=seq, done=done, result=res, fault=fault)
 
 
+def idle(m, timeout=5.0):
+    """Wait until botcore has taken the last command published (its done seq caught up): True, else False at the time.
+    botcore takes commands on the game's own thread, so not while the game is paused."""
+    t = time.time()
+    while struct.unpack_from("<I", m, OFF_CMD + 8)[0] != struct.unpack_from("<I", m, OFF_CMD + 4)[0]:
+        if time.time() - t >= timeout:
+            return False
+        time.sleep(0.02)
+    return True
+
+
 def command(m, cmd, arg, timeout=5.0):
+    # (never over a command not taken yet: one slot. In the pause menu the game takes none; a timed-out add was
+    # overwritten by the next, and of the three bots asked for only the last one joined: ODST Firefight Nov 7, 00:07)
+    idle(m, timeout)
     seq = struct.unpack_from("<I", m, OFF_CMD + 4)[0] + 1
     struct.pack_into("<I", m, OFF_CMD, cmd)
     struct.pack_into("<i", m, OFF_CMD + 12, arg)

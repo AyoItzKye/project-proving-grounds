@@ -177,6 +177,8 @@ def snapshot(live, now, prev, bot_ids, crouch=(), person_crouch=False, person_ho
                                    equipment=d.get("equipment", ""), ability_on=on,
                                    # the match's motion tracker setting for him (off in SWAT)
                                    tracker=d.get("tracker", True),
+                                   head_pos=Vec(*d["head_pos"]) if d.get("head_pos") is not None else None,
+                                   view_pos=Vec(*d["view_pos"]) if d.get("view_pos") is not None else None,
                                    camo_until=now + 0.3 if on and d.get("equipment") == "active_camo" else 0.0))
     bad = ability_misread(players, now)
     for p in players:
@@ -185,7 +187,7 @@ def snapshot(live, now, prev, bot_ids, crouch=(), person_crouch=False, person_ho
     # a vehicle riding on another (Reach: a Warthog's gun, a Falcon's side guns are their own vehicles, positioned
     # relative to it): its riders count as the carrier's, and it is not a vehicle of its own in the list (its gunner
     # read as riding a separate "unknown" vehicle, so every manned Warthog looked gunner-less)
-    objs = live.objects((1,))
+    objs = live.objects(getattr(live, "VEHICLE_TYPES", (1,)))   # (Halo 4: its giants too, the Mantis)
     parent_of = {}
     if hasattr(live, "object") and hasattr(live, "g"):
         for h, typ, path, pos in objs:

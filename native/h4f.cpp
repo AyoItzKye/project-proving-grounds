@@ -248,7 +248,10 @@ static uint32_t f_near_vehicle(h4f_game& G, uint8_t* tls, uint8_t* unit) {
     float best = 3.0f * 3.0f;
     for (int i = 0, mx = *(int32_t*)(hdr + 0x2C); i < mx; i++) {
         uint8_t* e = ents + (size_t)i * 0x18;
-        uint8_t* o = *(uint16_t*)e && e[4] == 1 ? *(uint8_t**)(e + 0x10) : nullptr;   // type 1: a vehicle
+        // type 1: a vehicle; Halo 4's giants too, type 13: its Mantis (halo4.dll's object type table, 0x180d8f410:
+        // biped 0, vehicle 1 ... giant 13; logs/tmp/h4_object_types.py). Type 1 only, no bot could get in one
+        bool vehicle_type = e[4] == 1 || (G.id == 7 && e[4] == 13);
+        uint8_t* o = *(uint16_t*)e && vehicle_type ? *(uint8_t**)(e + 0x10) : nullptr;
         if (!o || *(uint32_t*)(o + 0x24) != 0xFFFFFFFFu) continue;                      // top level (not a gun on one)
         if (G.id == 7 && ((const float*)(o + 0x7C))[2] < 0.5f) continue;                // on its side or roof
         if (o[0x16C] & 4) continue;   // destroyed (damage flags bit 2: both games' object_get_health reads 0 then)
@@ -569,6 +572,10 @@ static void f_fill(h4f_game& G, uint8_t* tls, uint8_t* act, int index, const hb_
     *(float*)(act + 0x1C) = a.forward;
     *(float*)(act + 0x20) = a.strafe;
     *(float*)(act + 0x38) = (b & HB_BTN_FIRE) ? 1.0f : 0.0f;
+    // the second trigger (a vehicle's second weapon: the Mantis's rockets, a Banshee's bomb): +0x3C, as Reach's action
+    // has it (decoded live there: fire2 = right mouse). INFERRED for Halo 4, not decoded here; left as the player's
+    // template before, so bots held whatever he held
+    if (G.id == 7) *(float*)(act + 0x3C) = (b & HB_BTN_FIRE2) ? 1.0f : 0.0f;
     // the whole word: the player's action is the template, and its high half holds his presses (+0x40 bit 34, Halo
     // 4's sprint press, toggled every bot's sprint whenever he pressed Shift)
     *(uint64_t*)(act + 0x40) = (b & HB_BTN_ACTION) ? 0x400000u : 0u;

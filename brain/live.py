@@ -168,6 +168,7 @@ class Live:
     # a vehicle's body as each game keeps it on the object, the field its players' health is read from (a vehicle is a
     # unit): (offset, True when the float is damage taken, 1.0 = gone, not health left)
     VEH_VITAL = (0x9C, False)
+    VEHICLE_TYPES = (1,)        # the object types read as vehicles (objects(): Halo 4 adds its giants, LiveH4F)
     # the game's own "destroyed" bit: object damage flags byte at DEAD_AT, bit 2 (CE's _object_dead_bit). DERIVED from each
     # DLL's object_get_health script function (backups/mcc-2025.08.16, the Ghidra build), which answers 0 when it is set:
     # Halo 2 +0x10A, Halo 3 +0x110, ODST +0x104, Reach +0x138, Halo 4 / H2A +0x16C. None (CE): its MP vehicles cannot
@@ -1241,6 +1242,28 @@ class LiveReach(LiveH3):
         s._bare_players = set()
         s._find()
 
+    def spartan_head_position(s, address, unit, feet):
+        """The Spartan's animated head (its target_head marker on its head bone) in world space, or None: the 82-node
+        multiplayer Spartan (bone block descriptor at unit +0x178, array at +0xF1C, 52-byte transforms, head node 38);
+        an Elite, a bad scale or axes, or a point off the body read None (the fixed head height then). A person aims at
+        the head he sees, which leans and dips as the man strafes and crouches (the collaborator's fork,
+        c9a9b1f, confirmed there on the DMR)."""
+        size, offset = struct.unpack_from("<HH", unit, 0x178)
+        if (size, offset) != (82 * 52, 0xF1C):
+            return None
+        raw = s.g.read(address + offset + 38 * 52, 52)
+        if raw is None or len(raw) != 52:
+            return None
+        scale, *m = struct.unpack("<13f", raw)
+        if not all(map(math.isfinite, (scale, *m))) or not 0.95 <= scale <= 1.05:
+            return None
+        if any(abs(sum(v * v for v in m[k:k + 3]) - 1.0) > 0.08 for k in (0, 3, 6)):
+            return None
+        point = tuple(m[9 + i] + scale * (0.01772663 * m[i] - 0.0063144267 * m[3 + i]) for i in range(3))
+        if math.hypot(point[0] - feet[0], point[1] - feet[1]) > 0.8 or not 0.15 < point[2] - feet[2] < 1.05:
+            return None
+        return point
+
     MAGAZINE = {15: "dmr", 32: "assault_rifle", 8: "magnum", 21: "needle_rifle", 4: "sniper", 6: "shotgun",
                 2: "rockets"}   # ponytail: by magazine size; battery weapons stay "unknown"
 
@@ -1584,6 +1607,8 @@ class LiveReach(LiveH3):
                 d["weapon"] = s.weapon_name(held) if held != NONE else (d["weapons"][0] if d["weapons"] else "none")
                 rounds = [s.rounds(w) for w in slots if w != NONE]
                 d["ammo"], d["mag"] = [a for a, _ in rounds], [g for _, g in rounds]
+                if parent == NONE:          # on foot: the head where the body has it (spartan_head_position)
+                    d["head_pos"] = s.spartan_head_position(o, u, d["pos"])
                 d["equipment"], d["ability_on"] = s.ability(struct.unpack_from("<I", u, s.ABILITY_AT)[0])
             out.append(d)
         for d in out:                # enemies on his motion tracker (tracker() per game)
@@ -1764,6 +1789,51 @@ class LiveH4F(LiveReach):
     # (Live.vehicle_dead / vehicle_left: halo4.dll 0x180683124 and groundhog.dll 0x180683e80, object_get_health)
     DEAD_AT, HEALTH_BLOCK = 0x16C, 0x1D0
     AMMO_AT = None              # (rounds not decoded here: Reach's +0x2C6 / +0x2CA are not these games')
+    # the vehicles' object types: 1, and Halo 4's giants, 13 (the Mantis: halo4.dll's own object type table at
+    # 0x180d8f410 lists biped 0, vehicle 1 ... creature 12, giant 13; logs/tmp/h4_object_types.py). Read as type 1 only,
+    # the Mantis was in no vehicle list: no bot went for it, and the owner in it rode "?" (Ragnarok 20261106-234103).
+    # Halo 4 only: this class reads H2A too, whose type 13 is not known to be a giant
+    @property
+    def VEHICLE_TYPES(s):
+        return (1, 13) if str(getattr(s.g, "dll", "")).lower() == "halo4.dll" else (1,)
+
+    def h4_spartan_pose(s, address, unit, position):
+        """Halo 4's Spartan (120-node rig: bone block descriptor at unit +0x1BC, head node 54, its target_head marker):
+        (the animated head, the unit's view point +0xD50), both or (None, None). The place read here is not the feet
+        (0.38 over the floor, bot.H2A_FEET): its head goes with this view point, never with a head height added to the
+        place. Captured 2,780 standing / strafing / crouched poses on Bloodline and Adrift (the collaborator's fork,
+        524af62). Not for Reach, H2A, a vehicle or another rig."""
+        unknown = (None, None)
+        if str(getattr(s.g, "dll", "")).lower() != "halo4.dll" or unit is None or len(unit) < 0x1C0:
+            return unknown
+        size, offset = struct.unpack_from("<HH", unit, 0x1BC)
+        if size != 120 * 52 or offset % 4 or not 0x700 <= offset <= 0x8000:
+            return unknown
+        raw = s.g.read(address + offset + 54 * 52, 52)
+        view_raw = s.g.read(address + 0xD50, 12)
+        if raw is None or len(raw) != 52 or view_raw is None or len(view_raw) != 12:
+            return unknown
+        scale, *m = struct.unpack("<13f", raw)
+        view = struct.unpack("<3f", view_raw)
+        base = struct.unpack_from("<3f", unit, 0x64)
+        if not all(map(math.isfinite, (scale, *m, *view, *base, *position))) or not .95 <= scale <= 1.05:
+            return unknown
+        axes = [m[k:k + 3] for k in (0, 3, 6)]
+        if any(abs(sum(x * y for x, y in zip(a, b)) - float(i == j)) > .08
+               for i, a in enumerate(axes) for j, b in enumerate(axes)):
+            return unknown
+        cross = (axes[0][1] * axes[1][2] - axes[0][2] * axes[1][1], axes[0][2] * axes[1][0] - axes[0][0] * axes[1][2],
+                 axes[0][0] * axes[1][1] - axes[0][1] * axes[1][0])
+        if sum(x * y for x, y in zip(cross, axes[2])) < .9:
+            return unknown
+        marker = (-6.9422384e-8, .02300628, -.006868857)
+        head = tuple(m[9 + i] + scale * sum(marker[j] * m[j * 3 + i] for j in range(3)) for i in range(3))
+        if (math.hypot(head[0] - position[0], head[1] - position[1]) > .8 or not -.2 < head[2] - position[2] < 1.05
+                or math.hypot(view[0] - base[0], view[1] - base[1]) > .2 or not .3 < view[2] - base[2] < .8
+                or sum((view[k] - position[k]) ** 2 for k in range(3)) > 1.0
+                or sum((view[k] - head[k]) ** 2 for k in range(3)) > .25):
+            return unknown
+        return head, view
 
     # objects for LiveH3.flags / balls / objective_items (Adrift): TLS +0x18, entry +4 type (2 weapon), object +8 tag,
     # +0x24 parent (a held gun's: the unit; a map gun's: the weapon pad it rests on), +0x40 position, absolute
@@ -1903,7 +1973,7 @@ class LiveH4F(LiveReach):
             h = (salt << 16) | i
             if typ == 2 and h not in getattr(s, "_held", ()) and not s._was_held(h) and tag not in s._names:
                 s._learn(tag, pos)       # +0x14 is no parent here (0x3040 on foot): skip held guns instead
-            if typ == 1 and tag not in s._names and struct.unpack_from("<I", head, s.PARENT_AT)[0] == NONE:
+            if typ in s.VEHICLE_TYPES and tag not in s._names and struct.unpack_from("<I", head, s.PARENT_AT)[0] == NONE:
                 n = s._vehicle_name(tag)  # (a gun riding on a vehicle has it as its parent: left as it was)
                 if n:
                     s._names[tag] = n
@@ -1978,6 +2048,8 @@ class LiveH4F(LiveReach):
                 d["vehicle"] = parent if parent != NONE and s.object(parent) else -1
                 sh, hp = s._vitals(unit, *struct.unpack_from("<2f", u, 0x158))
                 d.update(pos=struct.unpack_from("<3f", u, 0x40), aim=struct.unpack_from("<3f", u, 0x4E0), shield=sh, health=hp)
+                if d["vehicle"] == -1:      # on foot: the head and the view point it goes with (h4_spartan_pose)
+                    d["head_pos"], d["view_pos"] = s.h4_spartan_pose(o, u, d["pos"])
                 d["equipment"], d["ability_on"] = s.ability(struct.unpack_from("<I", u, s.ABILITY_AT)[0])
             out.append(d)
         s._held = held
