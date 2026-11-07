@@ -153,6 +153,7 @@ STAY_SCORE = 1.4     # staying on it: over all but a fight (a man in sight 1.5 +
 DEFEND_R, ESCORT_R = 15.0, 12.0     # how far a defender strays from its post, an escort from our flag carrier (keep_role)
 DEFEND_HOLD = 6.0                   # a CTF defender closes on a man only this near its post (fight): from cover otherwise
 CLOSE_FIGHT_R = 8.0                 # a man in sight this close is fought whatever the role (decide)
+GLIMPSE_S = 1.5                     # s: a man out of sight no longer than this is still "in sight" to its post (keep_role)
 PRESS_NEAR = 3.0                    # u: a press (press_on) walks in to here; closer, push_in and the melee take over
 POWER_NEAR = 15.0                   # u: a power weapon up this near is not held back by a post (keep_role)
 REGROUP_MATE = 8.0                  # a teammate this close is support (brain/tracefmt.py FORM_R): no pull-back (regroup_point)
@@ -952,7 +953,11 @@ class Bot:
             kind, arg = key
             if kind == "fight":
                 b = s.per.beliefs.get(arg)
-                if b is None or (arg == att and fresh_hit) or (arg in seen and dist(me.pos, b.pos) < (4.0 if urgent else 8)):
+                # (in sight, or out of it a moment: a tick behind a pillar cut a defender's fight 3.27 -> 1.32 under its
+                # post's 1.72, and it walked to the post with the Flood 4 u off, never shooting him: owner's Blood Cavern
+                # Flood, Nov 6 16:48)
+                here = arg in seen or snap.time - s.per.last_seen.get(arg, -9.0) < GLIMPSE_S
+                if b is None or (arg == att and fresh_hit) or (here and dist(me.pos, b.pos) < (4.0 if urgent else 8)):
                     continue          # on us, or right here: fight back wherever (the core at stake: only at arm's length)
                 q = b.pos
             elif kind in ("hunt", "item", "hold") and isinstance(arg, Vec):

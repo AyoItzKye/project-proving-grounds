@@ -197,6 +197,11 @@ def path_rises(zs, h=0.15):
 LAUNCH_SNAP = 5.0    # u: a ride up starting this near a man cannon or gravity lift starts on it
 LAUNCH_RISE = 10.0   # u: a link rising this much is a launch (no jump gets a person 10 u up)
 PAD_TRIGGER = 1.2    # u: a ride people started this near a launch's marker starts at its trigger
+# a climb of LIFT_RISE+ from within LIFT_COLUMN of a gravity lift's base (Bot.lift_near's radius) is the lift's ride, one
+# way, however low: Blood Cavern's back lift rises 2.8 u, read as a jump back down, and the nav sent bots into its top,
+# where it pushes up (owner's flag, Nov 6 16:50: bots kept trying to enter its exit end); Lockout's and Ivory Tower's low
+# lifts the same
+LIFT_RISE, LIFT_COLUMN = 2.0, 2.0
 
 
 def anchor_launches(links, features):
@@ -217,6 +222,7 @@ def anchor_launches(links, features):
         starts = [k["take_off"] for k in rides if flat(k["take_off"], p) < PAD_TRIGGER and abs(k["take_off"][2] - p[2]) < 3.0]
         trigger[i] = list(min(starts, key=lambda q: flat(q, p))[:3]) if starts else list(p[:3])
     out, ride_ids = [], {id(k) for k in rides}
+    lifts = [f["pos"] for f in features if f.get("kind") == "lift"]
     for k in links:
         to = k.get("take_off")
         if id(k) in ride_ids:
@@ -224,6 +230,9 @@ def anchor_launches(links, features):
             if flat(pads[i], to) < LAUNCH_SNAP and abs(pads[i][2] - to[2]) < 3.0:
                 k = dict(k, take_off=trigger[i] + list(to[3:]), ride=1)
                 k.pop("runup", None)
+        elif (to and k.get("land") and not k.get("ride") and k["land"][2] - to[2] >= LIFT_RISE
+              and any(flat(p, to) < LIFT_COLUMN and abs(p[2] - to[2]) < 3.0 for p in lifts)):
+            k = dict(k, ride=1)             # a low lift's ride: one way (jump_ways), from where it was taken
         out.append(k)
     return out
 
@@ -398,7 +407,7 @@ def _build(m, window):
     walked = people_walked(names, kinds=(1, 3))
     T = Terrain(m["heightmap"], m["bases"], extra_floor=floor, blocks=blocks, slit_rule=m["name"].startswith(SLIT_GAMES),
                 stair_rule=m["name"].startswith(("h4_", "h2a_")),
-                window=window, walked=walked)
+                window=window, walked=walked, lifts=[f["pos"] for f in m.get("features", []) if f.get("kind") == "lift"])
     T.add_links(m["teleporters"])
     if not m["name"].startswith(("h2_", "h3_", "reach_", "odst_", "h2a_", "h4_")):  # jump links, for skilled bots (CE jump physics; ponytail:
         T.build_jumps()                  # Halo 2's jump is not measured yet, so no gap jumps there)

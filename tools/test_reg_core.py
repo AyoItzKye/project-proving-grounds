@@ -397,7 +397,7 @@ def check_flood_shotgun():
     # Halo 4 Flood survivors: the magnum on a sword Flood on his way in, the shotgun out before he is in its reach
     # (owner's Cliffside, trace 20261106-144807: 41% of the Flood that reached a survivor found the magnum out, swapped
     # to 1.3 s before; then at RUSH_R 10 u the owner's Wraparound 20261106-160121: the shotgun out from 10 u, 0 shots at
-    # 3-10 u, "now theyre retarded"). Against a gunner the magnum still wins at Medium band (PvP unchanged)
+    # 3-10 u, flagged as worse). Against a gunner the magnum still wins at Medium band (PvP unchanged)
     M = get_map("h4_z05_cliffside")
     out = []
 
@@ -424,6 +424,85 @@ def check_flood_shotgun():
             out.append(f"flood_shotgun: {tier}, magnum out 0.5 s after a swap, a sword Flood 5 u off: kept the magnum")
         if held(tier, "shotgun", "magnum", 7.0) != "magnum":
             out.append(f"flood_shotgun: {tier}, shotgun out, a magnum man 7 u off: kept the shotgun (want the magnum)")
+    return out
+
+
+def check_flood_sprint():
+    # Halo 4's sprint and a sword (owner's Blood Cavern Flood, Nov 6 16:48: shotgun out, a Flood 1.2-6 u off, survivors
+    # held sprint 74% of those ticks, the view on the way, not on him, the gun silent): a gun never sprints at a sword or
+    # hammer; at a gunner a close-range gun sprints in only on a move at him (the dodge's 45 deg diagonal counts); a sword
+    # still sprints at a sword
+    from brain.bot import WEAPON_RANGE
+    from brain.equipment import Kit
+    M = get_map("h4_ca_blood_cavern")
+    out = []
+
+    def wish(mine, foe_w, d, fwd, strafe, away=False):
+        b = Bot(1, 0, make_profile("top", "rusher", random.Random(1)), M, random.Random(1))
+        b.goal = ("fight", 6)
+        me = PlayerState(1, 0, "me", Vec(0, 0, 0), weapon=mine)
+        foe = PlayerState(6, 1, "foe", Vec(d, 0, 0), yaw=0.0 if away else math.pi, weapon=foe_w)
+        x = dict(fight=True, target=foe, seen=[foe], travel=False, cracked=False, carrying=False, push_at=None)
+        return b.kit.sprint_wish(b, x, me, Action(forward=fwd, strafe=strafe, yaw=0.0))
+
+    cases = [("shotgun", "sword", 3.0, 1.0, 0.0, None), ("shotgun", "sword", 3.0, 0.0, 1.0, None),
+             ("shotgun", "gravity_hammer", 4.0, 1.0, 0.0, None),
+             ("shotgun", "assault_rifle", 3.0, 1.0, 0.0, "sprint to close the gap"),
+             ("shotgun", "assault_rifle", 3.0, 0.7, 0.7, "sprint to close the gap"),
+             ("shotgun", "assault_rifle", 3.0, 0.0, 1.0, None), ("shotgun", "assault_rifle", 3.0, -0.7, 0.0, None),
+             ("sword", "sword", 3.0, 1.0, 0.0, "sprint to close the gap")]
+    for mine, foe_w, d, f, st, want in cases:
+        got = wish(mine, foe_w, d, f, st)
+        if got != want:
+            out.append(f"flood_sprint: {mine} v {foe_w} {d} u, stick ({f}, {st}): {got!r} (want {want!r})")
+    far = max(8.0, WEAPON_RANGE.get("magnum", (5.0, 25.0))[1]) + 2.0
+    if wish("magnum", "sword", far, 1.0, 0.0, away=True) is not None:
+        out.append(f"flood_sprint: magnum after a sword {far} u off looking away: sprinted (want none)")
+    if wish("magnum", "assault_rifle", far, 1.0, 0.0, away=True) != "sprint after him":
+        out.append(f"flood_sprint: magnum after a gunner {far} u off looking away: no sprint (EQ-SPRINT-01)")
+    if not Kit.moving_at(Action(forward=0.7, strafe=-0.7, yaw=0.0), PlayerState(1, 0, "me", Vec(0, 0, 0)), Vec(3, 0, 0)):
+        out.append("flood_sprint: a diagonal run in (45 deg) read as not at him")
+    return out
+
+
+def check_glimpse_keep():
+    # a defender's fight on a man lost from sight a moment (owner's Blood Cavern Nov 6 16:48, Zealot343: a tick behind a
+    # pillar cut the fight 3.27 -> 1.32 under its post's 1.72 and it walked to its post, the Flood 4 u off): kept for
+    # GLIMPSE_S, then the post's leash as before
+    from brain.bot import GLIMPSE_S
+    M = get_map("h4_ca_blood_cavern")
+    out = []
+    b = Bot(6, 0, make_profile("top", "grudger", random.Random(6)), M, random.Random(6))
+    post = Vec(-11.06, -1.65, 0.62)
+    b.order = Order("defender", post)
+    me = PlayerState(6, 0, "me", Vec(1.15, -5.08, 0.5))
+    foe = Vec(5.4, -5.9, 0.7)                      # 4.3 u off us, 17 u off the post
+    b.per.beliefs[9] = Belief(foe, Vec(), 19.5, False, "eyes")
+    for gone, kept in ((0.1, True), (GLIMPSE_S + 1.0, False)):
+        b.per.last_seen[9] = 19.6 - gone
+        scores = {("fight", 9): 3.27, ("objective", post): 1.72}
+        b.keep_role(scores, me, Snapshot(19.6, [me], {}, mode="infection"), [])
+        if (scores[("fight", 9)] == 3.27) != kept:
+            out.append(f"glimpse_keep: out of sight {gone:.1f} s, 4 u off: fight {scores[('fight', 9)]:.2f} "
+                       f"({'want it kept' if kept else 'want the leash'})")
+    return out
+
+
+def check_lift_one_way():
+    # a low gravity lift's ride is one way (owner's Blood Cavern flag, Nov 6 16:50: bots kept trying to enter the back
+    # lift's exit end: its 2.8 u ride, read as a jump, was walked back down into its top)
+    from brain.maps import anchor_launches
+    from brain.terrain import jump_ways
+    out = []
+    lift = [{"kind": "lift", "name": "ca_cavern_back_lift", "pos": [-6.374, -0.126, 0.715]}]
+    ride = {"take_off": [-5.65, 0.21, 1.11], "land": [-7.44, 0.12, 3.93], "apex": 4.46, "air_s": 1.85, "human": 1}
+    hop = dict(ride, take_off=[-1.65, 0.21, 1.11], land=[-3.44, 0.12, 3.93])    # 4.7 u off the lift: no ride
+    a, h = anchor_launches([ride, hop], lift)
+    if jump_ways(a, None, 0.8) != "one-way" or not a.get("ride") or a["take_off"] != ride["take_off"]:
+        out.append(f"lift_one_way: Blood Cavern's back lift ride: {jump_ways(a, None, 0.8)}, ride {a.get('ride')}, "
+                   f"take-off {a['take_off']}")
+    if h.get("ride"):
+        out.append("lift_one_way: a climb 4.7 u off the lift marked a ride")
     return out
 
 
@@ -767,6 +846,7 @@ CHECKS = {"air_kill_zone": check_air_kill_zone, "air_clearance": check_air_clear
           "banshee_take": check_banshee_take, "warthog_gunner": check_warthog_gunner, "ctf_carry": check_ctf_carry,
           "h2a_flag_use": check_h2a_flag_use, "forge_items": check_forge_items, "h3_deployed": check_h3_deployed,
           "ff_sides": check_ff_sides, "escort_stops": check_escort_stops, "flood_shotgun": check_flood_shotgun,
+          "flood_sprint": check_flood_sprint, "glimpse_keep": check_glimpse_keep, "lift_one_way": check_lift_one_way,
           "mine_keep_clear": check_mine_keep_clear, "mine_route": check_mine_route, "dry_rearm": check_dry_rearm, "ff_dlc": check_ff_dlc, "melee_swing": check_melee_swing,
           "core_carry": check_core_carry, "koth_company": check_koth_company, "zone_rules": check_zone_rules,
           "territories_posts": check_territories_posts, "release_gate": check_release_gate}

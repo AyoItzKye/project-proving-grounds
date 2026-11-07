@@ -9,6 +9,9 @@ Click a version to see what changed since the one before it.
 
 ### Fixed
 - **Halo 4 Flood** (and Infection against swords): human bots got caught holding the magnum when the Flood reached them. Now they shoot the magnum at a Flood on its way in, switch to the shotgun before it gets close, and hold their ground with it instead of walking into the sword. Against enemies with guns nothing changes.
+- **Halo 4 Flood**: with the shotgun out, human bots no longer sprint around a Flood coming at them (they couldn't shoot and turned their backs to him). They keep their sights on him and fire when he's in range. A bot that loses sight of a Flood for a moment keeps fighting him instead of walking back to its spot.
+- **Infection and Flood**: human bots hide in places people actually play. On Blood Cavern they crowded against a wall trying to reach a floor nobody can get to.
+- **Gravity lifts**: bots no longer try to go down a lift from its top end (Blood Cavern's back lift, and the low lifts on Halo 2 Anniversary's Lockout and Reach's Ivory Tower).
 - **Firefight** ([#12](https://github.com/AyoItzKye/project-proving-grounds/issues/12)): after a match on Unearthed or Installation 04, the bots' brain for that match kept running into the next one and gave your bots a second set of orders. It now stops when its match ends.
 
 </details>

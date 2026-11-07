@@ -506,14 +506,15 @@ def carry_goal(mode, snap, team, pos):
 # Infection's survivors "cower into buildings with as minimal entrances as possible" (owner, issue #3): holds are rooms
 # found on the nav. From each node of a HOLD_LATTICE-cell lattice the floor within HOLD_R by walk is its room; the nodes
 # at the edge of that walk are the ways out, each joined group of them an entrance (its middle a door). Kept: rooms of
-# HOLD_AREA or more, roofed first, then the fewest entrances, then the narrowest (exposure: the ways out's width).
+# HOLD_AREA or more, rooms people stood in first, roofed first, then the fewest entrances, then the narrowest (exposure:
+# the ways out's width).
 HOLD_R, HOLD_LATTICE, HOLD_AREA, HOLD_APART = 5.0, 12, 6.0, 12.0
 _HOLDS = {}                 # map name -> [hold], None while being found (holds)
 
 
 def find_holds(T, R=HOLD_R, lattice=HOLD_LATTICE):
-    """Every hold on T's nav, best first: dict(pos, entrances, exposure, area, roof, doors). 0.2-4 s a map (Rat's Nest
-    0.4 s, Reach's Breakpoint 3.8 s)."""
+    """Every hold on T's nav, best first: dict(pos, entrances, exposure, area, roof, doors, walked). 0.2-4 s a map
+    (Rat's Nest 0.4 s, Reach's Breakpoint 3.8 s)."""
     import heapq
     import numpy as np
     from scipy import ndimage
@@ -521,6 +522,7 @@ def find_holds(T, R=HOLD_R, lattice=HOLD_LATTICE):
     g, N, out = T.graph, T.nh * T.nw, []
     ip, ix, wt = g.indptr, g.indices, g.data
     reach, oob = getattr(T, "reach", None), getattr(T, "oob", None)
+    walked = getattr(T, "people_walked", None)     # (maps.terrain: LiDAR cells anyone stood on)
     for l, j, i in np.argwhere(T.lwalk):
         if j % lattice or i % lattice or T.degree[l, j, i] < 6:
             continue
@@ -553,9 +555,22 @@ def find_holds(T, R=HOLD_R, lattice=HOLD_LATTICE):
             continue                    # (a sealed pocket: nobody walks in, nobody out)
         z = float(T.lz[l, j, i])
         out.append(dict(pos=T._center(int(l), int(j), int(i)), entrances=len(doors), exposure=len(rim) * NAV_CELL,
-                        area=area, roof=bool(T.top[j * T.nstep, i * T.nstep] - z > 1.8), doors=doors))
-    out.sort(key=lambda o: (not o["roof"], o["entrances"], o["exposure"]))
+                        area=area, roof=bool(T.top[j * T.nstep, i * T.nstep] - z > 1.8), doors=doors,
+                        walked=not walked or any(_walked(T, walked, v) for v in best)))
+    # rooms people stood in first (a map with people's walks; the others after, a short LiDAR session misses real ones:
+    # Damnation's 316 walked cells are in 2 of its 47): a pit under a walkway, "roofed" by it, ways in only drops, came
+    # first, and three survivors pushed 35 s into the wall at its rim for posts in it (owner's Blood Cavern flags, Nov 6:
+    # the same three bots stuck at one spot, pushing at a wall)
+    out.sort(key=lambda o: (not o["walked"], not o["roof"], o["entrances"], o["exposure"]))
     return out
+
+
+def _walked(T, walked, v):
+    """Did anyone stand on nav node v (people_walked keys: 0.25 u x 0.1 u, a few tenths up or down)?"""
+    l, r = divmod(int(v), T.nh * T.nw)
+    c = T._center(l, *divmod(r, T.nw))
+    k0, k1, kz = round(c.x / 0.25), round(c.y / 0.25), round(c.z / 0.1)
+    return any((k0, k1, kz + dz) in walked for dz in range(-3, 4))
 
 
 def holds(T, name, wait=False):

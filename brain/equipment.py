@@ -987,22 +987,29 @@ class Kit:
             return None
         return me.pos + Vec(c, sn, 0) * 3.4
 
-    def sprint_wish(s, bot, x, me):
+    def sprint_wish(s, bot, x, me, act=None):
         """Guide 01 section 6 / 02: sprint closes the gap with a close-range gun (let go about a unit out, then melee),
         rotates on clear routes, runs the flag, escapes once out of sight; it cannot shoot, so it stops before Medium
         band of an enemy, and strong players stop before any corner an enemy might be behind. It chases a man out of our
         gun's reach who looks away, and runs from a lost fight with the shield down. Easy sprints only a long walk with
-        nobody about."""
+        nobody about. act: the move asked this tick (a gap closed only by a move at him)."""
         tgt = x["target"]
-        # (5 u: guide 20 EQ-SPRINT-03; from 15 u a shotgun sprinted 45 m at a man it could not shoot meanwhile)
-        if x["fight"] and tgt is not None and me.weapon in CQB and 1.2 < dist(tgt.pos, me.pos) < 5.0:
+        # (5 u: guide 20 EQ-SPRINT-03; from 15 u a shotgun sprinted 45 m at a man it could not shoot meanwhile). Not at a
+        # sword or hammer, who comes to us (a shotgun holds its ground for him, Bot.fight braced), and only on a move at
+        # him: a sprint steers the view to its way (sprint_steer), and the hold's strafe turned survivors' backs to the
+        # Flood, the gun silent (owner's Blood Cavern Flood, Nov 6 16:48: 1.5-4 u off the Flood, shotgun out, 85 deg off
+        # him and 0-1% of ticks fired)
+        gun_on_blade = tgt is not None and tgt.weapon in LUNGERS and me.weapon not in LUNGERS
+        if (x["fight"] and tgt is not None and me.weapon in CQB and 1.2 < dist(tgt.pos, me.pos) < 5.0
+                and not gun_on_blade and (act is None or s.moving_at(act, me, tgt.pos))):
             return "sprint to close the gap"
         if s.lvl == 0:
             arg = bot.goal[1]
             far = not isinstance(arg, Vec) or dist(arg, me.pos) > LONG_WALK
             return "sprint the long walk" if x["travel"] and far else None
         from .bot import WEAPON_RANGE
-        if (x["fight"] and tgt is not None and not facing_me(tgt, me, 0.3)
+        # (a gun never after a sword or hammer: he comes to us, shot from where we stand)
+        if (x["fight"] and tgt is not None and not facing_me(tgt, me, 0.3) and not gun_on_blade
                 and dist(tgt.pos, me.pos) > max(8.0, WEAPON_RANGE.get(me.weapon, (5.0, 25.0))[1])):
             return "sprint after him"                  # out of our gun's reach, looking away: close in (EQ-SPRINT-01)
         if bot.goal[0] == "retreat" and x["cracked"]:
@@ -1029,7 +1036,7 @@ class Kit:
             s.press, s.hold_until, s.toggled = None, 0.0, False
             return None
         if s.game == "h4" and s.sprint_ok and me.vehicle == -1:
-            why = s.sprint_wish(bot, s.situation(bot, now, me, snap), me)
+            why = s.sprint_wish(bot, s.situation(bot, now, me, snap), me, act)
             if why:
                 act.sprint = True
                 act.fire = act.fire and not s.sprinting(now, me, "h4_sprint_t0")
@@ -1039,7 +1046,7 @@ class Kit:
                 s.h4_sprint_t0 = None
         toggle = s.energy is not None and use_of(s.game, s.kind)[0] == "tap"
         holding = now < s.hold_until and s.press is not None
-        if holding and s.press[0] == "sprint" and not s.sprint_wish(bot, s.situation(bot, now, me, snap), me):
+        if holding and s.press[0] == "sprint" and not s.sprint_wish(bot, s.situation(bot, now, me, snap), me, act):
             # its reason went (an enemy came into sight): let go and shoot, not out the plan's second (guide 20 audit:
             # Sword Base, 330 held ticks in fights, 119 within 5 u, the gun silent)
             s.hold_until, holding = now, False
@@ -1212,6 +1219,15 @@ class Kit:
             act.yaw = me.yaw + max(-6.0 * dt, min(6.0 * dt, wrap(want - me.yaw)))
             bot.steer(me, wp, act, True, arrive=0.02)
             act.fire = act.grenade = act.melee = False
+
+    @staticmethod
+    def moving_at(act, me, p, off=0.8):
+        """Does the move asked (act's stick on its view) go at p, within off rad (a run in with the dodge's diagonal
+        strafe, 45 deg, still does; a strafe across him or a step back does not)?"""
+        if math.hypot(act.forward, act.strafe) < 0.3:
+            return False
+        way = act.yaw + math.atan2(act.strafe, act.forward)       # (strafe +1 = left)
+        return abs(wrap(way - math.atan2(p.y - me.pos.y, p.x - me.pos.x))) < off
 
     @staticmethod
     def sprint_steer(dt, me, act):

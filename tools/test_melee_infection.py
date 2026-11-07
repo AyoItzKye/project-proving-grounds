@@ -28,7 +28,7 @@ from brain.bot import Belief, Bot, red_reticle  # noqa: E402
 from brain.core import PlayerState, Snapshot, Vec, dist  # noqa: E402
 from brain.director import Director  # noqa: E402
 from brain.live import LiveH3, LiveH4F, brain_name  # noqa: E402
-from brain.maps import get_map  # noqa: E402
+from brain.maps import get_map, terrain  # noqa: E402
 from brain.profiles import make_profile  # noqa: E402
 
 A = Vec(-2.0, 7.7, 6.4)          # Construct, red side's walk, one floor (tools/test_sword.py)
@@ -215,6 +215,16 @@ def main():
             info.append(f"infected charge: {roles}")
             if dz.blitz["go"] is None or roles != ["hunter"] * 3:
                 fails.append(f"infected at the rally: go {dz.blitz['go']}, roles {roles} (want all hunters together)")
+    # 7b. holds people stood in come first (owner's Blood Cavern Nov 6 16:48: the best "holds" were the pit under the back
+    #     walkway, z 0.1-0.6, ways in only drops, nobody ever stood there; three survivors pushed 35 s at its rim for their
+    #     posts): the 4 groups' holds are rooms people walked, none on that floor
+    bc = get_map("h4_ca_blood_cavern")
+    bh = modes.pick_holds(modes.find_holds(terrain(bc)), 4)
+    pit = [h for h in bh if h["pos"].x < -8.5 and -9.0 < h["pos"].y < 21.0 and h["pos"].z < 1.0]
+    info.append("Blood Cavern: 4 groups' holds " + str([tuple(round(c, 1) for c in (h["pos"].x, h["pos"].y, h["pos"].z))
+                                                        for h in bh]))
+    if len(bh) < 4 or pit or not all(h["walked"] for h in bh):
+        fails.append(f"Blood Cavern holds: {len(bh)}, in the pit {len(pit)}, walked {[h['walked'] for h in bh]}")
     # 8. the lunge's target reaches every game: the brain packs it (shared.h HB_TARGET_SHIFT, bits 24-28 = player + 1),
     # each game's botcore writes it; Reach / Halo 4 / H2A attack with the melee action, Halo 2 / 3 with the trigger
     import live_bots

@@ -19,6 +19,9 @@ RAY_MAX = 1000.0  # u: no line of sight longer than this (_ray: its samples grow
 WAIST = 0.30     # a handrail's height over the feet (the waist ray of clearance; drops through a rail: _build_nav)
 RAIL_COST = 25.0  # a drop over a handrail: taken only when nothing else gets there (forbidding it cut off floors)
 LID_COST = 400.0  # a drop into a column whose floor goes on at the ledge's height (_build_nav): beyond any detour
+LIFT_R = 1.0      # u: a gravity lift's column round its base marker: no drop lands in it (_build_nav) ...
+LIFT_DROP = 1.0   # u: ... from more than this over its floor (a step down onto a recessed pad is the way in: Construct's
+                  # small lifts sit 0.44 u under the floor round them)
 RAIL = (0.35, 0.45)  # heights over a ledge's floor where a wall is a handrail (0.25 u wall bins: clear of the step below)
 NAV_CELL = 0.25  # path grid spacing = heightmap cell (the base ramps are 0.83 wide, doors about 1)
 ROAD_COST = 0.4  # a vehicle edge on floor a person drove costs this much of its length: their lines are the roads
@@ -344,10 +347,11 @@ class Terrain:
     lid_rule = True   # drops into a column whose floor goes on at our own height cost LID_COST (_build_nav; tests: off)
 
     def __init__(s, npz_path, bases, extra_floor=(), blocks=(), slit_rule=False, window=None, stair_rule=False,
-                 walked=None):
+                 walked=None, lifts=()):
         # walked: cells people stood on (LiDAR walk keys, maps.terrain people_walked): a low ceiling over floor nobody
-        # walked is no floor (_low_ceiling)
+        # walked is no floor (_low_ceiling). lifts: gravity lifts' base markers (x, y, z): no drop into their columns
         s.walked_cells = walked
+        s.lift_pads = [tuple(p[:3]) for p in lifts]
         # slit_rule: no drops into slits no body fits (_build_nav). Reach only: a crack rule on Halo CE cut real drops
         # (Damnation, Lockdown); Reach's 0.25 u cells on its larger maps checked on Countdown stair_rule: stairs climb
         # STAIR_RISE a cell along their run (_stairs). Halo 4 / H2A levels (Adrift)
@@ -1122,6 +1126,17 @@ class Terrain:
         # stairs (stair_rule): their risers step over MAX_RISE, so the nav walled off Adrift's flag decks (live:
         # runners stood under the flag 4-7 u off for minutes, no pull in 178 s)
         stairs = s._stairs() if s.stair_rule else None
+        # a gravity lift's column: a drop into it from over it meets what pushes up (owner's Blood Cavern flag, Nov 6
+        # 16:50, the back lift: bots kept trying to enter its exit end; the route off its top dropped 3 u into its column)
+        in_lift = None
+        if getattr(s, "lift_pads", None):
+            in_lift = np.zeros(s.lz.shape, bool)
+            xs = s.x0 + (np.arange(s.nw) + 0.5) * NAV_CELL
+            ys = s.y0 + (np.arange(s.nh) + 0.5) * NAV_CELL
+            for px, py, pz in s.lift_pads:
+                col = (xs[None, :] - px) ** 2 + (ys[:, None] - py) ** 2 < LIFT_R * LIFT_R
+                with np.errstate(invalid="ignore"):
+                    in_lift |= col[None] & (np.abs(s.lz - pz) < 1.0)
 
         def slit(dst, za, at):
             # tested at the drops only (`at`): over the whole map for every pair of levels it took 79 s of a Forge World
@@ -1154,6 +1169,9 @@ class Terrain:
                             lim = np.where(st[ls][src] | st[ld][dst], np.maximum(lim, STAIR_RISE * dl / NAV_CELL), lim)
                         ok = both & (rise <= lim) & (rise >= -MAX_DROP)
                         drop = ok & (rise < -lim)               # off a ledge (a stair step or a ramp down is not one)
+                        if in_lift is not None:
+                            ok &= ~(drop & in_lift[ld][dst] & (rise < -LIFT_DROP))   # (into a lift's column: thrown up)
+                            drop &= ok
                         over, extra = drop, None
                         if drop.any():
                             if s.slit_rule:
