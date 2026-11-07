@@ -99,7 +99,7 @@ RULES = tuple((p, None) for p in NOT_SHIPPED) + (
     ("maps/_inputs/**", "release"), ("maps/_looks/**", "release"), ("maps/_vehicles/**", "release"),
     ("maps/_human/**", "release"), ("maps/**", None),
     ("brain/**", "release"), ("tools/**", "release"), ("native/**", "release"), ("docs/**", "release"),
-    ("installer/**", "release"), ("VERSION", "release"), ("CONTRIBUTING.md", "release"), ("SECURITY.md", "release"),
+    ("installer/**", "release"), ("VERSION", "release"), ("BUILD", "release"), ("CONTRIBUTING.md", "release"), ("SECURITY.md", "release"),
     ("CODE_OF_CONDUCT.md", "release"), ("requirements.txt", "release"), ("requirements-dev.txt", "release"),
     ("README.md", "release"), ("LICENSE.md", "release"), ("NOTICE.md", "release"), (".gitignore", "release"),
 )

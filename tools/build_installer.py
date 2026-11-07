@@ -232,6 +232,8 @@ def main():
     stage_python()
     stage_texts()
     shutil.copy2(os.path.join(ROOT, "VERSION"), os.path.join(PAYLOAD, "VERSION"))
+    if os.path.exists(os.path.join(ROOT, "BUILD")):     # (its build stamp: tools/updater.py tells in-place updates by it)
+        shutil.copy2(os.path.join(ROOT, "BUILD"), os.path.join(PAYLOAD, "BUILD"))
     compile_setup()
     linux_bundle()
     zip_map_pack()
