@@ -7,7 +7,14 @@ Click a version to see what changed since the one before it.
 <details open>
 <summary><b>0.2.2 s181</b> (November 6, 2026): call bots into your vehicle, a smarter Spire attack and Banshee, careful grenades, Flood survivors that use their shotguns</summary>
 
-s181 was updated seven times, on November 6 and 7. Everything new and fixed since 0.2.2 s180 is below, the newest first.
+s181 was updated eight times, on November 6 and 7. Everything new and fixed since 0.2.2 s180 is below, the newest first.
+
+<!-- build: 20261107-1530 -->
+#### Eighth update (November 7, afternoon)
+
+**Fixed**
+- **Banshee bombs in Halo 4**: bots switch to the bomb like a second weapon, drop it with the main trigger and switch back, the way players do it. Seen working: bots dropped five bombs in a five-minute match.
+- **Halo 3 and Halo 4 Banshees** no longer press the second trigger as if it were the bomb.
 
 <!-- build: 20261107-1400 -->
 #### Seventh update (November 7, afternoon)

@@ -582,6 +582,20 @@ static void f_interaction(uint8_t* tls, uint8_t* act, uint8_t* unit, uint32_t b,
 // flags (jump 0x2), +0x0C fire (2 while the trigger is down), +0x10 yaw, +0x14 pitch, +0x1C
 // throttle forward, +0x20 throttle left, +0x38 trigger, +0x40 action (E 0x400000), +0x48
 // weapon set / +0x4A primary / +0x4B secondary index (unit +0x638), +0xE0 input history
+// a seated bot's cycle press switches its vehicle's weapon (a Banshee's cannons <-> bomb): the vehicle's own weapon
+// request (+0x63C: set u16, primary u8, secondary u8) to the other one. The cycle button in the action switched
+// nothing for a bot (live Ragnarok Nov 7: the Banshee's +0x638 stayed 01 00 00 ff, its shots cannon bolts); written
+// here the Banshee switched (01 00 01 ff) and the trigger fired storm_banshee_bomb_launcher_bomb, and back (01 00 00
+// ff, cannon bolts). ponytail: two weapons (0 <-> 1), the Banshee's; the brain cycles nothing else (Bot.fuel_rod)
+static void f_vehicle_cycle(h4f_game& G, uint8_t* tls, int index) {
+    uint8_t* unit = f_object(tls, *(uint32_t*)(f_player(tls, index) + 0x2C));
+    uint8_t* v = unit ? f_object(tls, *(uint32_t*)(unit + 0x24)) : nullptr;
+    if (!v) return;
+    uint8_t& primary = v[G.weapon_index + 2];
+    primary = primary == 0 ? 1 : 0;
+    logf("%s bot %d cycles its vehicle's weapon to %d", G.tag, index, primary);
+}
+
 static void f_fill(h4f_game& G, uint8_t* tls, uint8_t* act, int index, const hb_action& a) {
     uint8_t* unit = f_object(tls, *(uint32_t*)(f_player(tls, index) + 0x2C));
     *(int32_t*)act = 1;
@@ -742,6 +756,9 @@ static void f_update(h4f_game& G, uint8_t* actions) {
                 uint8_t* u = f_object(tls, *(uint32_t*)(f_player(tls, index) + 0x2C));
                 if (u) memcpy(act + 0x48, u + G.weapon_index, 4);
             }
+            // (Halo 4 only: there the cycle bit alone switched nothing, live; H2A's bit is not checked live yet, and
+            // switching here as well as by a bit that does would switch twice)
+            if (G.id == 7 && (a.buttons & HB_BTN_CYCLE) && !(G.map_prev[i] & HB_BTN_CYCLE)) f_vehicle_cycle(G, tls, index);
             G.map_prev[i] = a.buttons;
             __try { f_board(G, tls, index, a.buttons); }
             __except (EXCEPTION_EXECUTE_HANDLER) { logf("%s boarding faulted (bot %d)", G.tag, index); }

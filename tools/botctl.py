@@ -24,9 +24,10 @@ OFF_LOOK = OFF_BTN_MAP + 4 + 16 * BTN_MAP_N            # v9: cmd_look_game, cmd_
 OFF_CLAN = OFF_LOOK + 8 + 64 + 64                      # v10: the next bot's clan tag (wchar_t[8])
 OFF_EMBLEM = OFF_CLAN + 16                             # v11: its MCC emblem (u16 x 5, brain/emblems.py ids)
 OFF_SPAWN = OFF_EMBLEM + 10                            # v12: spawn_at (16 x x, y, z, yaw f32), spawn_seq, spawn_done (16 u32)
-OFF_CHAT = OFF_SPAWN + 16 * 16 + 2 * 16 * 4            # v13: chat_seq (u32), then chat (char[64]), reserved (unused): the player's chat line
+OFF_CHAT = OFF_SPAWN + 16 * 16 + 2 * 16 * 4            # v13: ui_up (u32: the bug report window open over a match), chat (char[64], unused)
+OFF_UI_UP = OFF_CHAT
 SIZE = OFF_CHAT + 4 + 64                               # = sizeof(hb_shared), native/shared.h static_assert 3622
-# (a bigger view of an older botcore's block still maps: Windows keeps it in whole 4 KB pages; its chat_seq stays 0)
+# (a bigger view of an older botcore's block still maps: Windows keeps it in whole 4 KB pages; its ui_up stays 0)
 OFF_GAME, OFF_DBG_SEQ, OFF_DBG, OFF_RAW_VALID, OFF_RAW, OFF_BIG = 804, 808, 812, 1068, 1072, 1328   # v7: 0x100-byte buffers
 OFF_STATUS = 20 + 64 + 384
 OFF_CMD = OFF_STATUS + 256          # cmd, cmd_seq, cmd_done_seq (u32), cmd_arg (i32), result (i64), fault (u32)

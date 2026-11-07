@@ -294,8 +294,12 @@ def banshee_runs(fails):
     or a side-to-side gun run"""
     man = A + Vec(0.0, 0.0, 0.0)
     b = driver("banshee", seed=8)
+    # a game with the weapon cycle decoded (Halo 4: maps/_inputs/h4.json "cycle"): the bomb is cycled to and fired with
+    # the main trigger, never the second input (that was sent as the bomb before; Halo 4's is the Mantis's rockets)
+    b.game, b.can_cycle = "h4", True
     view = {"pitch": 0.0}                             # (the game turns the view to the last command: the next tick's)
     presses = []                                      # (t, second weapon held) every tick
+    cycles = []                                       # (t, cycle pressed, main trigger) every tick
 
     def fly(at, yaw, t, foe_at=man):
         me = PlayerState(1, 0, "d", at, yaw=yaw, pitch=view["pitch"], vehicle=5)
@@ -308,6 +312,7 @@ def banshee_runs(fails):
                 a, lambda p, q, **k: q)
         view["pitch"] = a.pitch
         presses.append((t, a.fire2))
+        cycles.append((t, a.cycle, a.fire))
         return a
     west = math.pi                                   # (it starts 20 u east of him, flying west at him)
     start = man + Vec(20.0, 0.0, 12.0)
@@ -323,8 +328,12 @@ def banshee_runs(fails):
         a = fly(at, yaw, t)
         yaw = a.yaw
         fired2.append(a.fire2)
-    if not any(fired2):
-        fails.append("Banshee closing from 20 u, 12 u over him: never used its second weapon")
+    cyc = [t for t, c, f in cycles if c]
+    if any(fired2):
+        fails.append("Banshee closing from 20 u, 12 u over him: held the second input (its bomb is cycled to)")
+    elif not cyc or not any(f for t, c, f in cycles if t > cyc[0] and (len(cyc) < 2 or t < cyc[1])):
+        fails.append(f"Banshee closing from 20 u, 12 u over him: its bomb not cycled to and fired (cycles at "
+                     f"{[round(t - 10.0, 2) for t in cyc]} s)")
     over = fly(man + Vec(-2.0, 0.0, 6.0), west, 12.5)          # over him and past: on, straight, climbing
     if b.att[0] != "pass" or abs(math.atan2(math.sin(over.yaw - west), math.cos(over.yaw - west))) > 0.2 or over.pitch <= 0:
         fails.append(f"Banshee past him: {b.att}, yaw {over.yaw:.2f}, pitch {over.pitch:.2f} (want on west, climbing)")

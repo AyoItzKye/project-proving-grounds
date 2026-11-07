@@ -78,5 +78,13 @@
    "press": false,
    "how": "from a player's recorded play, Nov 7 (Ragnarok 20261107-130445): right mouse held in the Mantis (8 holds, its rockets) and in the Banshee (10 holds, its bomb) set +0x08 0x90000 and +0x0C 0x44 the whole hold, with the trigger float +0x3C 1.0 (native/h4f.cpp f_fill writes it); the rockets come out by the hold's length, a magazine's worth at most"
   }
+ ],
+ "cycle": [
+  {
+   "off": 64,
+   "mask": 1024,
+   "press": false,
+   "how": "from a player's recorded play, Nov 7 (Ragnarok 20261107-130445): the weapon switch (key 1) held set +0x40 0x400 in every press, 20 in the Banshee (its bomb: cycled to, fired with the main trigger, cycled back) and 15 on foot"
+  }
  ]
 }

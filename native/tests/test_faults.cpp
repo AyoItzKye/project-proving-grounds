@@ -283,6 +283,24 @@ int main() {
     }
     f_seat_count = f_seat_count_game;
     ents[5][4] = 1;
+    // ... a seated bot's cycle press switches its vehicle's weapon: the vehicle's own request (+0x63C primary) 0 -> 1
+    // -> 0 (live: the Banshee then fired its bomb, then cannon bolts again); on foot it touches nothing
+    static uint8_t vfix[0x700];
+    put_ptr(ents[5] + 0x10, vfix);
+    memcpy(vfix + 0x63C, "\x01\x00\x00\xff", 4);
+    *(uint32_t*)(unit + 0x24) = (0x0B0Bu << 16) | 5;
+    f_vehicle_cycle(G, tls, 1);
+    uint8_t after1 = vfix[0x63E];
+    f_vehicle_cycle(G, tls, 1);
+    uint8_t after2 = vfix[0x63E];
+    *(uint32_t*)(unit + 0x24) = 0xFFFFFFFFu;
+    f_vehicle_cycle(G, tls, 1);
+    if (after1 != 1 || after2 != 0 || vfix[0x63E] != 0 || vfix[0x63C] != 1) {
+        printf("FAIL 8: a seated bot's weapon cycle: %d then %d, on foot %d (want 1, 0, 0; set kept 1)\n", after1, after2,
+               vfix[0x63E]);
+        fails++;
+    }
+    put_ptr(ents[5] + 0x10, on_roof);
 
     // 9. Halo 3 boarding (objects at TLS +0x38: +0x20 count, +0x48 entries of 0x18: +0 salt, +3 type, +0x10 the object;
     // object +0x10 parent, +0x50 position, +0x5C forward, +0x68 up)

@@ -59,6 +59,7 @@ For everything that works, game by game, see the [bot status sheet](BOT_STATUS.p
 - **Team Slayer**: Plays and scores, but bots can't pick up weapons off the map yet, and a few wander off, even into the water.
 - **Capture the Flag**: Bots pick up the flag and scored on Zenith, but they get stuck in a few spots on Coagulation.
 - **Ghost**: Bots drive and shoot it well, but can't boost it yet.
+- **Banshee**: Bots fly it and fire its cannons, but can't drop its bomb or boost yet.
 
 ## Halo 3
 
@@ -78,7 +79,7 @@ For everything that works, game by game, see the [bot status sheet](BOT_STATUS.p
 - **Chopper**: Bots drive it hard, shoot and boost-ram, though now and then one froze in place.
 - **Scorpion**: Bots drive it, but miss a lot of shots and sometimes leave the tank behind.
 - **Wraith**: Bots drive and fire it; a fix to its mortar aim still needs a recheck.
-- **Banshee**: Bots fly it without getting stuck, but almost never shoot from it. A fix for that needs a recheck.
+- **Banshee**: Bots fly it without getting stuck and fire its cannons, but can't drop its bomb yet.
 - **Mounted turrets**: Bots man the turrets and fire; a fix to their aim still needs a recheck.
 
 ## Halo 3: ODST
@@ -135,7 +136,7 @@ For everything that works, game by game, see the [bot status sheet](BOT_STATUS.p
 - **Mongoose**: Bots ride and drive it, but sit still about a third of the time.
 - **Ghost**: Bots drive and shoot it well, but can't boost it yet.
 - **Scorpion**: Bots drive and fire it, but sit still a lot. I've only checked one match.
-- **Banshee**: Bots have flown it, but didn't shoot from it, and can't use its bomb or boost yet.
+- **Banshee**: Bots fly it and drop its bombs the way players do, but can't boost yet.
 
 ## Reported on GitHub
 

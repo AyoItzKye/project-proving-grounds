@@ -305,8 +305,9 @@ TRAVEL_BOOST_FROM, TRAVEL_BOOST_CONE, TRAVEL_BOOST_S = 15.0, math.radians(20.0),
 CHAINGUN_HEAT = (13.5, 3.3)   # s: Reach's Warthog chaingun, fire to overheat and all cooled again (Bot.chaingun_heat)
 # A Banshee's attack runs, a skilled player's (Spire match 232250: 169 s, 17 runs, 20 turn-arounds;
 # logs/tmp/owner_banshee.py): a run starts 15-30 u out (median 20) and closes to 1-15 u, nose on him; the plasma cannons
-# in taps from 10-28 u (median 15.6); the second weapon (a bomb, Reach's fuel rod) held about 2.4 s from 7-36 u (median
-# 21.5), about every 6 s; past him it flies on straight and climbs to 20-28 u off, then turns back hard (13 to 4 u/s)
+# in taps from 10-28 u (median 15.6); the right button (Reach's boost, not a weapon) held about 2.4 s from 7-36 u
+# (median 21.5), about every 6 s; past him it flies on straight and climbs to 20-28 u off, then turns back hard (13 to 4
+# u/s). The bomb is cycled to (FUELROD_*, Bot.fuel_rod)
 PASS_START, PASS_OVER, PASS_EXTEND, PASS_OUT_S, PASS_START_H, PASS_START_MIN = 15.0, 6.0, 22.0, 6.0, 15.0, 12.0
 CANNON_R, FIRE2_R, FIRE2_HOLD, FIRE2_EVERY = 28.0, (12.0, 36.0), 2.4, 6.0
 AIR_GUN_R = 1.5       # u: an aircraft's guns fire with its nose this near his middle (Bot.air_pass)
@@ -2780,6 +2781,7 @@ class Bot:
             return                                # (no place read this tick: Spire, live, a tick failed on it)
         v = next((x for x in snap.vehicles if x["handle"] == me.vehicle), None)
         sp = vehicles.spec(v["kind"]) if v else None
+        s.veh_kind = vehicles.kind_of(v["kind"]) if v else None        # (air_pass: only a Banshee has its bomb)
         if now < getattr(s, "exit_until", 0.0):   # getting out: Use held (a one-tick press never left a Reach Warthog:
             act.action, act.fire = True, False    # a driver sat wedged 200 s with the throttle down, Boneyard)
             act.forward = act.strafe = 0.0
@@ -3000,7 +3002,8 @@ class Bot:
         if room is not None:
             # a player's Banshee bomb runs into Invasion phase 2's objective rooms (vehicles.AIR_ENVELOPE bombs): the
             # passes, a 3-4 s dive from ~20 u out and 10 u over the room's floor, the bomb let go ~10 u short and 4-5 u
-            # over it, out, round, again every 6-8 s (air_pass: its runs; fuel_rod: Reach's bomb)
+            # over it, out, round, again every 6-8 s (air_pass: its runs; fuel_rod: the bomb, cycled to in every game
+            # where the cycle is decoded)
             act.yaw, act.pitch = angles_to(eye(me), room)
             s.air_pass(now, me, "room", Belief(room, Vec(), now, True, "eyes"), room, act)
             s.fuel_rod(now, act)
@@ -3386,16 +3389,23 @@ class Bot:
         r = math.atan2(AIR_GUN_R, max(d, 1.0))
         on = s.aim.on_target(me, aim_at) or (abs(wrap(ya - act.yaw)) < r and abs(pa - act.pitch) < r)
         act.fire = on and d < CANNON_R
-        lo, hi = FIRE2_R
-        if now < getattr(s, "fire2_until", 0.0):
-            act.fire2 = True
-        elif (on and lo <= d <= hi and now >= getattr(s, "fire2_next", 0.0)
-              and (s.game == "reach" or me.pos.z - b.pos.z >= 2.0)):
-            s.fire2_until, s.fire2_next = now + FIRE2_HOLD, now + FIRE2_EVERY
-            act.fire2 = True
-        if (s.game == "reach" and on and FUELROD_R[0] <= d <= FUELROD_R[1] and getattr(s, "rod", None) is None
-                and now >= getattr(s, "rod_next", 0.0)):
-            s.rod, s.rod_next = ["to", now], now + FUELROD_EVERY    # Reach's fuel rod: fuel_rod() from drive
+        # the second input is Reach's boost here (Bot.boost), nothing else: a Banshee's bomb is never on it.
+        # The bomb is cycled to like a secondary weapon and fired with the main trigger (Halo 4: key 1 is +0x40 0x400,
+        # then a tap of the trigger, then 1 again, the same as Reach's fuel rod): can_cycle, Halo 4 and Reach only.
+        # Live Nov 7 with a bot pilot, Halo 3's and H2A's cycle and second input fired nothing but the cannons: their
+        # bomb input is not decoded. Halo 4's second input is the Mantis's rockets
+        if s.game == "reach":
+            lo, hi = FIRE2_R
+            if now < getattr(s, "fire2_until", 0.0):
+                act.fire2 = True
+            elif on and lo <= d <= hi and now >= getattr(s, "fire2_next", 0.0):
+                s.fire2_until, s.fire2_next = now + FIRE2_HOLD, now + FIRE2_EVERY
+                act.fire2 = True
+        if (getattr(s, "can_cycle", s.game == "reach") and getattr(s, "veh_kind", "banshee") == "banshee" and on
+                and FUELROD_R[0] <= d <= FUELROD_R[1] and getattr(s, "rod", None) is None
+                and now >= getattr(s, "rod_next", 0.0) and (s.game == "reach" or me.pos.z - b.pos.z >= 2.0)):
+            # (the bomb from over him; Reach's fuel rod straight on) fuel_rod() from drive does the cycle, shot, cycle
+            s.rod, s.rod_next = ["to", now], now + FUELROD_EVERY
         s.boost(act)
         s.att = ["run", tid, round(b.pos.x, 1), round(b.pos.y, 1)]
 
@@ -3492,9 +3502,12 @@ class Bot:
         s.boost(act)
 
     def fuel_rod(s, now, act):
-        """Reach's Banshee fuel rod, cycled to like a secondary: the cycle press, then one shot, then the cycle back to the
-        cannons, timed as his; no cannon fire while it is selected. Run every tick from drive until it is back on the
-        cannons, whatever the run is doing (a fight lost mid-way still cycles back)."""
+        """A Banshee's bomb (Reach's fuel rod), cycled to like a secondary (can_cycle: Halo 4, Reach): the cycle press,
+        then one shot of the main trigger, then the cycle back to the cannons, timed as a player's (Reach's key 1 pairs;
+        Halo 4's the same: the shot ~0.5 s after the press, a tap, the cycle back ~1 s on); no cannon fire while it is
+        selected. Run
+        every tick from drive until it is back on the cannons, whatever the run is doing (a fight lost mid-way still
+        cycles back)."""
         r = getattr(s, "rod", None)
         if r is None:
             return

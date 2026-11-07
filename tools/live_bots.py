@@ -1110,6 +1110,10 @@ def main():
                         # only where decoded (maps/_inputs); a bot plans with what it can press
                         names = {n for _, n, *_ in pressable}
                         bots[index].can_melee = o.game == "ce" or "melee" in names
+                        # a vehicle's other weapon (a Banshee's bomb) is cycled to: only where the cycle is decoded and
+                        # switches it (Halo 4: botcore's f_vehicle_cycle; Reach as before). Live Nov 7, a bot pilot: in
+                        # Halo 3 and H2A the cycle switched nothing (cannon bolts only); their bomb input is not decoded
+                        bots[index].can_cycle = "cycle" in names and o.game in ("reach", "h4")
                         bots[index].kit.pressable = "equipment" in names
                         # (Halo 4's sprint is botcore's own, s123: native/h4f.cpp f_sprint)
                         bots[index].kit.sprint_ok = "sprint" in names or o.game == "h4"

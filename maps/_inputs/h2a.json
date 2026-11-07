@@ -42,5 +42,13 @@
    "press": false,
    "how": "decoded live 2026-10-29 02:00 (reload=r): +0x30 bit 32"
   }
+ ],
+ "cycle": [
+  {
+   "off": 64,
+   "mask": 3072,
+   "press": false,
+   "how": "decoded live 2026-11-07: key 1, 37 ticks held, idle noise excluded"
+  }
  ]
 }
