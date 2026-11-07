@@ -202,6 +202,12 @@ def main():
         fails.append(f"H2A vehicle types {lv.VEHICLE_TYPES}")
     if vehicles.kind_of("storm_mantis") != "mantis" or not vehicles.driver_armed(dict(kind="storm_mantis")):
         fails.append("the Mantis: not read as an armed mantis")
+    # its second trigger as a person's holds set it (the Mantis's rockets, the Banshee's bomb: +0x08 0x90000 and +0x0C
+    # 0x44 the whole hold, the qword at +0x08); +0x08 0x80000 alone (decoded on foot: zoom) fired no rocket in 151 tries
+    import json as _json
+    f2 = _json.load(open(os.path.join(HERE, "..", "maps", "_inputs", "h4.json"), encoding="utf-8")).get("fire2") or [{}]
+    if (f2[0].get("off"), f2[0].get("mask"), f2[0].get("press")) != (8, 0x4400090000, False):
+        fails.append(f"Halo 4's second trigger in maps/_inputs/h4.json: {f2[0]}")
     # ... named from Ragnarok's own tag path (live Nov 7: objects\characters\storm_mantis, not under vehicles, so it read
     # "unknown" and no bot took it); a vehicle under vehicles as before; a giant's name only for a giant
     import brain.forge as forge_mod
@@ -256,8 +262,9 @@ def main():
     mb.mantis_weapons(2.0, mme, mv, Snapshot(2.0, [mme, far], vehicles=[mv]), 9, bel, far.pos, act)
     if act.melee or not act.fire2 or abs(mb.rocket_until - 2.0 - Bot.MANTIS_TAP) > 1e-6:
         fails.append(f"a man 20 u off: melee {act.melee}, fire2 {act.fire2}")
-    act = Action()
-    mb.mantis_weapons(2.5, mme, mv, Snapshot(2.5, [mme, far], vehicles=[mv]), 9, bel, far.pos, act)
+    act = Action()                                    # (just after the press ends, long before the reload)
+    t_after = 2.0 + Bot.MANTIS_TAP + 0.1
+    mb.mantis_weapons(t_after, mme, mv, Snapshot(t_after, [mme, far], vehicles=[mv]), 9, bel, far.pos, act)
     if act.fire2:
         fails.append("the rockets fired again before the salvo's reload")
     ghost = dict(handle=89, kind="storm_ghost", pos=(2.5, 1.0, 0.0), occupied=True, riders=1, team=1)

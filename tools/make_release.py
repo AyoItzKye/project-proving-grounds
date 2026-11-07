@@ -37,6 +37,7 @@ MARK = ".release-build"          # written into an output folder this script mad
 # not shipped: research, probe and test-automation scripts and old versions the mod does not run (nothing in the
 # launcher, the bots, the setup or the tools imports or starts them), and the tests of those
 NOT_SHIPPED = (
+    "private/**",              # private tools: never in any copy for others
     "tools/match_report.py",
     "native/build_diag.bat", "native/diag.cpp", "native/filemon.cpp", "native/watch.cpp", "tools/ability_report.py",
     "tools/ammo_check.py", "tools/ammo_scan.py", "tools/armory_tables.py", "tools/callers.py",

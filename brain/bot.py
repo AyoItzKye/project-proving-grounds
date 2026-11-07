@@ -2513,11 +2513,13 @@ class Bot:
         return Vec(b.pos.x - f[0] / n * 0.8, b.pos.y - f[1] / n * 0.8, b.pos.z)
 
     # Halo 4's Mantis (Nov 7: the machine gun on the main trigger, the rockets on the second, the melee a stomp
-    # on everyone and every vehicle in its radius). INFERRED, not measured: the stomp's reach, the rockets' range, the
-    # lock a vehicle needs and the salvo's reload
+    # on everyone and every vehicle in its radius). The rockets come out by the hold's length, a magazine's worth at
+    # most: live, a bot's second trigger held 0.25 s fired 1 rocket, 1.0 s 2, then the last of a 4-rocket magazine;
+    # a player's recorded holds in the Mantis ran 1.6-3.2 s, median 2.1 (Ragnarok 20261107-130445). INFERRED, not
+    # measured: the stomp's reach, the rockets' range, the salvo's reload
     MANTIS_STOMP_R, MANTIS_STOMP_EVERY = 4.0, 1.5       # u, s
     MANTIS_ROCKET_R, MANTIS_ROCKET_EVERY = (8.0, 40.0), 5.0
-    MANTIS_TAP, MANTIS_LOCK = 0.3, 1.2                  # s: the second trigger held for a man / for a vehicle's lock
+    MANTIS_TAP, MANTIS_LOCK = 0.6, 2.1                  # s: held at a man (1-2 rockets) / at a vehicle (lock, salvo)
 
     def mantis_weapons(s, now, me, v, snap, tid, b, aim_at, act):
         """The Mantis pilot's other two weapons (its machine gun is drive's act.fire): the stomp (melee) when an enemy

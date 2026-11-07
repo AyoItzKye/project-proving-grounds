@@ -38,6 +38,8 @@ def main():
         "tools/view_art/names.json": "release", "LICENSE.md": "release", "NOTICE.md": "release",
         "CONTRIBUTING.md": "release", "SECURITY.md": "release", "CODE_OF_CONDUCT.md": "release",
         "requirements.txt": "release", "installer/ProjectProvingGrounds.iss": "release",
+        # private/: in no public copy, installer or map pack
+        "private/tool.py": None, "private/notes/run.bat": None,
     }
     got = {p: R.where(p) for p in want}
     bad = {p: (got[p], w) for p, w in want.items() if got[p] != w}

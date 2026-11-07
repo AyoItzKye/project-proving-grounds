@@ -74,9 +74,9 @@
  "fire2": [
   {
    "off": 8,
-   "mask": 524288,
+   "mask": 292058365952,
    "press": false,
-   "how": "decoded live 2026-11-07 (tools/decode_buttons.py fire2=rmb --dry, Adrift): +0x08 0x80000 while held, with the trigger float +0x3C 1.0 (native/h4f.cpp f_fill writes it): the Mantis's rockets"
+   "how": "from a player's recorded play, Nov 7 (Ragnarok 20261107-130445): right mouse held in the Mantis (8 holds, its rockets) and in the Banshee (10 holds, its bomb) set +0x08 0x90000 and +0x0C 0x44 the whole hold, with the trigger float +0x3C 1.0 (native/h4f.cpp f_fill writes it); the rockets come out by the hold's length, a magazine's worth at most"
   }
  ]
 }

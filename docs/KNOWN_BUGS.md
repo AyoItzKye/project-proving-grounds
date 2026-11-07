@@ -134,7 +134,6 @@ For everything that works, game by game, see the [bot status sheet](BOT_STATUS.p
 - **Warthog**: Bots get in, drive, gun and get out, but drivers stall about half the time.
 - **Mongoose**: Bots ride and drive it, but sit still about a third of the time.
 - **Ghost**: Bots drive and shoot it well, but can't boost it yet.
-- **Mantis**: Bots get in the Mantis, walk it, fire its machine gun and stomp (seen in matches). Its rockets don't fire yet.
 - **Scorpion**: Bots drive and fire it, but sit still a lot. I've only checked one match.
 - **Banshee**: Bots have flown it, but didn't shoot from it, and can't use its bomb or boost yet.
 
