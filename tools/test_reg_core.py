@@ -506,6 +506,95 @@ def check_lift_one_way():
     return out
 
 
+def check_spire_phase_links():
+    # Spire's phase rules (the owner's run, Nov 6: the man cannons appear in phase 3 only; in phase 2 the spire lifts
+    # take you to the lower building's roof): their people's links are closed before phase 3 and open in it
+    from brain import invasion
+    name = "reach_35_island/variants/v3977bae2"
+    M = get_map(name)
+    T = terrain(M)
+    inv = invasion.layout(M["objects"])
+    out = []
+    a, b = Vec(-142.14, -391.64, -53.68), Vec(-167.44, -398.01, -24.33)      # man cannon 1's pad to its landing
+    for ph, shut in ((2, True), (3, False)):
+        invasion.phase_link_gates(T, inv, ph, name)
+        cost = float(T._field(b, True, True, False, None, False)[T._node(a)])
+        if (cost >= T.BARRIER_COST) != shut:
+            out.append(f"spire_phase_links: phase {ph}, cannon 1's way up costs {cost:.0f} (want {'closed' if shut else 'open'})")
+    invasion.phase_link_gates(T, inv, 3, name)
+    return out
+
+
+def check_spire_climbs():
+    # the Spire core run: the attackers' runners spread over the ways up (the owner's tour, Nov 6: all of them funnelled
+    # into one way up; 12 of 16 climbs by lift 2), and a gun on the way is no detour off it (his flag: the core was not
+    # their priority)
+    from brain import invasion
+    from brain.director import Director
+    name = "reach_35_island/variants/v3977bae2"
+    M = get_map(name)
+    out = []
+    core = Vec(-178.24, -405.33, -22.9)
+    starts = [Vec(-150, -395, -56.5), Vec(-158, -378, -57.5), Vec(-196, -385, -57.3), Vec(-185, -380, -57.0),
+              Vec(-175, -396, -60.4), Vec(-170, -398, -60.4)]
+    ps = [PlayerState(i + 1, 0, f"b{i}", p) for i, p in enumerate(starts)]
+    bots = {p.id: bot(p.id, M) for p in ps}
+    d = Director(0, M, bots, random.Random(2))
+    snap = Snapshot(500.0, ps, mode="invasion")
+    snap.inv_phase, snap.inv_attackers, snap.inv_core = 3, 0, core
+    climbs = invasion.climbs_for(name)
+    used = {}
+    vias = [d.climb_via(bots[p.id], snap, core, used) for p in ps]
+    ways = {min(range(len(climbs)), key=lambda k: dist(v[0], climbs[k])) for v in vias if v}
+    if len(ways) < 3:
+        out.append(f"spire_climbs: 6 runners took {len(ways)} ways up (want 3+): {[v[0] if v else None for v in vias]}")
+    rb = bots[1]
+    rb.order, rb.grab_point = Order("runner", core), core
+    me = ps[0]
+    gun = me.pos + Vec(3.0, 0, 0)          # (3 u: a detour; one at his feet, under PRESS_ITEM_R, is taken)
+    scores = {("item", gun): 2.1, ("objective", core): 2.0}     # (live: 2.1 over 1.82)
+    rb.keep_role(scores, me, snap, [])
+    if scores[("item", gun)] >= scores[("objective", core)]:
+        out.append(f"spire_climbs: a gun 3 u off the core run scores {scores[('item', gun)]:.2f} over the run's "
+                   f"{scores[('objective', core)]:.2f}")
+    return out
+
+
+def check_nade_clear():
+    # no grenade with a teammate (a person too) within 4 u of where it goes, or walking into it within a second (owner's
+    # Spire flag Nov 6, grenade team kills; replayed, 29 of the 51
+    # deaths with an own-team throw aimed by them in the 3 s before had every such throw held)
+    me = PlayerState(1, 0, "me", Vec(0, 0, 0))
+    at = Vec(10, 0, 0)
+    out = []
+    for mate, want in ((PlayerState(0, 0, "person", Vec(11.2, 0, 0)), False),
+                       (PlayerState(2, 0, "b", Vec(15, 0, 0), vel=Vec(-2.0, 0, 0)), False),
+                       (PlayerState(2, 0, "b", Vec(16, 0, 0)), True),
+                       (PlayerState(3, 1, "foe", Vec(10.5, 0, 0)), True)):
+        got = Bot.nade_clear(me, at, Snapshot(1.0, [me, mate]))
+        if got != want:
+            out.append(f"nade_clear: {mate.name} at {mate.pos} moving {mate.vel}: {got} (want {want})")
+    return out
+
+
+def check_corner_drop():
+    # a diagonal drop squeezing between two cells shut at our height is priced as a lid (Blood Cavern, owner's games
+    # Nov 6: six survivors pushed 1660 rows at (-4.7, 2.5, 3.9) on the drop to the new hold by the back lift)
+    from brain.terrain import LID_COST
+    T = terrain(get_map("h4_ca_blood_cavern"))
+    out = []
+    l, j, i = T._node(Vec(-4.83, 2.67, 3.55))
+    lb, jb, ib = T._node(Vec(-4.58, 2.92, 0.71))
+    a, b = (l * T.nh + j) * T.nw + i, (lb * T.nh + jb) * T.nw + ib
+    w = T.graph[a, b]
+    if w < LID_COST:
+        out.append(f"corner_drop: the diagonal drop past the parapet costs {w:.1f} (want {LID_COST}+)")
+    path = T.path_ahead(Vec(-4.67, 2.48, 3.93), Vec(-4.33, -2.33, 0.68), n=400, jump=True, human=True)
+    if any(abs(p.x + 4.58) < 0.13 and abs(p.y - 2.92) < 0.13 and p.z < 1.5 for p in path[:3]):
+        out.append("corner_drop: the route to the back-lift hold still drops past the parapet first")
+    return out
+
+
 def check_escort_stops():
     # the map-free escort brain ends with its match (live Nov 6, installed s180: an Installation 04 escort brain lived on
     # into the next match and drove its bots beside that match's brain; botcore ends play.py, not this child): reads that
@@ -847,6 +936,8 @@ CHECKS = {"air_kill_zone": check_air_kill_zone, "air_clearance": check_air_clear
           "h2a_flag_use": check_h2a_flag_use, "forge_items": check_forge_items, "h3_deployed": check_h3_deployed,
           "ff_sides": check_ff_sides, "escort_stops": check_escort_stops, "flood_shotgun": check_flood_shotgun,
           "flood_sprint": check_flood_sprint, "glimpse_keep": check_glimpse_keep, "lift_one_way": check_lift_one_way,
+          "corner_drop": check_corner_drop, "spire_phase_links": check_spire_phase_links, "spire_climbs": check_spire_climbs,
+          "nade_clear": check_nade_clear,
           "mine_keep_clear": check_mine_keep_clear, "mine_route": check_mine_route, "dry_rearm": check_dry_rearm, "ff_dlc": check_ff_dlc, "melee_swing": check_melee_swing,
           "core_carry": check_core_carry, "koth_company": check_koth_company, "zone_rules": check_zone_rules,
           "territories_posts": check_territories_posts, "release_gate": check_release_gate}

@@ -178,6 +178,28 @@ def owner_crouch(m):
     return bool(flags & bit[1]) and not flags & 0x2   # Space sets 0x3 (bit 0 too): crouch is bit 0 alone
 
 
+# the horn: crouch in a vehicle, read from the player's own action (botcore's copy of the game's, as owner_crouch).
+# Halo 3: +0x08 bit 0 (decoded live Oct 25, maps/_inputs/h3.json "crouch"); H2A / Halo 4: CROUCH_BIT. Reach: INFERRED,
+# +0x08 bit 0 as Halo 3's (the same field holds its jump 0x2, melee 0x800, ability 0x100, as Halo 3's); not decoded
+# live yet (tools/decode_buttons.py crouch=ctrl confirms it)
+HORN_BIT = {**CROUCH_BIT, 3: (0x08, 0x1), 4: (0x08, 0x1)}
+
+
+def owner_horn(m):
+    """Is the player pressing the horn (crouch, read in a vehicle)? None where not decoded or the copy is stale."""
+    game, seq = struct.unpack_from("<2I", m, OFF_GAME)
+    bit = HORN_BIT.get(game)
+    if bit is None:
+        return None
+    now = time.time()
+    if _fresh.get("seq") != seq:
+        _fresh.update(seq=seq, t=now)
+    if now - _fresh["t"] > 0.5:
+        return None
+    flags = struct.unpack_from("<I", m, OFF_DBG + bit[0])[0]
+    return bool(flags & bit[1]) and not flags & 0x2
+
+
 def owner_jumping(m):
     """Is the player pressing jump? H2A / H4: +0x08 bit 1 of his copied action (Space: 0x3, Ctrl
     alone 0x1). His move keys do not show in the copy (+0x1C / +0x20 read 1.0 while he stands

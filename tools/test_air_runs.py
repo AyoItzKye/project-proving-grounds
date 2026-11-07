@@ -85,6 +85,33 @@ def main():
                                                             occupied=True, riders=1, team=0)]))
     if any("pull up" in n for n in b.notes):
         fails.append(f"under Exile's ship heading over the low ground: {b.notes} (want no pull-up)")
+    # 6. Spire (the owner's Forge run, Nov 6: vehicles.AIR_ENVELOPE): his ceiling, and the bomb runs into Invasion phase
+    # 2's objective rooms, attacking with nobody in them, defending only with enemies in them; flown, the passes go in
+    # and the fuel rod (Reach's bomb) is let go
+    from brain import vehicles
+    S = get_map("reach_35_island")
+    env = vehicles.envelope("reach_35_island/variants/v3977bae2")
+    rooms = [Vec(*r) for r in env["bombs"][2]]
+    b = Bot(9, 0, make_profile("top", "flanker", random.Random(6)), S, random.Random(6))
+    b.seat = "driver"
+    me = PlayerState(9, 0, "pilot", Vec(-150.0, -400.0, -15.0), vehicle=77)
+    inv = dict(mode="invasion", inv_phase=2, inv_attackers=0)
+    if b.bomb_room(60.0, me, Snapshot(60.0, [me], **inv)) != rooms[0]:
+        fails.append("bomb_room attacking, nobody in the rooms: not the nearest room")
+    if b.bomb_room(60.0, me, Snapshot(60.0, [me], **dict(inv, inv_attackers=1))) is not None:
+        fails.append("bomb_room defending, nobody in the rooms: a room (want none)")
+    b.per.beliefs[30] = Belief(rooms[1] + Vec(1, 0, 0), Vec(), 59.0, True, "eyes")
+    if b.bomb_room(60.0, me, Snapshot(60.0, [me], **dict(inv, inv_attackers=1))) != rooms[1]:
+        fails.append("bomb_room defending, a man in room 2: not room 2")
+    a = Action(pitch=0.3)
+    b.notes = []
+    b.air_roof_guard(me, a, Snapshot(60.0, [me], vehicles=[dict(handle=77, kind="banshee", pos=(-150.0, -400.0, -15.0),
+                                                                 occupied=True, riders=1, team=0)]))
+    if a.pitch > -0.3:
+        fails.append(f"over the owner's Spire ceiling (z -17.2) at -15: pitch {a.pitch} (want nose down)")
+    bm = air_replay.fly(S, Vec(-150.0, -400.0, -44.0), math.pi, lambda t: [], 40.0, team=0, seed=2, snap_kw=inv)
+    if bm["room"] < 200 or bm["rods"] < 1:
+        fails.append(f"Spire phase 2 bomb runs, flown 40 s: {bm['room']} pass ticks, {bm['rods']} fuel rods (want 200+, 1+)")
     if fails:
         sys.exit("FAIL\n" + "\n".join(fails))
     print(f"air runs OK ({m['runs']} runs in 60 s, {m['fire'] / m['runs']:.0f} fire ticks a run, "

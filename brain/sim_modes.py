@@ -77,6 +77,7 @@ class SimModes:
             s.inv = invasion.layout(objs)
             if s.inv is None:
                 raise ValueError(f"{sim.m['name']}: no Invasion setup on this map")
+            s.inv["map"] = sim.m["name"]               # (its phase rules by map: invasion.phase_link_gates)
             invasion.apply_barriers(sim.T, s.inv)
             s.round_start()
         elif s.mode == "race":                   # CE's in-order race on foot (no vehicle model): a lap a point
@@ -122,6 +123,7 @@ class SimModes:
         s.core = dict(pos=s.inv["core"], carrier=None)
         invasion.apply_barriers(s.sim.T, s.inv)          # gates closed again
         s.sim.oob.set_phase(s.sim.T, 1)                  # (and their kill volumes: brain/oob.py volumes)
+        invasion.phase_link_gates(s.sim.T, s.inv, 1, s.inv.get("map"))   # (its man cannons not up yet)
 
     def spawn_points(s, team):
         """A team's respawn points this phase: where the live game respawned that side in this phase (maps/<map>/
@@ -298,6 +300,7 @@ class SimModes:
                         s.sim.score[att] += 1
                         s.events.append((round(now, 1), f"attackers took phase {s.phase - 1} (territory {k})"))
                         s.sim.oob.set_phase(s.sim.T, s.phase)
+                        invasion.phase_link_gates(s.sim.T, s.inv, s.phase, s.inv.get("map"))
                         if s.phase == 2:          # the gates open
                             invasion.apply_barriers(s.sim.T, s.inv, {b["key"]: False for b in s.inv["barriers"]
                                                                      if b["kind"] == "gate"})

@@ -100,6 +100,16 @@ def main():
             bug_reports.attach_new(t1, 10.0, snap, "reach_70_boneyard", f, trace2, {3: B()})
         if not os.path.exists(os.path.join(bug_reports.DIR, "reach_70_boneyard_20261025-102950", "reports.json")):
             fails.append("the next match did not get its own folder")
+        # a report filed late (a retry) keeps the places of its own save (Forge run Nov 6: a retry 3.7 s on stored the
+        # owner mid-flight, 22 u off)
+        bug_reports._SEEN[:] = [(time.time() - 3.0, {0: (1.0, 2.0, 3.0), 3: (10.0, 20.0, 3.0)})]
+        report("20261025-103010", time.time() - 3.0, "filed late")
+        moved = Snapshot(10.0, [PlayerState(0, 0, "PlayerOne", Vec(50, 50, 3), Vec(), 0.0, 0.0, True, 1, 1, "ar"), bot])
+        with open(trace2, "a") as f:
+            bug_reports.attach_new(t1, 10.0, moved, "reach_70_boneyard", f, trace2, {3: B()})
+        late = json.load(open(os.path.join(bug_reports.DIR, "reach_70_boneyard_20261025-102950", "reports.json")))[-1]
+        if late["players"][0]["pos"] != [1.0, 2.0, 3.0]:
+            fails.append(f"a late filing stored {late['players'][0]['pos']}: want the place at its save [1, 2, 3]")
         # an old one-folder-per-report report moves into its match
         old = os.path.join(bug_reports.DIR, "20261025-090000")
         os.makedirs(old)

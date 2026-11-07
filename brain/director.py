@@ -61,6 +61,9 @@ LANE_R, LANE_ANGLE, LANE_KEEP_S, LANE_NEAR = 14.0, math.radians(60.0), 30.0, 15.
 LANE_PHASES = (2,)          # the Invasion phases whose push takes the flanks (assign_roles: phase 1 rushes straight)
 BLITZ_MODES = ("ctf", "assault", "stockpile", "king", "headhunter")    # (+ Invasion attacking; desperate says why not others)
 AIR_CALL = 2.5               # a transport aircraft calls riders from this many CALL_R (rider_calls; Bot.crew_coming waits)
+HORN_CALL_R = 40.0           # u: the bot a person's horn picked (his view on him) is called from this far (honk_orders)
+LAND_CALL_R = 10.0           # u: an aircraft of ours set down calls the bots on foot this near aboard (honk_orders) ...
+LANDED_H, LANDED_V = 1.5, 1.0   # ... down: under this high over the floor (u) and this slow (u/s) (landed_aircraft)
 # Invasion's desperate moments for the attackers (desperate): the phase's last INV_LAST_S of its INV_PHASE_S clock (guide
 # 19's rule facts: 4 minutes a phase; it running out loses the round), or a wave wiped: two thirds of the team (2 at
 # least) dead in INV_WIPE_S
@@ -742,6 +745,7 @@ class Director:
         runner = None             # the bot that took the first runner slot: no-carrier escorts go with it
         runners, escorts = [], 0
         lanes, lane_k = None, 0   # an Invasion push's ways in (push_lanes)
+        climbs_used = {}          # an Invasion core on high: runners per way up this pass (climb_via)
         # (phase 1 the straight rush, phase 2 the flanks from its start: the sim, Spire 6 seeds, flanks in both phases
         # took phase 2 in 4 of 6 against 1 of 6 without, but phase 1's median 48 -> 94 s; flanks only after 45 s did
         # nothing, the team was already inside the flank points by then)
@@ -773,6 +777,9 @@ class Director:
                 # (one kept while its lanes stand: a new pick every role pass turned bots round mid-way)
                 via = b.order.via if b.order.via and b.order.via in lanes else lanes[lane_k % len(lanes)]
                 lane_k += 1
+            elif role == "runner" and point is not None and snap.mode == "invasion" and snap.inv_attackers == s.team \
+                    and snap.inv_phase == 3:
+                via = s.climb_via(b, snap, point, climbs_used)
             if role == "runner" and runner is None:
                 runner = b.id
             if role == "runner":
@@ -989,6 +996,7 @@ class Director:
                 and (b.order.point is None or dist(players[b.id].pos, b.order.point) >= s.CALL_TRIP))
 
     PICKUP_R, PICKUP_WAIT = 60.0, 8.0   # u, s: a lone driver goes for a gunner this near; gives one up after waiting this long
+    PICKUP_WAIT_AIR = 20.0              # s: ... an aircraft, set down by him (gunner_pickup)
     PICKUP_DETOUR = 25.0                # u: on a trip (goal), a gunner fetched only this far off its way (gunner_pickup)
 
     def gunner_pickup(s, now, b, me, snap, alive, players, goal=None):
@@ -999,15 +1007,17 @@ class Director:
         without boarding is skipped for 30 s. None: nobody to fetch."""
         skip = b.__dict__.setdefault("pickup_skip", {})
         at = getattr(b, "pickup_at", None)       # (the teammate, since when the driver has been by him)
-        if at and at[1] is not None and now - at[1] > s.PICKUP_WAIT:
+        from . import vehicles
+        v = next((q for q in snap.vehicles if q["handle"] == me.vehicle), None)
+        air = v is not None and (vehicles.spec(v["kind"]) or {}).get("move") == "air"
+        # (an aircraft sets down by him and waits longer: the owner's Falcon pickups sat 16-25 s on the floor 3-6 u from
+        # the gunner, Nov 6; the bot pilot left after 8 s with him 6-12 u off, live Spire 20261106-185412 at 1038 s)
+        if at and at[1] is not None and now - at[1] > (s.PICKUP_WAIT_AIR if air else s.PICKUP_WAIT):
             skip[at[0]], b.pickup_at, at = now, None, None
         # an aircraft's way is over the ground, height costs it little: its detour is measured flat, and on a trip one
         # on the way is fetched however far (live Spire 20261105-201917 at 296.7 s: the Falcon's runner pilot took off
         # alone from the pad, his whole team 100 u off at the spire's foot right under the core he flew to, 32 u of
         # detour by the 3-d way and over PICKUP_R; "not trying to pick up any teammates")
-        from . import vehicles
-        v = next((q for q in snap.vehicles if q["handle"] == me.vehicle), None)
-        air = v is not None and (vehicles.spec(v["kind"]) or {}).get("move") == "air"
         way = (lambda p, q: (p - q).flat()) if air else dist
         cands = [(dist(me.pos, players[x.id].pos), x) for x in alive if x is not b and players[x.id] is not None
                  and players[x.id].vehicle == -1 and not players[x.id].has_flag and x.p.teamwork > 0
@@ -1274,29 +1284,69 @@ class Director:
                     out.append(v["kind"])
         return out
 
+    def landed_aircraft(s, now, snap):
+        """Handles of our aircraft with someone in and a seat free, set down: under LANDED_H over the floor under it and
+        under LANDED_V u/s over its last half second (tracked here: the vehicle reads carry no speed)."""
+        from . import vehicles
+        track = s.__dict__.setdefault("air_track", {})
+        out = []
+        for v in snap.vehicles:
+            sp = vehicles.spec(v["kind"])
+            if sp is None or sp["move"] != "air" or v.get("team") != s.team:
+                continue
+            h, p = v["handle"], Vec(*v["pos"])
+            hist = [e for e in track.get(h, []) if now - e[0] <= 0.6] + [(now, p)]
+            track[h] = hist
+            if not v.get("riders", 0) or v.get("riders", 0) >= len(sp["seats"]) or v.get("dead"):
+                continue
+            t0, p0 = hist[0]
+            slow = now - t0 >= 0.3 and (p - p0).flat() / (now - t0) < LANDED_V
+            T = s.terrain()
+            if slow and T is not None and T.height_over(p.x, p.y, p.z) < LANDED_H:
+                out.append(h)
+        return out
+
     def honk_orders(s, now, snap, alive, players):
         """A teammate in a vehicle honks at us: the nearest bot on foot within 20 u takes the gun, then the passenger
         seats go to our objective holders first, then to the next nearest bots. A bot passenger gives its seat up
         when our objective holder on foot is beside a vehicle with no seat left for him."""
         from . import vehicles
-        for h in getattr(snap, "honks", ()):
+        honks = list(getattr(snap, "honks", ()))
+        picks = getattr(snap, "honk_at", None) or {}
+        # a honk (live_bots: a person stopped by us, or his horn) calls from 20 u; an aircraft of ours set down calls
+        # those within LAND_CALL_R (owner Nov 6: bots get in an aircraft that lands
+        # close to them; his Falcon pickups: down on the floor 3-6 u from the gunner, 16-25 s)
+        calls = [(h, picks.get(h), 20.0) for h in honks] + [(h, None, LAND_CALL_R) for h in s.landed_aircraft(now, snap)
+                                                           if h not in honks]
+        for h, picked, reach in calls:
             v = next((x for x in snap.vehicles if x["handle"] == h and x.get("team") == s.team), None)
             sp = vehicles.spec(v["kind"]) if v else None
             if sp is None:
                 continue
             vp = Vec(*v["pos"])
+            # the bot his horn picked (live_bots.horn_call: his view on him) comes first, from up to the horn's reach
             coming = [b for b in alive if b.order.target == h and b.order.role in ("ride", "board")]
             free = len(sp["seats"]) - v.get("riders", 0) - len(coming)
             foot = sorted((b for b in alive if b not in coming and players[b.id] is not None and players[b.id].alive
-                           and players[b.id].vehicle == -1 and dist(players[b.id].pos, vp) < 20.0),
-                          key=lambda b: (not players[b.id].has_flag, dist(players[b.id].pos, vp)))
+                           and players[b.id].vehicle == -1
+                           and dist(players[b.id].pos, vp) < (HORN_CALL_R if b.id == picked else reach)),
+                          key=lambda b: (b.id != picked, not players[b.id].has_flag, dist(players[b.id].pos, vp)))
             holders = [b for b in foot if players[b.id].has_flag]
             others = [b for b in foot if not players[b.id].has_flag]
+            took = 0
             if free > 0 and vehicles.needs_gunner(v, snap) and not any(b.order.role == "ride" for b in coming) and others:
                 b = others.pop(0)
                 b.set_order(Order("ride", vp, target=h), sure=True)
-                s.roles[b.id], free = "ride", free - 1
+                s.roles[b.id], free, took = "ride", free - 1, 1
                 s.event(now, "vehicle", f"{players[b.id].name}: on the gun (honked)")
+            # every gun seat on a craft whose other seats are all guns (the Falcon's two side guns): the rest of them too
+            guns = sp["seats"].count("gunner") - sum(1 for b in coming if b.order.role == "ride") - took - max(
+                0, v.get("riders", 0) - 1)
+            while "passenger" not in sp["seats"] and free > 0 and others and guns > 0:
+                b = others.pop(0)
+                b.set_order(Order("ride", vp, target=h), sure=True)
+                s.roles[b.id], free, guns = "ride", free - 1, guns - 1
+                s.event(now, "vehicle", f"{players[b.id].name}: on the other gun (honked)")
             if "passenger" in sp["seats"]:
                 for b in holders + others:
                     if free <= 0:
@@ -1761,6 +1811,27 @@ class Director:
                         out.append(q)
                         break
         return out
+
+    def climb_via(s, b, snap, point, used):
+        """A runner's way up to a phase 3 core on high (invasion.CLIMBS: the owner's Spire tour, his ways up): its via,
+        the start of the least-used way, then the nearest to it, among those no farther from the core than it is (a via
+        behind it is dropped at once: Bot.objective_point). Kept while it is still one of them. () where none."""
+        from . import invasion
+        me = snap.player(b.id)
+        climbs = invasion.climbs_for(s.map.get("name"))
+        if me is None or not climbs or point.z - min(c.z for c in climbs) < invasion.CLIMB_UP or \
+                me.pos.z > point.z - 5.0:
+            return ()
+        keep = b.order.via[0] if b.order.role == "runner" and b.order.via else None
+        k = next((i for i, c in enumerate(climbs) if keep is not None and dist(keep, c) < 0.5), None)
+        if k is not None:
+            used[k] = used.get(k, 0) + 1
+            return b.order.via
+        cands = [i for i, c in enumerate(climbs) if dist(c, point) < dist(me.pos, point) - 1.0] or \
+            list(range(len(climbs)))
+        k = min(cands, key=lambda i: (used.get(i, 0), dist(me.pos, climbs[i])))
+        used[k] = used.get(k, 0) + 1
+        return (climbs[k],)
 
     def invasion_slots(s, now, snap, n):
         """Reach Invasion roles (brain/invasion.py). Attackers, phases 1-2: most of the team takes one territory

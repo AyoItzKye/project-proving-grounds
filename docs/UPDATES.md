@@ -5,13 +5,25 @@ What changed in each version. Download the newest one from the [Releases page](h
 Click a version to see what changed since the one before it.
 
 <details open>
-<summary><b>0.2.2 s181</b> (November 6, 2026): Flood survivors use their shotguns, one Firefight brain per match</summary>
+<summary><b>0.2.2 s181</b> (November 6, 2026): Flood survivors use their shotguns, call bots into your vehicle, a smarter Spire attack, one Firefight brain per match</summary>
 
 ### Fixed
 - **Halo 4 Flood** (and Infection against swords): human bots got caught holding the magnum when the Flood reached them. Now they shoot the magnum at a Flood on its way in, switch to the shotgun before it gets close, and hold their ground with it instead of walking into the sword. Against enemies with guns nothing changes.
 - **Halo 4 Flood**: with the shotgun out, human bots no longer sprint around a Flood coming at them (they couldn't shoot and turned their backs to him). They keep their sights on him and fire when he's in range. A bot that loses sight of a Flood for a moment keeps fighting him instead of walking back to its spot.
 - **Infection and Flood**: human bots hide in places people actually play. On Blood Cavern they crowded against a wall trying to reach a floor nobody can get to.
 - **Gravity lifts**: bots no longer try to go down a lift from its top end (Blood Cavern's back lift, and the low lifts on Halo 2 Anniversary's Lockout and Reach's Ivory Tower).
+- **Halo 4 Flood**: survivors no longer get stuck on Blood Cavern's upper walkway on their way to the hiding spot by the back lift.
+- **Vehicles**:
+  - Aim at a teammate bot and press the horn (crouch) while driving: that bot gets in (Halo 3, Reach, Halo 2 Anniversary, Halo 4).
+  - Land an aircraft next to teammate bots and they get in, both of a Falcon's guns too.
+  - Bots no longer jump out of a Falcon in mid-air, and bot pilots wait longer for the gunners they land to pick up.
+  - Warthog gunners aim from the gun itself, so their shots no longer drift to one side.
+- **Halo: Reach Invasion, Spire**:
+  - In phase 3 the attackers spread over every way up the spire (both grav lifts and the three man cannons) instead of all queuing for one lift, and they don't stop for guns on the core run.
+  - Bots know the man cannons only appear in phase 3 and that the spire's lifts only reach the top in phase 3.
+  - Banshees fly the spire closer and lower with real attack runs, stay under the map's ceiling, and make bomb runs into the phase 2 objective rooms.
+- **Grenades**: bots no longer throw a grenade where a teammate (or you) is standing or about to be.
+- **Bug reports**: a report saves where you were when you pressed Save, and reports no longer fail to file now and then.
 - **Firefight** ([#12](https://github.com/AyoItzKye/project-proving-grounds/issues/12)): after a match on Unearthed or Installation 04, the bots' brain for that match kept running into the next one and gave your bots a second set of orders. It now stops when its match ends.
 
 </details>

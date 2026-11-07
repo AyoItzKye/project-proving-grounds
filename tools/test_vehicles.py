@@ -5,6 +5,7 @@ waiting, and a driver sent to pick up the flag carrier and run him home.
 
 usage: python -I test_vehicles.py      -> "vehicles OK"
 """
+import math
 import os
 import random
 import sys
@@ -130,6 +131,76 @@ def main():
     dr.honk_orders(7.0, snap, [pb, hb], {5: pas, 3: hold2})
     if pb.order.role != "give_seat" or hb.order.role != "board":
         fails.append(f"give up the seat: passenger {pb.order.role}, holder {hb.order.role}")
+    # the person's horn (owner request Nov 6: aimed at a bot, the horn calls him): the bot his view is
+    # on gets the call over a nearer one, and the call holds its seconds (live_bots.horn_call)
+    sys.path.insert(0, HERE)
+    import live_bots
+    live_bots.HORN.update(down=False, call=None)
+    drv = PlayerState(0, 0, "person", Vec(10, 10, 0), Vec(), 0.0, 0.0, True, 1, 1, "ar", vehicle=7)     # facing +x
+    aimed = PlayerState(4, 0, "o", Vec(38, 12, 0), Vec(), 0.0, 0.0, True, 1, 1, "ar", is_bot=True)     # 4 deg off his view
+    side = PlayerState(2, 0, "n", Vec(12, 14, 0), Vec(), 0.0, 0.0, True, 1, 1, "ar", is_bot=True)      # near, 63 deg off
+    hv = [dict(v, occupied=True, riders=1, team=0, gunner=False)]
+    got = [live_bots.horn_call(t, [drv, aimed, side], hv, 0, horn) for t, horn in ((1.0, False), (1.1, True), (1.2, True),
+                                                                                  (5.0, False), (12.0, False))]
+    if got[0] or got[1] != {7: 4} or got[3] != {7: 4} or got[4]:
+        fails.append(f"horn: calls {got} (want none, then {{7: 4}} held past the release, gone after {live_bots.HORN_HOLD} s)")
+    bots = {k: Bot(k, 0, prof, m, rng=rng) for k in (2, 4)}
+    dr = Director(0, m, bots, random.Random(7))
+    dr.honk_orders(6.0, Snapshot(6.0, [drv, aimed, side], honks=[7], honk_at={7: 4}, vehicles=hv),
+                   list(bots.values()), {2: side, 4: aimed})
+    if bots[4].order.role != "ride" or bots[2].order.role == "ride":
+        fails.append(f"horn at bot 4: 4 {bots[4].order.role}, 2 {bots[2].order.role} (want 4 on the gun, 28 u off)")
+    # a Falcon of ours set down: the bots on foot within LAND_CALL_R take both guns, one 15 u off does not; up in the
+    # air it calls nobody (owner request Nov 6: bots get in an aircraft that lands close to them)
+    from brain.director import LAND_CALL_R
+    T = dr.terrain()
+    gz = T.ground(30.0, -60.0)
+    pilot = PlayerState(0, 0, "person", Vec(30, -60, gz + 0.3), Vec(), 0.0, 0.0, True, 1, 1, "ar", vehicle=9)
+    feet = [PlayerState(k, 0, "f", Vec(30 + dx, -60, gz), Vec(), 0.0, 0.0, True, 1, 1, "ar", is_bot=True)
+            for k, dx in ((2, 4.0), (4, 6.0), (6, 15.0))]
+    for up, want in ((0.3, {2: "ride", 4: "ride", 6: None}), (9.0, {2: None, 4: None, 6: None})):
+        bots = {k: Bot(k, 0, prof, m, rng=rng) for k in (2, 4, 6)}
+        dr = Director(0, m, bots, random.Random(8))
+        fal = [dict(fv, handle=9, pos=(30.0, -60.0, gz + up), occupied=True, riders=1, team=0, gunner=False)]
+        for t in (10.0, 10.5):
+            dr.honk_orders(t, Snapshot(t, [pilot] + feet, vehicles=fal), list(bots.values()), {q.id: q for q in feet})
+        roles = {k: (b.order.role if b.order.role in ("ride", "board") else None) for k, b in bots.items()}
+        if roles != want:
+            fails.append(f"Falcon {up} u over the floor: orders {roles} (want {want}, LAND_CALL_R {LAND_CALL_R})")
+    # a Falcon gunner by his objective gets out only once it is down (live Spire 20261106-185412 at 965 s: out 20 u up)
+    for up, out in ((20.0, False), (0.3, True)):
+        gb = Bot(3, 0, prof, m, rng=rng)
+        gb.order = Order("runner", Vec(32, -60, gz))
+        me = PlayerState(3, 0, "g", Vec(30, -60, gz + up), Vec(), 0.0, 0.0, True, 1, 1, "ar", vehicle=9)
+        gb.enter_riders = 1
+        fal = [dict(fv, handle=9, pos=(30.0, -60.0, gz + up), occupied=True, riders=2, team=0, gunner=True)]
+        left = False
+        for t in range(90):
+            a = Action()
+            gb.drive(1.0 + t / 30, 1 / 30, me, Snapshot(1.0 + t / 30, [me], vehicles=fal), a, lambda x, c, **k: c)
+            left = left or a.action
+        if left != out:
+            fails.append(f"Falcon gunner {up} u up by his objective: got out {left} (want {out})")
+    # a Reach Warthog gunner aims from the chaingun's mount, 0.536 u behind the origin (vehicles.GUN_FORWARD): at a man 10 u
+    # to its left the view goes 3 deg back toward him from where the origin's line would (the owner, Spire Nov 6: "Turret
+    # gunner aim is still off to the right sometimes")
+    from brain.bot import Belief
+    gb = Bot(3, 0, make_profile("top", "rusher", random.Random(3)), m, rng=random.Random(3))
+    gb.game, gb.enter_riders = "reach", 1
+    foe = PlayerState(8, 1, "f", Vec(10, 20, 0), Vec(), 0.0, 0.0, True, 1, 1, "ar")
+    yaw = 1.5708
+    for t in range(60):
+        me = PlayerState(3, 0, "g", Vec(10, 10, 0), Vec(), yaw, 0.0, True, 1, 1, "ar", vehicle=7)
+        me.turret = "warthog_chaingun"
+        gb.per.beliefs[8] = Belief(foe.pos, Vec(), 1.0 + t / 30, True, "eyes")
+        a = Action()
+        gb.drive(1.0 + t / 30, 1 / 30, me, Snapshot(1.0 + t / 30, [me, foe], vehicles=[dict(v, occupied=True, riders=2, team=0,
+                                                                                           fwd=(1.0, 0.0, 0.0))]),
+                 a, lambda x, c, **k: c)
+        yaw = a.yaw
+    want = math.atan2(10.0, 0.536)
+    if abs(yaw - want) > abs(yaw - math.pi / 2) or abs(yaw - want) > 0.02:
+        fails.append(f"Warthog gunner at a man 10 u to its left: yaw {yaw:.3f} (want {want:.3f}, from the chaingun's mount)")
     # the vehicle's own ground (Terrain.vnav): Boneyard's attacker spawn to the core run's end, every step on ground with
     # room for a Warthog until the last few units
     # (and Blood Gulch base to base: the flag under its base is off that ground, the drive ends beside it; Sidewinder's
@@ -183,6 +254,7 @@ def main():
     # a rider's speed is its vehicle's (live_bots.snapshot): his raw position is relative to the vehicle, and the old
     # diff against last tick's vehicle place read about -30x his map position (the player's gunner shot along one
     # line)
+    sys.path.insert(0, HERE)
     sys.path.insert(0, HERE)
     import live_bots
 

@@ -345,6 +345,7 @@ def piece_wall_kinds(blocks):
 
 class Terrain:
     lid_rule = True   # drops into a column whose floor goes on at our own height cost LID_COST (_build_nav; tests: off)
+    corner_rule = True   # a diagonal drop between two cells shut at our height costs LID_COST (_build_nav)
 
     def __init__(s, npz_path, bases, extra_floor=(), blocks=(), slit_rule=False, window=None, stair_rule=False,
                  walked=None, lifts=()):
@@ -1193,6 +1194,20 @@ class Terrain:
                                 extra = np.zeros(drop.shape)
                                 extra[jj[rail], ii[rail]] = RAIL_COST
                                 extra[jj[lid], ii[lid]] = LID_COST
+                                if dj and di and s.corner_rule:
+                                    # a diagonal drop between two cells both shut at our height (a wall's or rail's
+                                    # top over our floor, or our floor there walled): the corner no body fits through,
+                                    # priced as a lid (Blood Cavern, owner's games Nov 6: from (-8.1, 8.9) and (-4.8,
+                                    # 2.7) routes dropped diagonally past a parapet's ends, survivors pushed 35 s and
+                                    # 1660 rows at them)
+                                    shut = np.ones(len(jj), bool)
+                                    for side in ((src[0].start + jj, dst[1].start + ii), (dst[0].start + jj, src[1].start + ii)):
+                                        sc = s.lz[:, side[0], side[1]]
+                                        with np.errstate(invalid="ignore"):
+                                            top = ((sc > za_ + MAX_RISE) & (sc < za_ + BODY[1])).any(axis=0)
+                                            own = (np.abs(sc - za_) <= MAX_RISE) & ~s.lwalk[:, side[0], side[1]]
+                                        shut &= top | own.any(axis=0)
+                                    extra[jj[shut], ii[shut]] = np.maximum(extra[jj[shut], ii[shut]], LID_COST)
                             drop &= ok
                             jj, ii = np.nonzero(drop)
                             over = np.zeros(drop.shape, bool)
@@ -1722,8 +1737,29 @@ class Terrain:
             cross &= (qx - px) * thru[0] + (qy - py) * thru[1] < 0
         return k[cross]
 
+    def set_link_gates(s, closed):
+        """People's links (hjumps indices) closed now: an Invasion phase's man cannon not spawned yet, a lift whose ride
+        goes elsewhere this phase (brain/invasion.py phase_link_gates). Each costs BARRIER_COST, as a closed gate."""
+        closed = frozenset(closed)
+        if closed != getattr(s, "link_gates", frozenset()):
+            s.link_gates = closed
+            s._refresh_barriers()
+
+    def _link_edges(s, g, closed):
+        """Data indices of reversed graph g holding the closed links' edges (row: its landing node, column: its take-off)."""
+        out = []
+        for n in closed:
+            if n >= len(getattr(s, "hjumps", ())):
+                continue
+            f, t, _, _ = s.hjumps[n]
+            src, dst = (f[0] * s.nh + f[1]) * s.nw + f[2], (t[0] * s.nh + t[1]) * s.nw + t[2]
+            lo, hi = g.indptr[dst], g.indptr[dst + 1]
+            out.extend((lo + np.nonzero(g.indices[lo:hi] == src)[0]).tolist())
+        return np.asarray(sorted(set(out)), np.int64)
+
     def _refresh_barriers(s):
         bars = getattr(s, "barriers", {})
+        gates = getattr(s, "link_gates", frozenset())
         for name in ("graph_to", "graph_jump_to", "graph_h_to"):
             g = getattr(s, name, None)
             if g is None:
@@ -1732,6 +1768,8 @@ class Terrain:
             if old is not None and old.size:
                 g.data[old] -= s.BARRIER_COST
             idx = [s._crossing(g, bar) for bar in bars.values() if bar[7]]
+            if gates and name != "graph_to":          # (the walking graph has no people's links)
+                idx.append(s._link_edges(g, gates))
             idx = np.unique(np.concatenate(idx)) if idx else np.zeros(0, np.int64)
             g.data[idx] += s.BARRIER_COST
             g._hb_applied = idx

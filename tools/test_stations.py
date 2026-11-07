@@ -99,6 +99,12 @@ def main():
                        ("vehicle", "warthog", W), ("weapon", "dmr", G), ("teleporter", "sender", (0.0, 40.0, 1.0))])
         if kinds != want:
             fails.append(f"2. kept {kinds} (want {want})")
+        try:            # two stations as far off: no dict comparison (9 report filings failed, Forge run Nov 6)
+            tie = st.near((10.0, 2.5, 1.0), r=20.0)      # (as far from the jetpack (0, 0, 1) as the warthog (20, 5, 1))
+        except TypeError as e:
+            tie = f"crashed: {e}"
+        if not isinstance(tie, list) or not tie:
+            fails.append(f"2b. near() on a tie: {tie}")
         st.watch([(7, (12.3, 0.4, 1.0), True)])
         st.watch([(7, (40.2, 0.3, 6.0), True)])
         st.watch([(8, (30.0, 30.0, 1.0), True)])
