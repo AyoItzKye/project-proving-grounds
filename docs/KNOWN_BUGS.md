@@ -21,7 +21,7 @@ For everything that works, game by game, see the [bot status sheet](BOT_STATUS.p
 - **Destroyed vehicles in Halo 2 and ODST**: bots skip wrecks in Halo 2 Anniversary, Halo 3, Reach and Halo 4; in Halo 2 Classic and ODST this is not checked in a real match yet, so a bot may still try to get into a wreck.
 - **Flying vehicles need reworking**: how bots fly and fight in the air is being redone.
 - **Bots lack urgency on offense**: when the objective means attacking (taking the flag, planting the bomb, pushing in Invasion), they're too slow and cautious about it.
-- **Theater mode only works with bots in Halo: Reach.** Films of bot matches in every other game (Halo: CE, Halo 2, Halo 2 Anniversary, Halo 3, ODST and Halo 4) load, then stop with "an error occurred" as they start.
+- **Theater mode only works with bots in Halo: Reach and Halo 4.** Films of bot matches in the other games (Halo: CE, Halo 2, Halo 2 Anniversary, Halo 3 and ODST) load, then stop with "an error occurred" as they start.
 
 ## Halo: CE
 
@@ -134,6 +134,7 @@ For everything that works, game by game, see the [bot status sheet](BOT_STATUS.p
 - **Warthog**: Bots get in, drive, gun and get out, but drivers stall about half the time.
 - **Mongoose**: Bots ride and drive it, but sit still about a third of the time.
 - **Ghost**: Bots drive and shoot it well, but can't boost it yet.
+- **Mantis**: Bots get in the Mantis, walk it, fire its machine gun and stomp (seen in matches). Its rockets don't fire yet.
 - **Scorpion**: Bots drive and fire it, but sit still a lot. I've only checked one match.
 - **Banshee**: Bots have flown it, but didn't shoot from it, and can't use its bomb or boost yet.
 

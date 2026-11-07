@@ -81,6 +81,39 @@ int main(int argc, char** argv) {
     swprintf_s(to, L"%s\\%016llx.hbf", copy_a, (unsigned long long)(KEY + 2));
     want("recorded in the shared folder", GetFileAttributesW(from) != INVALID_FILE_ATTRIBUTES
                                           && GetFileAttributesW(to) == INVALID_FILE_ATTRIBUTES);
+    // 6. Halo 4: a match's first tick takes its 15 bots' adds while it waits (h4f.cpp f_prejoin), the runner recording
+    // each as it takes it (film_command; film_tick gets cmd_bit 0); its film runs all of them at that tick, one at a
+    // time (film_more). Before: none recorded (only the command waiting at film_tick), and replayed ones overwrote
+    // each other, so the film had no bots or only the last
+    const uint64_t K4 = KEY + 4;
+    const int ADDS = 15;
+    for (uint32_t t = 1; t <= 3; t++) {
+        live_input(t);
+        film_tick(K4, t, false, 0);
+        for (int k = 0; t == 1 && k < ADDS; k++) {         // the first tick's adds, as the runner takes them
+            g_shm->cmd = HB_CMD_ADD_BOT; g_shm->cmd_arg = (1 << 29) | (k + 1);
+            g_shm->cmd_seq = g_shm->cmd_done_seq + 1;
+            film_command(t);
+            g_shm->cmd_done_seq = g_shm->cmd_seq;
+        }
+    }
+    film_end();
+    int got[ADDS + 1] = {}, ran = 0;
+    for (uint32_t t = 1; t <= 3; t++) {
+        film_tick(K4, t, true, 0);
+        do {                                                // the runner, then this tick's next command
+            if (g_shm->cmd_seq != g_shm->cmd_done_seq) {
+                int k = g_shm->cmd_arg & 0xFF;
+                if (t == 1 && k >= 1 && k <= ADDS) got[k]++;
+                ran++;
+                g_shm->cmd_done_seq = g_shm->cmd_seq;
+            }
+        } while (film_more(t));
+    }
+    film_end();
+    bool all = ran == ADDS;
+    for (int k = 1; k <= ADDS; k++) all = all && got[k] == 1;
+    want("the first tick's 15 adds recorded and replayed, each once, at that tick", all);
     if (fails) return 1;
     printf("film OK\n");
     return 0;

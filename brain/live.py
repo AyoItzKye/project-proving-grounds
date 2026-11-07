@@ -1962,27 +1962,50 @@ class LiveH4F(LiveReach):
         ents, mx, _ = s._array(0x18)
         b = s.g.read(ents, mx * 0x18)
         out = []
+        mechs = 13 in s.VEHICLE_TYPES               # Halo 4: its Mantis is a biped in a match (_mech)
         for i in range(mx):
             salt, typ = struct.unpack_from("<H", b, i * 0x18)[0], b[i * 0x18 + 4]
-            if not salt or (types is not None and typ not in types):
+            if not salt or (types is not None and typ not in types and not (typ == 0 and mechs and 13 in types)):
                 continue
             o = struct.unpack_from("<Q", b, i * 0x18 + 0x10)[0]
             head = s.g.read(o, 0x50)
             tag = struct.unpack_from("<I", head, 0x8)[0]   # +0 is the same for every object here
             pos = struct.unpack_from("<3f", head, 0x40)
             h = (salt << 16) | i
+            if typ == 0 and mechs and s._mech(tag):
+                typ = 13
+            if types is not None and typ not in types:
+                continue
             if typ == 2 and h not in getattr(s, "_held", ()) and not s._was_held(h) and tag not in s._names:
                 s._learn(tag, pos)       # +0x14 is no parent here (0x3040 on foot): skip held guns instead
             if typ in s.VEHICLE_TYPES and tag not in s._names and struct.unpack_from("<I", head, s.PARENT_AT)[0] == NONE:
-                n = s._vehicle_name(tag)  # (a gun riding on a vehicle has it as its parent: left as it was)
+                # (a gun riding on a vehicle has it as its parent: left as it was)
+                n = s._vehicle_name(tag, giant=typ == 13)
                 if n:
                     s._names[tag] = n
             out.append(((salt << 16) | i, typ, s._names.get(tag, "unknown"), pos))
         return out
 
-    def _vehicle_name(s, tag):
+    def _mech(s, tag):
+        """A biped that is a vehicle to the brain: Halo 4's Mantis (live on Forge Island, Nov 7: object type 0, a biped,
+        objects\\characters\\storm_mantis\\storm_mantis; giants, type 13, never showed). Reported as type 13 by
+        objects(), so the vehicle list has it and no bot ignores it any more."""
+        known = s.__dict__.setdefault("_mechs", {})
+        if tag not in known:
+            try:
+                from .forge import _tag_names
+                names = _tag_names(s)
+                k = tag & 0xFFFF
+                known[tag] = k < len(names) and "\\storm_mantis\\" in names[k] + "\\"
+            except Exception:
+                return False
+        return known[tag]
+
+    def _vehicle_name(s, tag, giant=False):
         """A vehicle's file name at its tag's own index (the names are exact here, and its folder can differ from it:
-        h2a_mongoose\\h2a_gungoose; every vehicle read "unknown" before, so no bot planned a ride: Bloodline)."""
+        h2a_mongoose\\h2a_gungoose; every vehicle read "unknown" before, so no bot planned a ride: Bloodline). giant: a
+        Halo 4 giant, named in any folder (the Mantis is objects\\characters\\storm_mantis\\storm_mantis on Ragnarok,
+        so it read "unknown" and no bot took it)."""
         try:
             from .forge import _tag_names
             names = _tag_names(s)
@@ -1990,7 +2013,7 @@ class LiveH4F(LiveReach):
             return None
         k = tag & 0xFFFF
         p = names[k].split("\\") if k < len(names) else []
-        return p[-1] if "vehicles" in p[:-1] else None
+        return p[-1] if p and (giant or "vehicles" in p[:-1]) else None
 
     def weapon_name(s, weapon_handle):
         o = s.object(weapon_handle)

@@ -22,6 +22,11 @@
 
 hb_shared* g_shm;
 uint32_t g_prejoin = 1;
+uint32_t g_playback = 0;
+// (film.cpp has its own test, tests/test_film.cpp: here no film)
+const film_frame* film_tick(uint64_t, uint32_t, bool, uint32_t) { return nullptr; }
+void film_command(uint32_t) {}
+bool film_more(uint32_t) { return false; }
 static char g_log[8192];
 void logf(const char* fmt, ...) {
     size_t n = strlen(g_log);
@@ -255,6 +260,29 @@ int main() {
         if (pick != 0xFFFFFFFFu) { printf("FAIL 8: H2A boarded a type 13 object (%08x)\n", pick); fails++; }
     }
     ents[4][4] = 1;
+    // ... Halo 4's Mantis is a biped in a match (type 0, live Forge Island Nov 7): one with seats 1 u off is boarded
+    // before the standing vehicle 2.5 u off; a Spartan (a biped with no seats) is passed over; the bot itself never;
+    // H2A boards no biped
+    on_roof[0x16C] = 0;
+    ents[5][4] = 0;                                   // the 1 u object is now a biped
+    f_seat_count = [](h4f_game&, uint32_t h) { return h == ((0x0B0Bu << 16) | 5) ? 1 : 0; };
+    pick = f_near_vehicle(G, tls, unit);
+    if (pick != ((0x0B0Bu << 16) | 5)) { printf("FAIL 8: Halo 4 passed over the Mantis (a biped with seats: %08x)\n", pick); fails++; }
+    f_seat_count = [](h4f_game&, uint32_t) { return 0; };
+    pick = f_near_vehicle(G, tls, unit);
+    if (pick != ((0x0A0Au << 16) | 4)) { printf("FAIL 8: Halo 4 boarded a Spartan (%08x)\n", pick); fails++; }
+    f_seat_count = [](h4f_game&, uint32_t) { return 1; };
+    put_ptr(ents[5] + 0x10, unit);                    // the bot's own unit, seats or not
+    pick = f_near_vehicle(G, tls, unit);
+    if (pick == ((0x0B0Bu << 16) | 5)) { printf("FAIL 8: a bot boarded itself\n"); fails++; }
+    put_ptr(ents[5] + 0x10, on_roof);
+    {
+        h4f_game A = g_h2a;
+        pick = f_near_vehicle(A, tls, unit);
+        if (pick == ((0x0B0Bu << 16) | 5)) { printf("FAIL 8: H2A boarded a biped\n"); fails++; }
+    }
+    f_seat_count = f_seat_count_game;
+    ents[5][4] = 1;
 
     // 9. Halo 3 boarding (objects at TLS +0x38: +0x20 count, +0x48 entries of 0x18: +0 salt, +3 type, +0x10 the object;
     // object +0x10 parent, +0x50 position, +0x5C forward, +0x68 up)

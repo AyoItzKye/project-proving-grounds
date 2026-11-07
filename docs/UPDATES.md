@@ -7,7 +7,14 @@ Click a version to see what changed since the one before it.
 <details open>
 <summary><b>0.2.2 s181</b> (November 6, 2026): call bots into your vehicle, a smarter Spire attack and Banshee, careful grenades, Flood survivors that use their shotguns</summary>
 
-s181 was updated five times, on November 6 and 7. Everything new and fixed since 0.2.2 s180 is below, the newest first.
+s181 was updated six times, on November 6 and 7. Everything new and fixed since 0.2.2 s180 is below, the newest first.
+
+<!-- build: 20261107-1200 -->
+#### Sixth update (November 7, midday)
+
+**Fixed**
+- **Halo 4, the Mantis**: bots really use it now. In a match Halo 4 makes the Mantis a walker, not the kind of object other vehicles are, so no bot ever saw it; now they get in, walk it, fire its machine gun and stomp (seen in matches on Forge Island). Its rockets don't fire yet.
+- **Halo 4 Theater**: films of bot matches play with their bots instead of crashing as the bots join. A 12-minute Forge Island film matched its match's score at every point checked. Theater with bots now works in Reach and Halo 4.
 
 <!-- build: 20261107-0230 -->
 #### Fifth update (November 7, early)

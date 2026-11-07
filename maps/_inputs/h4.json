@@ -70,5 +70,13 @@
    "press": false,
    "how": "the equipment entry's own bits (both held), so a hold-mode kind that sends the ability button alone (brain/equipment.py hold_bit, tools/live_bots.py buttons) gets what lifted bots live on Oct 29: decoded live 2026-10-29 04:25 (equipment=c): +0x40 0xC0C0 while held"
   }
+ ],
+ "fire2": [
+  {
+   "off": 8,
+   "mask": 524288,
+   "press": false,
+   "how": "decoded live 2026-11-07 (tools/decode_buttons.py fire2=rmb --dry, Adrift): +0x08 0x80000 while held, with the trigger float +0x3C 1.0 (native/h4f.cpp f_fill writes it): the Mantis's rockets"
+  }
  ]
 }

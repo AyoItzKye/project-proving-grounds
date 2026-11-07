@@ -202,6 +202,44 @@ def main():
         fails.append(f"H2A vehicle types {lv.VEHICLE_TYPES}")
     if vehicles.kind_of("storm_mantis") != "mantis" or not vehicles.driver_armed(dict(kind="storm_mantis")):
         fails.append("the Mantis: not read as an armed mantis")
+    # ... named from Ragnarok's own tag path (live Nov 7: objects\characters\storm_mantis, not under vehicles, so it read
+    # "unknown" and no bot took it); a vehicle under vehicles as before; a giant's name only for a giant
+    import brain.forge as forge_mod
+    real = forge_mod._tag_names
+    forge_mod._tag_names = lambda live: ["objects\\characters\\storm_mantis\\storm_mantis",
+                                         "objects\\vehicles\\human\\storm_warthog\\storm_warthog",
+                                         "objects\\characters\\spartans\\spartan"]
+    try:
+        got = (lv._vehicle_name(0, giant=True), lv._vehicle_name(0), lv._vehicle_name(1), lv._vehicle_name(2))
+    finally:
+        forge_mod._tag_names = real
+    if got != ("storm_mantis", None, "storm_warthog", None) or vehicles.kind_of(got[0]) != "mantis":
+        fails.append(f"the Mantis's name from its tag path: {got}")
+    # ... and in a match it is a biped (live Forge Island, Nov 7: object type 0, no giants at all), so the vehicle list
+    # never had it: objects() gives it as type 13 with its name; a Spartan (also type 0) stays out, a Warthog stays in
+    import struct as st
+    ENTS, BASE = 0x1000, 0x2000
+    objs = [(0, 0x0002), (0, 0x0000), (1, 0x0001)]          # (type, tag index): a Spartan, the Mantis, a Warthog
+    mem = {ENTS: b"".join(st.pack("<H2xB11xQ", 7 + k, typ, BASE + 0x100 * k) for k, (typ, _) in enumerate(objs))}
+    for k, (typ, ti) in enumerate(objs):
+        head = bytearray(0x50)
+        st.pack_into("<I", head, 0x8, 0xE0000000 | ti)
+        st.pack_into("<I", head, lv.PARENT_AT, 0xFFFFFFFF)
+        st.pack_into("<3f", head, 0x40, float(k), 0.0, 0.0)
+        mem[BASE + 0x100 * k] = bytes(head)
+    lv.g = type("G", (), dict(dll="halo4.dll", read=lambda self, a, n: mem[a][:n]))()
+    lv._array, lv._names = (lambda off: (ENTS, len(objs), None)), {}
+    forge_mod._tag_names = lambda live: ["objects\\characters\\storm_mantis\\storm_mantis",
+                                         "objects\\vehicles\\human\\storm_warthog\\storm_warthog",
+                                         "objects\\characters\\spartans\\spartan"]
+    try:
+        veh = sorted((typ, name) for h, typ, name, pos in lv.objects(lv.VEHICLE_TYPES))
+        every = sorted(typ for h, typ, name, pos in lv.objects(None))
+        bipeds = [name for h, typ, name, pos in lv.objects((0,))]
+    finally:
+        forge_mod._tag_names = real
+    if veh != [(1, "storm_warthog"), (13, "storm_mantis")] or every != [0, 1, 13] or len(bipeds) != 1:
+        fails.append(f"Halo 4's Mantis (a biped) in the vehicle list: {veh}, all {every}, bipeds {bipeds}")
     mb = bot(6, get_map("h4_z11_valhalla") if os.path.isdir(os.path.join(HERE, "..", "maps", "h4_z11_valhalla")) else m)
     mv = dict(handle=88, kind="storm_mantis", pos=(0.0, 0.0, 0.0), occupied=True, riders=1, team=0)
     mme = ps(6, Vec(0, 0, 0), vehicle=88)
