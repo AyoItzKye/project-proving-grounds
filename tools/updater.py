@@ -29,7 +29,8 @@ DOWNLOADS = os.path.join(ROOT, "user", "updates")
 # release's notes carry it (<!-- build: ... -->, tools/release_notes.py), and a newer stamp of the same version is an
 # update too. What is new comes from that release's own docs/UPDATES.md, all of it since the player's copy: every version
 # newer than ours, and of ours every stamped batch newer than our build
-NOTES_RAW = f"https://raw.githubusercontent.com/{REPO}/{{tag}}/docs/UPDATES.md"
+NOTES = f"https://api.github.com/repos/{REPO}/contents/docs/UPDATES.md?ref={{tag}}"   # (not raw.githubusercontent.com:
+#   it keeps a moved tag's old file for 5 minutes)
 BUILD_MARK = re.compile(r"<!--\s*build:\s*(\d{8}-\d{4})\s*-->")
 SECTION = re.compile(r"<summary><b>(.*?)</b>(.*?)</summary>(.*?)</details>", re.S)
 _lock = threading.Lock()
@@ -120,7 +121,8 @@ def check(force=False):
                   setup_name=setup["name"] if setup else "", setup_bytes=setup.get("size", 0) if setup else 0, error="",
                   latest_build=max(BUILD_MARK.findall(body), default=""), body=body)
         try:                                        # what is new: that release's own notes (news); its body if not
-            req = urllib.request.Request(NOTES_RAW.format(tag=st["latest"]), headers={"User-Agent": "ProjectProvingGrounds-launcher"})
+            req = urllib.request.Request(NOTES.format(tag=st["latest"]), headers={"User-Agent": "ProjectProvingGrounds-launcher",
+                                                                                  "Accept": "application/vnd.github.raw"})
             st["notes_md"] = urllib.request.urlopen(req, timeout=8).read().decode("utf-8", "replace")
         except Exception:
             st["notes_md"] = ""
@@ -143,9 +145,14 @@ def info():
     cur, latest, mine, theirs = current(), st.get("latest", ""), build(), st.get("latest_build", "")
     available = is_newer(cur, mine, latest, theirs)
     same = available and version_key(cur) == version_key(latest)
-    new = news(st.get("notes_md", ""), cur, mine) if available else []
-    if available and not new and st.get("body"):     # (its notes not read: the release's own text)
-        new = [dict(title=st.get("title") or latest, text=BUILD_MARK.sub("", st["body"]).strip())]
+    md = st.get("notes_md", "")
+    if theirs and theirs not in md:                  # (its UPDATES.md not read, or an older copy of it)
+        md = ""
+    new = news(md, cur, mine) if available else []
+    if available and not new and st.get("body"):     # then the release's own text; of our version, the updates after ours
+        parts = BUILD_MARK.split(st["body"])          # [head, stamp, text, stamp, text ...]
+        newer = [parts[k + 1].strip() for k in range(1, len(parts) - 1, 2) if parts[k] > mine] if same else []
+        new = [dict(title=st.get("title") or latest, text="\n\n".join(newer) or BUILD_MARK.sub("", st["body"]).strip())]
     return dict(current=cur, latest=latest, title=st.get("title", ""), url=st.get("url", RELEASES),
                 available=available, same_version=same, build=mine, latest_build=theirs, news=new,
                 checked=st.get("checked", 0), error=st.get("error", ""),

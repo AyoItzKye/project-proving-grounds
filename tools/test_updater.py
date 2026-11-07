@@ -17,6 +17,7 @@ import release_notes  # noqa: E402
 import updater  # noqa: E402
 
 MD = open(os.path.join(updater.ROOT, "docs", "UPDATES.md"), encoding="utf-8").read()
+STALE = updater.BUILD_MARK.sub("", MD)                                  # (an UPDATES.md from before the stamps)
 NEXT = ("<details open>\n<summary><b>0.2.3 s182</b> (December 1, 2026): a test version</summary>\n\n"
         "### Fixed\n- **Test**: a fix.\n\n</details>\n\n")
 
@@ -81,8 +82,9 @@ def main():
         asked.append(req.full_url)
         if req.full_url == updater.API:
             return Reply(json.dumps(rel).encode())
-        if req.full_url == updater.NOTES_RAW.format(tag="v0.2.2-s181") and notes_ok:
-            return Reply(MD.encode())
+        if req.full_url == updater.NOTES.format(tag="v0.2.2-s181") and notes_ok:
+            assert req.get_header("Accept") == "application/vnd.github.raw"
+            return Reply((MD if notes_ok == "new" else STALE).encode())
         raise OSError("offline")
 
     tmp = tempfile.mkdtemp()
@@ -90,21 +92,25 @@ def main():
     updater.urllib.request.urlopen = urlopen
     updater.json.load = (lambda f, _load=json.load: json.loads(f.read()) if isinstance(f, Reply) else _load(f))
     updater.current, updater.build = (lambda: "0.2.2-s181"), (lambda: "20261106-1840")
-    notes_ok = True
+    notes_ok = "new"
     i = updater.check(force=True)
-    assert asked[-1].endswith("/v0.2.2-s181/docs/UPDATES.md"), asked
+    assert asked[-1] == updater.NOTES.format(tag="v0.2.2-s181") and "api.github.com" in asked[-1], asked
     assert i["available"] and i["same_version"] and i["latest_build"] == "20261106-2300" and i["can_install"], i
     assert len(i["news"]) == 1 and "Third update" in i["news"][0]["text"], i["news"]
     updater.build = lambda: "20261106-2300"
     i = updater.info()
     assert not i["available"] and i["news"] == [], i
-    updater.build, notes_ok = (lambda: "20261106-1440"), False         # its UPDATES.md not read: the release's text
-    i = updater.check(force=True)
-    assert i["available"] and len(i["news"]) == 1 and "<!--" not in i["news"][0]["text"], i["news"]
-    assert "Third update" in i["news"][0]["text"]
+    # its UPDATES.md not read, or an older copy of it (no stamp of this release): the release's text, of our version
+    # only the updates built after ours
+    for notes_ok in (False, "stale"):
+        updater.build = lambda: "20261106-1440"
+        i = updater.check(force=True)
+        t = i["news"][0]["text"] if i["news"] else ""
+        assert i["available"] and len(i["news"]) == 1 and "<!--" not in t and "Download" not in t, (notes_ok, i["news"])
+        assert "Third update" in t and "Second update" in t and "First release" not in t, (notes_ok, t[:300])
     updater.current, updater.build = (lambda: "0.2.2-s180"), (lambda: "")
-    i = updater.info()
-    assert i["available"] and not i["same_version"], i
+    i = updater.info()                                                  # (a version behind: the whole text)
+    assert i["available"] and not i["same_version"] and "First release" in i["news"][0]["text"], i
     st = json.load(open(updater.STATE, encoding="utf-8"))
     assert time.time() - st["checked"] < 60 and st["latest"] == "v0.2.2-s181"
 
