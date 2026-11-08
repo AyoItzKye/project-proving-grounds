@@ -107,6 +107,37 @@ static uint32_t hr_near_vehicle(uint8_t* tls, uint8_t* unit, bool turret) {
     return best;
 }
 
+// the control device a bot's Use works (Nov 8, Generator Defense): the nearest powered control (object type 8, device
+// power +0x1B0 over 0.5) within 3 u across and 2 up or down, placed at its parent's place when it rides one (a
+// generator's lockdown switch sits 0.17 u up in the generator's frame). Interaction slot type 4 takes types 4/7/8
+// (ghidra/hr_slot_check.c: FUN_18005030c's mask 400) and runs FUN_1804d31a8(object, unit), the control's use (the
+// same call the object-type-8 path makes, ghidra/hr_unit_action_callers.c). Health stations are controls too
+static uint32_t hr_near_control(uint8_t* tls, uint8_t* unit) {
+    uint8_t* hdr = *(uint8_t**)(tls + 0x10);
+    uint8_t* ents = hdr ? *(uint8_t**)(hdr + 0x50) : nullptr;
+    if (!ents || !unit) return 0xFFFFFFFFu;
+    const float* me = (const float*)(unit + 0x44);
+    uint32_t best = 0xFFFFFFFFu;
+    float bd = 3.0f * 3.0f;
+    for (int i = 0, mx = *(int32_t*)(hdr + 0x2C); i < mx; i++) {
+        uint8_t* e = ents + (size_t)i * 0x18;
+        uint8_t* o = *(uint8_t**)(e + 0x10);
+        if (!*(uint16_t*)e || e[4] != 8 || !o || *(float*)(o + 0x1B0) <= 0.5f) continue;
+        const float* p = (const float*)(o + 0x44);
+        float px = p[0], py = p[1], pz = p[2];
+        uint32_t parent = *(uint32_t*)(o + 0x14);
+        if (parent != 0xFFFFFFFFu) {
+            uint8_t* po = hr_object(tls, parent);
+            if (!po) continue;
+            const float* b = (const float*)(po + 0x44);
+            px += b[0]; py += b[1]; pz += b[2];
+        }
+        float dx = px - me[0], dy = py - me[1], dz = pz - me[2], d2 = dx * dx + dy * dy;
+        if (d2 < bd && dz > -2.0f && dz < 2.0f) { bd = d2; best = (uint32_t)*(uint16_t*)e << 16 | (uint32_t)i; }
+    }
+    return best;
+}
+
 // the weapon lying in reach that a bot's Use takes (shared.h hb_pick_loose: the one its view is on, else the nearest
 // within 0.6 u), for the view it sends this tick
 static uint32_t hr_loose_weapon(uint8_t* tls, uint8_t* unit, float yaw, float pitch) {
@@ -586,6 +617,16 @@ static void __fastcall h_hr_update(uint8_t* actions) {
                         *(uint16_t*)(act + 0x54) = 2;
                         *(uint32_t*)(act + 0x54 + 8) = loose;
                         use |= 0x200002u;
+                    }
+                    if (seat < 0 && (b & HB_BTN_ACTION) && (b & HB_BTN_DEVICE) && on_foot) {
+                        // the brain's device Use (HB_BTN_DEVICE: a guard's lockdown, never a pickup press): the control
+                        // in reach, slot 0 = {type 4, the control} and Use pressed, as for a pickup (hr_near_control)
+                        uint32_t ctl = hr_near_control(tls, unit);
+                        if (ctl != 0xFFFFFFFFu) {
+                            *(uint16_t*)(act + 0x54) = 4;
+                            *(uint32_t*)(act + 0x54 + 8) = ctl;
+                            use |= 0x200002u;
+                        }
                     }
                     if (seat >= 0 && (b & HB_BTN_ACTION) && on_foot) {
                         // on foot by a vehicle: interaction slot 0 = {type 5, seat at +4, the vehicle at +8} and Use

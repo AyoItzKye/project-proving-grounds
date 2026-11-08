@@ -1646,6 +1646,37 @@ class LiveReach(LiveH3):
         except Exception:
             return None
 
+    def ff_generators(s):
+        """Generator Defense's generators (live Beachhead Nov 8, logs/tmp/gen_watch.py): each generator_x_large machine
+        with its shield / body damage (+0x124 / +0x128, as a unit's), health 1 full .. 0 gone, and its three switches
+        (controls parented to it, +0x14): "gen" (the lockdown switch: power +0x1B0 1 while it can be locked), "cool",
+        "disabled"; a destroyed generator's damage reads 0 again and every switch 0, as a locked one's. [dict(handle, pos, health,
+        sw={name: power})], [] on other maps."""
+        from .forge import _tag_names
+        names = _tag_names(s) or []
+        ents, mx, _ = s._array(0x10)
+        b = s.g.read(ents, mx * 0x18)
+        gens, sws = {}, []
+        for i in range(mx):
+            salt = struct.unpack_from("<H", b, i * 0x18)[0]
+            if not salt or b[i * 0x18 + 4] not in (7, 8):        # (machines and controls)
+                continue
+            o = struct.unpack_from("<Q", b, i * 0x18 + 0x10)[0]
+            u = s.g.read(o, 0x1B4)
+            t = struct.unpack_from("<I", u, 0)[0] & 0xFFFF
+            n = names[t].rsplit("\\", 1)[-1] if t < len(names) else ""
+            if n == "generator_x_large":
+                sh, body = struct.unpack_from("<2f", u, 0x124)
+                gens[(salt << 16) | i] = dict(handle=(salt << 16) | i, pos=struct.unpack_from("<3f", u, 0x44),
+                                              health=max(0.0, 1.0 - 0.5 * (sh + body)), sw={})
+            elif n.startswith("invisible_switch_gen"):
+                sws.append((struct.unpack_from("<I", u, 0x14)[0], n[len("invisible_switch_"):],
+                            struct.unpack_from("<f", u, 0x1B0)[0]))
+        for parent, n, power in sws:
+            if parent in gens:
+                gens[parent]["sw"][{"gen": "gen", "gen_cool": "cool", "gen_disabled": "disabled"}.get(n, n)] = power
+        return sorted(gens.values(), key=lambda g: g["handle"] & 0xFFFF)   # (alive / locked: tools/live_bots.py gen_state)
+
     def ai_rank(s, unit_bytes):
         """An AI unit's rank, its character tag's name ("grunt_major"), or None (no actor: a player's, or a dead body)."""
         a = struct.unpack_from("<I", unit_bytes, s.ACTOR_AT)[0]

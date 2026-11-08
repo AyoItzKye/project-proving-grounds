@@ -83,7 +83,7 @@ For everything that works, game by game, see the [bot status sheet](BOT_STATUS.p
 
 **Works, but buggy**
 
-- **Firefight**: Your 3 Firefight bots join your team as their own ODST characters and fight the Covenant, the most dangerous enemies first. ODST Firefight stays at 4 players with bots (more crashed it before). Dare isn't one of the characters bots can play yet.
+- **Firefight**: Your 3 Firefight bots join your team as their own ODST characters and fight the Covenant (they can't tell enemy types apart in ODST yet). ODST Firefight stays at 4 players with bots: MCC allows 8, but ODST crashed with 7 or more players before and 5 to 8 hasn't been tried again yet. Dare isn't one of the characters bots can play yet.
 
 ## Halo: Reach
 
@@ -93,7 +93,7 @@ For everything that works, game by game, see the [bot status sheet](BOT_STATUS.p
 
 **Works, but buggy**
 
-- **Generator Defense**: Bots play it like Firefight Versus, Spartans and Elites on both teams, but they don't see the generators yet: no guarding, locking down or attacking them on purpose.
+- **Generator Defense**: Spartan bots guard the generators and lock them down, and Elite bots attack the open ones. The Spartans still lose generators often: a guard that dies respawns far away, and it locks one only when it is beside it at the time.
 - **Invasion on Boneyard**: The attackers loiter in the Tier 2 spawn area instead of pushing the objectives aggressively.
 - **Capture the Flag**: Bots capture flags and it plays well, but in big games the bot teams don't push the enemy flag enough.
 - **Assault**: Bots pick up and carry the bomb, but I haven't seen them score a plant in a real match yet.
@@ -140,7 +140,7 @@ For everything that works, game by game, see the [bot status sheet](BOT_STATUS.p
 | [#9](https://github.com/AyoItzKye/project-proving-grounds/issues/9) | Halo 3 bots ignore trip mines | Open | Bots don't see Halo 3's trip mines and other placed hazards yet. |
 | [#10](https://github.com/AyoItzKye/project-proving-grounds/issues/10) | LiDAR Simulator bots start outside Forge creations | Fixed in 0.2.2 | They started on Forge World's own spawns; now inside the creation. |
 | [#11](https://github.com/AyoItzKye/project-proving-grounds/issues/11) | No weapon pickups on Forge creations | Open | Being looked at: needs a recorded match on a creation. |
-| [#12](https://github.com/AyoItzKye/project-proving-grounds/issues/12) | Firefight | Partly fixed in 0.2.2 | Bots respawn on both sides (Elite-side bots too), join on the DLC maps, stop swinging at teammates, refill ammo from dropped guns and fight beside the Covenant on the Elite side. Reach Firefight takes 8 players, a Spartan and an Elite team. Still open: Generator Defense's generators. |
+| [#12](https://github.com/AyoItzKye/project-proving-grounds/issues/12) | Firefight | Partly fixed in 0.2.2 | Bots respawn on both sides (Elite-side bots too), join on the DLC maps, stop swinging at teammates, refill ammo from dropped guns and fight beside the Covenant on the Elite side. Reach Firefight takes 8 players, a Spartan and an Elite team, and Generator Defense's generators are guarded, locked and attacked. |
 | [#15](https://github.com/AyoItzKye/project-proving-grounds/issues/15) | ODST bot looks | Fixed in 0.2.2 | Bots play as their own ODST characters with or without the helmet, in their own colours, and the bot editor shows ODST in 3D. |
 
 *Last updated November 8, 2026.*

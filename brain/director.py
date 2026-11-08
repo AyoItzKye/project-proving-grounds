@@ -801,10 +801,13 @@ class Director:
                 escorts += 1
             holder = carrier.id if carrier else next(
                 (p.id for p in snap.players if p.team == s.team and p.has_flag and p.alive), None)   # a person too
-            lead = (holder if holder is not None else vip if vip is not None else
-                    getattr(s, "ff_lead", None) if snap.mode == "firefight" else runner) if role == "escort" else None
-            o = Order(role, point, via=via, target=-1 if lead is None else lead)
-            if snap.mode == "firefight":    # the person's teammates: no rogue rounds off on their own, Easy too
+            said = getattr(s, "say", None)                    # (the person's "follow me": him, whatever the mode)
+            lead = (getattr(s, "say_lead", None) if said == "follow" else holder if holder is not None else
+                    vip if vip is not None else getattr(s, "ff_lead", None) if snap.mode == "firefight" else
+                    runner) if role == "escort" else None
+            o = Order(role, point, via=via, target=-1 if lead is None else lead,
+                      said=said or getattr(s, "slot_said", "") or "")
+            if snap.mode == "firefight" or said:   # the person's teammates, or his command: no rogue rounds off on their own
                 b.via_left = list(o.via) if o.role != b.order.role or o.via != b.order.via else b.via_left
                 b.order = o
             else:
@@ -889,7 +892,8 @@ class Director:
         s.carrying = any(p.team == s.team and p.alive and p.has_flag for p in snap.players)
         foot = [b for b in alive if players[b.id] is not None and players[b.id].vehicle == -1
                 and not players[b.id].has_flag and s.roles.get(b.id) not in ("runner", "defender", "ride", "board")
-                and not (s.carrying and s.roles.get(b.id) == "escort")]
+                and not (s.carrying and s.roles.get(b.id) == "escort") and not b.order.said]   # (a person's command, a
+        # generator job: on foot)
         # (a power vehicle by a bot on an objective job: its pool, crew_orders)
         busy = [b for b in alive if b not in foot and players[b.id] is not None and players[b.id].alive
                 and players[b.id].vehicle == -1 and not players[b.id].has_flag and b.p.tier != "novice"
@@ -1441,6 +1445,64 @@ class Director:
                     + s.rng.uniform(0, 1.0 - 0.5 * r))
         return max(options, key=score)[0]
 
+    GUARD_RING = 1.8          # u: a guard's spot beside its generator (in reach of the lockdown switch, not on it)
+
+    def ff_gen_slots(snap_self, snap, n, side, gens):
+        """Generator Defense (guide 11 sections 4 and 6), the generators alive in snap.ff["gens"] (tools/live_bots.py
+        gen_state). Spartans (FF.spartan_roles): a guard beside each generator the team can cover, in reach of its
+        lockdown switch (Bot.generator_work presses it by FF.lock_now), a rotator at the generator under the most
+        pressure (FF.generator_defend), an anchor between them. Elites (FF.elite_roles): breakers on the unlocked
+        generator worth the most (FF.generator_destroy: undefended, low), a distractor on another one, a shadow with
+        the biggest Covenant squad; with every generator locked they hunt (no attack on a locked generator, 6.5). A
+        guard is a defender, a breaker a hunter, each with its generator's place as the point (Bot.generator_work
+        finds the generator there)."""
+        s = snap_self
+        mine = [p for p in snap.players if p.team == s.team and p.alive and p.name != "ai"]
+        foes = [p for p in snap.players if p.alive and p.team != s.team]
+        near = lambda g, who, r=3.0: sum(1 for p in who if dist(p.pos, g["pos"]) < r)
+
+        def defend(g):
+            return FF.generator_defend(g["health"], near(g, foes) > 0, g["hit"], g["locked"])
+
+        def destroy(g):
+            return FF.generator_destroy(g["health"], g["locked"], near(g, [p for p in foes if p.name != "ai"]))
+        if side == FF.SPARTAN:
+            roles = FF.spartan_roles(n, generators=len(gens))
+            hot = max(gens, key=defend)
+            mid = Vec(sum(g["pos"].x for g in gens) / len(gens), sum(g["pos"].y for g in gens) / len(gens),
+                      sum(g["pos"].z for g in gens) / len(gens))
+            out, k = [], 0
+            for j, r in enumerate(roles):
+                if r == "generator_guard":
+                    g = gens[k % len(gens)]                 # (one each, the generators in a fixed order: guards stay)
+                    k += 1
+                    out.append(("defender", s.spread(g["pos"], j, s.GUARD_RING), "camping"))
+                elif r == "rotator":
+                    out.append(("defender", s.spread(hot["pos"], j, s.GUARD_RING), "aggression"))
+                else:
+                    out.append(("defender", s.spread(mid, j, 3.0), "camping"))
+            return out
+        open_ = [g for g in gens if not g["locked"]]   # (ready, or cooling down: open to damage)
+        roles = FF.elite_roles(n, versus=(snap.ff or {}).get("versus", False), generators=len(gens),
+                               unlocked=len(open_))
+        if not open_:                                       # every generator locked: hunt till one opens
+            return s.ff_elite_slots(snap, n)
+        ranked = sorted(open_, key=destroy, reverse=True)
+        npcs = [p for p in snap.players if p.alive and p.team == s.team and p.name == "ai"]
+        groups = FF.squads([(p.pos.x, p.pos.y) for p in npcs])
+        squad = Vec(*max(groups, key=len)[0], ranked[0]["pos"].z) if groups else ranked[0]["pos"]
+        out = []
+        for r in roles:
+            if r == "breaker":
+                out.append(("hunter", ranked[0]["pos"], "aggression"))
+            elif r == "distractor":
+                out.append(("hunter", ranked[-1]["pos"] if len(ranked) > 1 else ranked[0]["pos"], "aggression"))
+            elif r == "shadow":
+                out.append(("defender", squad, "teamwork"))
+            else:
+                out.append(("hunter", ranked[0]["pos"], "aggression"))
+        return out
+
     def ff_elite_slots(s, snap, n):
         """Firefight's Elite team without a person on it (Versus, Generator Defense; guide 11 sections 2.3, 5): hunters
         on the Spartan the guide's pressure picks (the lone one, shields down, the last life), a shadow with the
@@ -1477,13 +1539,69 @@ class Director:
                 out.append(("defender", stalk, "camping"))
         return out
 
+    ROAM_KEEP = 30.0          # s a roam spot is held before the bots pick again
+    ROAM_NEAR = 45.0          # u: roam spots are chosen within this of the team (no trek across the map)
+    ROAM_OPEN = 0.15          # exposure (Director.exposure) a roam spot may have at most (Boardwalk's median cell 0.19)
+
+    @staticmethod
+    def exposure(T, pos, reach=12.0):
+        """How open a spot is: the share of 16 directions with a clear line (T.los) to a man 12 u off on its level."""
+        n = 0
+        for a in range(16):
+            q = Vec(pos.x + math.cos(a * math.pi / 8) * reach, pos.y + math.sin(a * math.pi / 8) * reach, pos.z)
+            n += bool(T.los(pos, q))
+        return n / 16
+
+    def say_slots(s, now, snap, n):
+        """The person's chat commands (tools/live_bots.py say, overlay.cpp chat_key), his team only: "follow me" (s.say
+        "follow"): every bot escorts him (a spot a few steps behind, fighting what comes, as Firefight's teammates do);
+        "roam" ("roam"): each bot holds a spot of its own, the map's holds out of the open (modes.find_holds: roofed,
+        fewest ways in, least rim exposed), spread apart, near the team, picked again every ROAM_KEEP s. None: no
+        command (the mode's own roles)."""
+        say = getattr(s, "say", None)
+        person = next((p for p in snap.players if p.team == s.team and p.alive and not p.is_bot), None)
+        if say == "follow" and person is not None:
+            s.say_lead = person.id
+            return [("escort", person.pos, "teamwork")] * n
+        if say != "roam":
+            return None
+        mine = [p.pos for p in snap.players if p.team == s.team and p.alive and p.name != "ai"]
+        if not mine:
+            return None
+        c = Vec(sum(q.x for q in mine) / len(mine), sum(q.y for q in mine) / len(mine), sum(q.z for q in mine) / len(mine))
+        picks = getattr(s, "roam_picks", None)
+        if not picks or now >= getattr(s, "roam_until", 0.0) or len(picks) < n:
+            from .modes import holds, pick_holds, HOLD_APART
+            T = s.terrain()
+            near = [h for h in holds(T, s.map["name"]) if dist(h["pos"], c) <= s.ROAM_NEAR]
+            # out of the open: the fewest sight lines from outside (a room's shape alone let a 0.31 spot in, more open
+            # than the map's median cell 0.19, live Boardwalk Nov 8), the holds' own order breaking ties
+            seen = {id(h): s.exposure(T, h["pos"]) for h in near}
+            near = [h for h in sorted(near, key=lambda h: seen[id(h)]) if seen[id(h)] <= s.ROAM_OPEN]
+            picked = [h["pos"] for h in pick_holds(near, n, apart=HOLD_APART / 2)]
+            if not picked:                  # (the holds still being found: spread round the team for now)
+                return [("defender", s.spread(c, k, 3.0), "camping") for k in range(n)]
+            s.roam_picks, s.roam_until = picked, now + s.ROAM_KEEP
+            picks = picked
+        return [("defender", picks[k % len(picks)], "camping") for k in range(n)]
+
     def role_slots(s, now, snap, n):
         """Ordered list of (role, point, preferred trait)."""
+        s.slot_said = ""            # (Generator Defense's jobs: "gen", a firm leash and no vehicle trips)
+        said = s.say_slots(now, snap, n)
+        if said is not None:
+            return said
         enemy = 1 - s.side                 # CTF: two teams, team == side
         home = s.map["flags"][s.side]
         holds = s.map["holds"][s.side]
         mid = s.map["points"]["mid"]
         if snap.mode == "firefight":
+            ff = snap.ff or {}
+            gens = [g for g in ff.get("gens", []) if g["alive"]]
+            gen_side = ff.get("side", {}).get(s.team)
+            if gens and gen_side in (FF.SPARTAN, FF.ELITE):      # Generator Defense: the generators first
+                s.slot_said = "gen"
+                return s.ff_gen_slots(snap, n, gen_side, gens)
             # teammates of the people: stay with the nearest human, fight whatever comes
             people = [p for p in snap.players if p.team == s.team and p.alive and not p.is_bot]
             if people:

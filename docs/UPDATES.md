@@ -5,9 +5,11 @@ What changed in each version. Download the newest one from the [Releases page](h
 Click a version to see what it added and fixed.
 
 <details open>
-<summary><b>0.2.2</b> (November 6 to 8, 2026): Halo 2 vehicles, the Halo 4 Mantis and Banshee bombs, call bots into your vehicle, Firefight bots that follow and respawn, Reach Firefight Versus with Spartan and Elite bots, ODST characters for bots, an Invasion rework</summary>
+<summary><b>0.2.2</b> (November 6 to 8, 2026): Halo 2 vehicles, the Halo 4 Mantis and Banshee bombs, call bots into your vehicle, follow me and roam chat commands, Firefight bots that follow and respawn, Reach Firefight Versus and Generator Defense with Spartan and Elite bots, ODST characters for bots, an Invasion rework</summary>
 
 ### + Added
+- <!-- build: 20261108-0430 --> **Chat commands for your bots**: type **follow me** in the game's chat and your teammate bots squad up with you, a few steps behind, in any mode; type **roam** and each picks a spot of its own out of the open (covered rooms near the team, kept a while) instead. A message over the game confirms each one. Only these two commands are picked up; anything else you type is dropped at once and never kept.
+- <!-- build: 20261108-0430 --> **Generator Defense**: Spartan bots guard the generators, one beside each, and lock one down (holding Use at it) when it takes damage or a squad is on it, never for a Grunt or two and never two locks within 10 seconds; Elite bots shoot the generators that are open, never a locked one, and wait out a lock by hunting.
 - <!-- build: 20261108-0230 --> **Firefight bots**: the BOTS tile and panel in the Reach and ODST Firefight lobbies, next to START, with Firefight's own bot list (your 16-player list is kept as it is). Teammates stay a few steps behind you and fight what comes; while you're down they hold a safe spot nearby.
   - **Reach: Firefight Versus and Generator Defense**: the list has a Spartan team and an Elite team, up to 4 each, 8 players in all with you (MCC's custom Firefight). Bots on the Elite team play as Elites beside the Covenant, and at each turn they swap sides with the Spartans as the game does. A fifth bot on a side is refused, with a message saying why.
   - **ODST** keeps its own list of up to 3 bots on your team (ODST Firefight holds 4 players).
@@ -31,6 +33,7 @@ Click a version to see what it added and fixed.
 - **Flight heights from the map**: aircraft pick their attack and travel heights from the ground under them; painting airspace is optional.
 
 ### - Fixed
+- <!-- build: 20261108-0430 --> **Bots stuck by a step**: a bot rocking back and forth at one spot on its way somewhere now counts as stuck and works its way out.
 - <!-- build: 20261108-0230 --> **Firefight respawns on the Elite side** ([#12](https://github.com/AyoItzKye/project-proving-grounds/issues/12)): bots on the Elite side never came back after dying; they now respawn after the Elites' longer wait, at the Elites' spawn, and after a turn swap each bot respawns on its new side.
 - <!-- build: 20261107-2240 --> **The BOTS panel**: opening a bot's profile no longer stops the game with an error box; a controller's stick resting a little off centre no longer scrolls the panel's lists by itself (only a real push moves them); closing it with Esc no longer backs you out of the lobby, and the BOTS tile no longer shows on top of the post-game scoreboard.
 - <!-- build: 20261107-2115 --> **The update notes**: each version is now one list of what was added and one of what was fixed, here, on the Releases page and in the launcher's What's new, instead of a separate dated note for every update.

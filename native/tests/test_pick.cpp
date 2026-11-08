@@ -50,6 +50,25 @@ int main() {
     want("on a vehicle (a horn, a Revenant's gun): not", hb_loose_parent_ok(1), 0);
     want("in someone's hands: not", hb_loose_parent_ok(0), 0);
     want("on a stand or a marker (a flag, the ball): takeable", hb_loose_parent_ok(10) + hb_loose_parent_ok(6), 2);
+    // hb_chat_feed: the chat commands, the burst typed before Enter; nothing else leaves it
+    auto line = [](const char* typed, uint32_t gap_after_first = 50) {
+        hb_chat_line s{};
+        uint32_t t = 1000;
+        int got = 0;
+        for (const char* p = typed; *p; p++) {
+            got = hb_chat_feed(&s, (uint8_t)*p == '\n' ? '\r' : (uint8_t)*p, t);
+            t += p == typed ? gap_after_first : 50;
+        }
+        return got;
+    };
+    want("follow me", line("follow me\n"), HB_SAY_FOLLOW);
+    want("Follow Me, spaces and capitals", line("  Follow   Me \n"), HB_SAY_FOLLOW);
+    want("roam", line("roam\n"), HB_SAY_ROAM);
+    want("the chat key's letter before it", line("troam\n") + line("y follow me\n"), HB_SAY_ROAM + HB_SAY_FOLLOW);
+    want("walking keys long before it: a new line", line("wfollow me\n", 3000), HB_SAY_FOLLOW);
+    want("other words: nothing", line("gg roam around\n") + line("follow\n") + line("dont follow me ok\n"), 0);
+    want("a typo taken back", line("roan\bm\n") - HB_SAY_ROAM + line("rom\n"), 0);
+    want("Esc throws it away", line("roam\x1b\n"), 0);
     if (!fails) printf("pick OK, spawn take OK, use OK\n");
     return fails ? 1 : 0;
 }

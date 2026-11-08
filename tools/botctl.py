@@ -24,8 +24,9 @@ OFF_LOOK = OFF_BTN_MAP + 4 + 16 * BTN_MAP_N            # v9: cmd_look_game, cmd_
 OFF_CLAN = OFF_LOOK + 8 + 64 + 64                      # v10: the next bot's clan tag (wchar_t[8])
 OFF_EMBLEM = OFF_CLAN + 16                             # v11: its MCC emblem (u16 x 5, brain/emblems.py ids)
 OFF_SPAWN = OFF_EMBLEM + 10                            # v12: spawn_at (16 x x, y, z, yaw f32), spawn_seq, spawn_done (16 u32)
-OFF_CHAT = OFF_SPAWN + 16 * 16 + 2 * 16 * 4            # v13: ui_up (u32: the bug report window open over a match), chat (char[64], unused)
+OFF_CHAT = OFF_SPAWN + 16 * 16 + 2 * 16 * 4            # v13: ui_up (u32: the bug report window open over a match), chat (char[64])
 OFF_UI_UP = OFF_CHAT
+OFF_SAY = OFF_CHAT + 4                                  # chat[0] a count, chat[1] the person's chat command (shared.h HB_SAY_*)
 SIZE = OFF_CHAT + 4 + 64                               # = sizeof(hb_shared), native/shared.h static_assert 3622
 # (a bigger view of an older botcore's block still maps: Windows keeps it in whole 4 KB pages; its ui_up stays 0)
 OFF_GAME, OFF_DBG_SEQ, OFF_DBG, OFF_RAW_VALID, OFF_RAW, OFF_BIG = 804, 808, 812, 1068, 1072, 1328   # v7: 0x100-byte buffers
@@ -35,7 +36,7 @@ OFF_BOTS = 20
 OFF_ACTIONS = OFF_BOTS + 64        # 16 x (forward, strafe, yaw, pitch: f32; buttons, seq: u32)
 CMD_ADD_BOT, CMD_ADOPT, CMD_SET_TEAM, CMD_SET_LOADOUT = 1, 2, 3, 4
 BTN = dict(fire=1, jump=2, crouch=4, grenade=8, melee=16, action=32, reload=64, equipment=128, sprint=2048,
-           fire2=1 << 21, cycle=1 << 22, ability=1 << 23)
+           fire2=1 << 21, cycle=1 << 22, ability=1 << 23, device=1 << 29)
 # (fire2: a vehicle's second input, cycle: the weapon cycle, ability: a hold-mode armor ability's held bit; shared.h)
 GAME_ID = {"ce": 1, "h2": 2, "h3": 3, "reach": 4, "odst": 5, "h2a": 6, "h4": 7}
 GAME_BIT = {"h2": 1 << 24, "h3": 1 << 25, "reach": 1 << 26, "odst": 1 << 27, "h2a": 1 << 28, "h4": 1 << 29}
@@ -234,6 +235,12 @@ def status(m):
     return dict(magic=hex(magic), version=ver, dll_alive=alive, game_tick=tick, status=text,
                 bots={i: b for i, b in enumerate(bots) if b >= 0},
                 cmd=cmd, seq=seq, done=done, result=res, fault=fault)
+
+
+def said(m):
+    """The person's last chat command (overlay.cpp chat_key): (count, command), count 0-255 bumped per command, command
+    1 "follow me", 2 "roam", 0 none yet. Never any text typed."""
+    return m[OFF_SAY], m[OFF_SAY + 1]
 
 
 def idle(m, timeout=5.0):

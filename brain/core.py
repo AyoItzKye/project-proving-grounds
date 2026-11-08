@@ -163,6 +163,8 @@ class Action:
     zoom: int = 0             # scope level wanted: 0 none, 1 first, 2 second (sent where decoded)
     seat: int = -1            # with action: the vehicle seat to enter (Reach: native enters it, brain/vehicles.reach_seat)
     turret: bool = False      # ... in the gun riding on the vehicle (a Warthog's turret)
+    device: bool = False      # with action: the Use works a control device in reach (a generator's lockdown switch;
+                              # shared.h HB_BTN_DEVICE), never a stray pickup press (live Nov 8: Elites locked one)
     vertical: float = 0.0     # a hovering aircraft's vertical input: 1 up, 0.5 hold, -1 down (Reach's Falcon; shared.h
                               # HB_VERT_SHIFT)
     fire2: bool = False       # a vehicle's second input: a Banshee's bomb; in Reach its boost (shared.h HB_BTN_FIRE2;

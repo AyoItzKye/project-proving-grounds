@@ -108,6 +108,32 @@ def horn_call(now, players, vehicles, person, horn):
     return {c[0]: c[1]}
 
 
+SAY = {"seen": None}                 # the last chat command count read (botctl.said)
+SAY_WORD = {1: "follow", 2: "roam"}
+SAY_NOTICE = {"follow": ("FOLLOW ME", "Your bots squad up with you. Type roam to let them pick their own spots."),
+              "roam": ("ROAM", "Your bots pick their own spots, out of the open. Type follow me to call them back.")}
+
+
+def say_command(m, snap, directors, now):
+    """The person's chat command (overlay.cpp chat_key: "follow me" / "roam") to his team's director: (command, team) when
+    a new one came this tick, else None. A count from before the brain started is taken as seen, not acted on."""
+    count, cmd = botctl.said(m)
+    if SAY["seen"] is None or count == SAY["seen"]:
+        SAY["seen"] = count
+        return None
+    SAY["seen"] = count
+    word = SAY_WORD.get(cmd)
+    person = next((p for p in snap.players if not p.is_bot and p.name != "ai"), None)
+    if word is None or person is None:
+        return None
+    for d in directors.values():
+        if d.team == person.team:
+            d.say, d.roam_picks, d.next_roles = word, None, now      # (roles again at once)
+    botctl.notice(m, *SAY_NOTICE[word])
+    print(f"{now:.1f} chat command: {word} (team {person.team})", flush=True)
+    return word, person.team
+
+
 def ff_state(live, players):
     """Firefight's state for the brain (brain/firefight.py): versus (players on both sides: Versus or Generator
     Defense), the Spartans' lives, each team's side {team: 1 Spartans or 7 Elites} (they swap each turn), the enemies
@@ -129,7 +155,59 @@ def ff_state(live, players):
                 unshielded=any(p.alive and p.team in spartans and p.name != "ai" and p.shield <= 0.0 for p in players),
                 power_weapon=any(p.alive and p.team in spartans and p.weapon in FF.POWER
                                  for p in players))
-    return dict(versus=versus, lives=lives, side=side, left=len(npcs), heat=h, zone=FF.heat_zone(h))
+    out = dict(versus=versus, lives=lives, side=side, left=len(npcs), heat=h, zone=FF.heat_zone(h))
+    out.update(gen_state(live, snap_time=time.time()))
+    if any(g["hit"] for g in out["gens"]):          # (a generator taking damage: the heat's +0.10 term)
+        out["heat"] = min(1.0, h + 0.10)
+        out["zone"] = FF.heat_zone(out["heat"])
+    return out
+
+
+GENS = {"t": 0.0, "list": [], "hist": {}, "state": {}, "lock_t": -99.0}
+
+
+def gen_state(live, snap_time):
+    """Generator Defense's generators for the brain (brain/live.py ff_generators), read every 0.5 s: each one's place
+    (Vec), health 0..1, alive (health 0 never seen since it was last ready), ready (its lockdown switch on: it can be
+    locked), locked (every switch off while alive: 30 s untouchable), its state ("ready", "locked", "cool" the few
+    seconds after a lock, "disabled", "dead"), since when, hit (health down in the last 2 s); lock_t: when the last one
+    left "ready" alive (a lock: the team's one-lock-per-10-s rule, brain/firefight.py)."""
+    if not hasattr(live, "ff_generators"):
+        return {"gens": [], "lock_t": -99.0}
+    now = snap_time
+    if now - GENS["t"] >= 0.5:
+        GENS["t"] = now
+        try:
+            raw = live.ff_generators()
+        except Exception:
+            raw = []
+        out = []
+        for k, g in enumerate(raw):
+            hist = GENS["hist"].setdefault(g["handle"], [])
+            hist.append((now, g["health"]))
+            del hist[:-8]
+            on = [n for n, v in g["sw"].items() if v > 0.5]
+            dead = GENS.setdefault("dead", set())
+            if g["health"] <= 0.01:
+                dead.add(g["handle"])                 # (gone: its damage reads 0 again and every switch off after)
+            elif "gen" in on:
+                dead.discard(g["handle"])             # (a new turn's generator, ready again)
+            g["alive"] = g["handle"] not in dead
+            # live Beachhead Nov 8 (logs/tmp/gen_run4.txt): ready ("gen" on) -> locked (every switch off, the damage back
+            # to 0) for 30 s -> "cool" on a few seconds -> ready
+            state = ("dead" if not g["alive"] else "ready" if "gen" in on else "cool" if "cool" in on else
+                     "disabled" if on else "locked")
+            was = GENS["state"].get(g["handle"])
+            if was is None or was[0] != state:
+                if was is not None and was[0] == "ready" and g["alive"]:
+                    GENS["lock_t"] = now
+                    print(f"generator {k}: {was[0]} -> {state} (health {g['health']:.2f})", flush=True)
+                GENS["state"][g["handle"]] = was = (state, now)
+            out.append(dict(i=k, pos=Vec(*g["pos"]), health=g["health"], alive=g["alive"], ready=state == "ready",
+                            locked=state == "locked", state=state, since=was[1],
+                            hit=any(h - g["health"] > 0.01 for t, h in hist if now - t <= 2.0)))
+        GENS["list"] = out
+    return {"gens": GENS["list"], "lock_t": GENS["lock_t"]}
 
 
 def snapshot(live, now, prev, bot_ids, crouch=(), person_crouch=False, person_horn=None):
@@ -700,7 +778,8 @@ def buttons(a):
             ((a.weapon + 1) & 7) << 8 if a.weapon >= 0 else 0) | ((a.zoom & 3) << 12) | (
             ((a.seat + 1) & 15) << 14 if a.seat >= 0 else 0) | (1 << 18 if a.turret else 0) | (   # shared.h HB_SEAT_SHIFT
             (1 if a.vertical > 0.75 else 3 if a.vertical > 0.25 else 2 if a.vertical < -0.25 else 0) << 19) | (  # HB_VERT_SHIFT
-            ((a.lunge_at + 1) & 31) << 24 if 0 <= a.lunge_at < 16 else 0)   # HB_TARGET_SHIFT: the lunge's target
+            ((a.lunge_at + 1) & 31) << 24 if 0 <= a.lunge_at < 16 else 0) | (   # HB_TARGET_SHIFT: the lunge's target
+            botctl.BTN["device"] if a.device else 0)          # HB_BTN_DEVICE: this Use works a control (a lockdown)
 
 
 # the ability readers (brain/live.py ability) are decoded statically, not yet checked live: a reading the game cannot
@@ -1171,6 +1250,9 @@ def main():
                     return Director(team, MAP, members, random.Random(hash(k) & 0xFFFF), log=comms,
                                     side=team % 2, home_rule=o.game in ("ce", "reach"))
                 regroup(directors, bots, snap, o.ffa, make)
+                said = say_command(m, snap, directors, now)
+                if said and trace:                      # (the command, never the text: tools/say_report.py)
+                    trace.write(json.dumps(dict(t=round(now, 3), say=said[0], team=said[1])) + chr(10))
                 for d in directors.values():
                     if snap.infected != -1 and not TEAMS:   # Halo 3 Infection: one side each, survivors or infected
                         p = snap.player(next(iter(d.bots)))
@@ -1196,6 +1278,8 @@ def main():
                                  if not (isinstance(t, tuple) and t[0] == "bot")},
                         blitz=blitz_rows(directors),
                         crouch=[p.id for p in snap.players if p.crouching],   # (who reads crouched: aim heights)
+                        # Generator Defense (tools/gen_report.py): [i, state, health] each generator
+                        gens=[[g["i"], g["state"], round(g["health"], 2)] for g in (snap.ff or {}).get("gens", [])] or None,
                         world=everyone.rows(now, snap.players, bot_set, T.los, aims),   # + still, formed up, in sights,
                         # people's crosshairs and rides
                         deployed=[[d["kind"], round(d["pos"].x, 2), round(d["pos"].y, 2), round(d["pos"].z, 2), d["team"]]

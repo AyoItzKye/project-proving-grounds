@@ -174,6 +174,11 @@ FEET_GAMES = ("h2a_", "h4_")        # ... and Halo 4, the same engine (ground_of
 GRAVITY = 4.1                       # u/s^2 in Reach (the player's fall onto a Spire heat vent: 1.1 u/s faster
                                     # each 0.27 s)
 ESCORT_TRAIL = 3.0                 # an escort's spot: this far behind the carrier, on the side away from home
+NO_PROGRESS_S = 8.0                # s moving toward one goal point with no metre gained: stuck (Bot.unstuck)
+ROAM_LEASH = 6.0                   # u a "roam" holder strays from its covered spot (keep_role)
+GEN_LEASH = 4.0                    # u a Generator Defense guard strays from its spot beside the generator (keep_role)
+LOCK_HOLD = 1.5                    # s a guard holds Use on a generator's lockdown switch
+LOCK_WALK = 6.0                    # s more it has to walk in to the switch first
 RUN_DETOUR = 8.0                    # a CTF runner's side trip (a fight, an item) past this many units off its line: strays
 PRESS_COVER_R = 12.0                # u: an Invasion attacker covering the territory strays past this off its spot (keep_role)
 STAGE_D, STAGE_WAIT = 18.0, 6.0     # a CTF runner this near their flag with no teammate within 8 u waits this long for one
@@ -426,6 +431,7 @@ class Order:
     point: Vec = None
     target: int = -1
     via: tuple = ()    # waypoints to pass first (attack lane)
+    said: str = ""      # the person's chat command behind it ("follow", "roam": director.say_slots): a firm leash
 
 
 def head_point(me, target, at):
@@ -848,9 +854,11 @@ class Bot:
                 from .maps import terrain
                 s._terrain = terrain(s.map)
             ok = (lambda q: s._terrain.ground_ok(q.x, q.y, c.pos.z, drop=0.6) and s._terrain.los(c.pos, q))
-            if snap.mode == "firefight":
+            if snap.mode == "firefight" or (not c.is_bot and not c.has_flag):
                 # the person's teammates: a step behind him, each its own spot, turned round him past a wall or a drop
-                # (live s172-s173 Beachhead: median 0.4-1.2 u, sent onto him, the spot behind him in a wall)
+                # (live s172-s173 Beachhead: median 0.4-1.2 u, sent onto him, the spot behind him in a wall). Also his
+                # "follow me" in any mode (live Boardwalk Slayer Nov 8: with no flag home the spot was his own feet,
+                # one bot 0.3 u on him)
                 back = c.yaw + math.pi                # ten spots round him 36 degrees apart, behind him first
                 turns = sorted((k * math.pi / 5 for k in range(-5, 5)), key=abs)
                 good = [q for q in (c.pos + Vec(math.cos(back + a) * ESCORT_TRAIL, math.sin(back + a) * ESCORT_TRAIL, 0.0)
@@ -937,6 +945,14 @@ class Bot:
                 r = min((zr for z, zr, o in snap.obj_zones if dist(z, post) < 3.0), default=DEFEND_R)
             elif king:          # the scorer holds the hill from inside it (guide 19 KOTH-STATIC-01/02), not 15 u round it
                 r = snap.hill_r or DEFEND_R
+            if o.said == "gen":
+                # a Generator Defense guard (director.ff_gen_slots): in reach of its generator's lockdown switch, as on
+                # the core (live Beachhead Nov 8: guards in reach 5-10% of the time, never there when a lock was due)
+                r, urgent = GEN_LEASH, True
+            if o.said == "roam":
+                # the person's "roam": its own covered spot, kept (live Boardwalk Nov 8: 29% of the decisions went to
+                # pickups, one bot a median 16.7 u off its spot); guns and hunts past ROAM_LEASH u lose as on the core
+                r, urgent = ROAM_LEASH, True
             strays, away = (lambda q: dist(q, post) > r), dist(me.pos, post) > 0.5 * r
             if snap.mode == "ctf":
                 # its guns and hunts stay in its area, 10 u round its post, at every tier that keeps a role (live
@@ -955,6 +971,11 @@ class Bot:
                         return
                 else:
                     s.stage_since = None
+        elif o.role == "hunter" and o.said == "gen" and o.point is not None:
+            # a Generator Defense breaker: within shooting range of its generator (Bot.generator_work), no trip off
+            goal_pt = o.point
+            strays, away = (lambda q: dist(q, goal_pt) > s.GEN_SHOOT), dist(me.pos, goal_pt) > 0.8 * s.GEN_SHOOT
+            urgent = True
         elif o.role == "hunter" and snap.mode == "ctf" and s.live_point(me, snap) is not None:
             # our flag is out: its returners stay on it (the carrier, or the dropped flag), as the Invasion pile-on;
             # with no leash any committed fight or item beat the return
@@ -963,6 +984,10 @@ class Bot:
         elif o.role == "escort" and s.lead(me, snap) is not None:
             c = s.lead(me, snap).pos
             strays, away = (lambda q: dist(q, c) > ESCORT_R), dist(me.pos, c) > 0.5 * ESCORT_R
+            if not s.lead(me, snap).is_bot:
+                # a person's escort ("follow me", Firefight): a gun or a chase past the leash loses as on the Invasion
+                # core (live Boardwalk Nov 8: two of three wandered 10-22 u off for pickups and back, 48% within 6 u)
+                urgent = True
         elif o.role in ("mid", "escort") and o.point is not None and s.pressing(me, snap):
             # an attacker covering the territory from around it (director.invasion_slots: the overlooks, the escorts with
             # nobody to escort) keeps to its spot as the ones in it do: it had no leash, and items won its choices
@@ -1560,6 +1585,7 @@ class Bot:
                 h, m = walk.yaw + math.atan2(walk.strafe, walk.forward), min(1.0, math.hypot(walk.forward, walk.strafe))
                 act.forward, act.strafe, act.jump = m * math.cos(h - act.yaw), m * math.sin(h - act.yaw), act.jump or walk.jump
                 s.notes.append("invasion: shooting on the way")
+        s.generator_work(now, me, act, snap, kind, nav)   # Generator Defense: a guard's lockdown, a breaker's shots
         used = s.kit.act(s, now, dt, me, snap, act)       # equipment / ability, and steering clear of mines
         if used:
             s.notes.append(used)
@@ -1824,6 +1850,77 @@ class Bot:
         if e is not None and snap.mode == "firefight":
             v *= s.ff_threat(me, snap, e, d)
         return v
+
+    GEN_REACH = 2.6           # u from a generator a guard presses its lockdown switch from
+    GEN_ACT = 8.0             # u from it a guard goes in to lock it (a defender holds 3-8 u off its post)
+    GEN_SHOOT = 20.0          # u a breaker shoots a generator from (Medium band and in, guide 11 6.3)
+
+    def generator_work(s, now, me, act, snap, kind, nav=None):
+        """Generator Defense (snap.ff["gens"], director.ff_gen_slots): the generator is the one at the order's point.
+        A Spartan guard (defender) beside it presses Use on its lockdown switch when brain/firefight.py lock_now says to
+        (taking damage, a squad on it with the guard alone, a player Elite at it moving; not for a Grunt or two, not with
+        the wave down to 3, not inside 10 s of the team's last lock: 9.3 and 9.4). An Elite breaker (hunter) with no
+        man to fight shoots it while it is unlocked, from Medium band in, with a clear line (never a locked one, 6.5)."""
+        gens = (snap.ff or {}).get("gens") or []
+        o = s.order
+        if not gens or o.point is None or me.vehicle not in (None, -1) or me.has_flag:
+            return
+        g = min(gens, key=lambda q: dist(q["pos"], o.point))
+        if not g["alive"] or dist(g["pos"], o.point) > 4.0:
+            return
+        foes = [p for p in snap.players if p.alive and p.team != me.team]
+        if me.side == FF.SPARTAN and o.role == "defender" and g["ready"] and dist(me.pos, g["pos"]) < s.GEN_ACT:
+            close = [p for p in foes if dist(p.pos, g["pos"]) < 3.0]
+            elites = [p for p in foes if p.name != "ai" and dist(p.pos, g["pos"]) < 2.0]
+            mates = [p for p in snap.players if p.alive and p.team == me.team and p.id != me.id and p.name != "ai"
+                     and dist(p.pos, g["pos"]) < 3.0]
+            ff = snap.ff or {}
+            cooling = any(q is not g and q["alive"] and q["state"] in ("locked", "cool") for q in gens)
+            lock = FF.lock_now(hit=g["hit"], squad_near_alone=len(close) >= 2 and not mates,
+                               elite_near_moving=any(p.vel.flat() > 0.5 for p in elites),
+                               elite_near_still=any(p.vel.flat() <= 0.5 for p in elites),
+                               tier=5 if s.p.tactics >= 0.6 else 3, wave_left=ff.get("left"),
+                               overlaps_cooldown=cooling, enemy_near=bool(close), sudden_death=False)
+            if lock and snap.time - ff.get("lock_t", -99.0) >= FF.LOCK_GAP:
+                why = "hit" if g["hit"] else "elite" if elites else "squad"
+                if getattr(s, "lock_hold", None) is None or s.lock_hold[0] != g["i"] or now >= s.lock_hold[1]:
+                    s.lock_hold = (g["i"], now + LOCK_WALK + LOCK_HOLD, why)
+            held = getattr(s, "lock_hold", None)
+            if held is not None and held[0] == g["i"] and now < held[1]:
+                act.yaw, act.pitch = angles_to(me.pos + Vec(0, 0, 0.6), g["pos"] + Vec(0, 0, 0.5))
+                act.strafe, act.fire = 0.0, False
+                if dist(me.pos, g["pos"]) > s.GEN_REACH - 0.4:
+                    # a defender holds 3-8 u off its post (live Beachhead Nov 8: guards in Use reach 3-7% of the time):
+                    # straight in to the switch first
+                    act.action = False
+                    if nav is not None:                     # (on the nav's path: a straight walk fell short, live)
+                        walk = Action(yaw=act.yaw, pitch=act.pitch)
+                        s.move_to(me, g["pos"], walk, nav)
+                        act.yaw, act.forward, act.strafe, act.jump = walk.yaw, walk.forward, walk.strafe, walk.jump
+                    else:
+                        act.forward = 1.0
+                    s.note(f"lockdown: to generator {g['i']} ({held[2]})")
+                else:
+                    # Use held, as a person locks it (a tapped Use locked nothing), the device bit: the switch, never a
+                    # pickup (botcore reach.cpp hr_near_control)
+                    act.forward = 0.0
+                    act.action, act.device = True, True
+                    s.note(f"lockdown: generator {g['i']} ({held[2]})")
+        elif me.side == FF.ELITE and o.role == "hunter" and not g["locked"] and kind != "fight":
+            d = dist(me.pos, g["pos"])
+            if d > s.GEN_SHOOT or any(p.name != "ai" and dist(p.pos, me.pos) < 6.0 for p in foes):
+                return
+            if getattr(s, "_terrain", None) is None:
+                from .maps import terrain
+                s._terrain = terrain(s.map)
+            aim = g["pos"] + Vec(0, 0, 0.6)
+            if not s._terrain.los(me.pos, aim):
+                return
+            act.yaw, act.pitch = angles_to(me.pos + Vec(0, 0, 0.6), aim)
+            act.fire = int(now * 4) % 3 != 0                 # bursts
+            if d < 6.0:
+                act.forward = 0.0                            # (Medium band: it does not walk onto it)
+            s.note(f"breaking generator {g['i']}")
 
     def ff_threat(s, me, snap, e, d):
         """Firefight's factor (brain/firefight.py): an NPC by its rank's lethality at this band and its value (the
@@ -5105,6 +5202,21 @@ class Bot:
             act.jump = now < getattr(s, "wiggle_jump_until", 0.0) or s.rng.random() < 0.05
             s.note(f"unstuck wiggle (try {getattr(s, 'wedge_n', 1)} at this spot)")
             return
+        goal_pt = s.goal[1] if s.goal[0] != "fight" and isinstance(s.goal[1], Vec) else None
+        if goal_pt is not None:
+            # going nowhere though moving: swinging back and forth by one waypoint, past the 0.6 u test below (live
+            # Boardwalk Nov 8: an escort hopped 0.5-0.8 u to and fro at a ledge 45 s, 15 u from the person). No metre
+            # nearer its goal in NO_PROGRESS_S: stuck, the spot learned and a wiggle, as below
+            # (and no further than 1.5 u from where the stretch began: a way round that first leads away from the goal is
+            # travel, not a stall, test_tele_watch 7)
+            pr = getattr(s, "progress", None)
+            d = dist(me.pos, goal_pt)
+            if pr is None or dist(pr[0], goal_pt) > 1.0 or d < pr[1] - 1.0 or dist(me.pos, pr[3]) > 1.5:
+                s.progress = (goal_pt, d, now, me.pos)
+            elif now - pr[2] > NO_PROGRESS_S and d > 2.0:
+                s.progress = (goal_pt, d, now, me.pos)
+                s.stuck_pos, s.stuck_since = me.pos, now - 1.3
+                s.note(f"no way nearer its goal in {NO_PROGRESS_S:.0f} s: stuck")
         if getattr(s, "stuck_pos", None) is None or dist(me.pos, s.stuck_pos) > 0.6:
             s.stuck_pos, s.stuck_since = me.pos, now
             s.free_pos = me.pos                # it moved: here it was free

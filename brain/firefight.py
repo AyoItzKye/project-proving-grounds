@@ -89,6 +89,8 @@ def threat_mult(rank, d, player_side=None, versus=False, lives=None, last_three=
 
 
 HUNTER_MELEE, ELITE_LOW_LIVES = 2.8, 2.6     # (the formula tops out at 2.5: a Chieftain or General at Melee band)
+LOCK_GAP = 10.0               # s between two locks started by the team (guide 11 9.4: never all locked at once)
+LOCK_TIME = 30.0              # s a lock holds (about 30 s, guide 11 1.3)
 
 
 def heat(squads_alive=0, big=False, elite_majority=False, player_elites=0, lives=None, unshielded=False,

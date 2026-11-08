@@ -506,6 +506,20 @@ void hb_imgui_assert(const char* expr, const char* file, int line) {
     logf("ImGui check failed (game goes on): %s, %s line %d", expr, f ? f + 1 : file, line);
 }
 
+// The person's chat commands in a match (shared.h hb_chat_feed): only "follow me" / "roam" reach the brain (chat[0]
+// a count, chat[1] the command); every other line typed is dropped as it ends, never kept or logged
+static void chat_key(UINT msg, WPARAM wp) {
+    static hb_chat_line line;
+    uint32_t c = msg == WM_KEYDOWN && wp == VK_ESCAPE ? 27 : msg == WM_CHAR ? (uint32_t)wp : 0;
+    int cmd = c ? hb_chat_feed(&line, c, GetTickCount()) : HB_SAY_NONE;
+    if (cmd && g_shm) {
+        g_shm->chat[1] = (char)cmd;
+        MemoryBarrier();
+        g_shm->chat[0] = (char)((uint8_t)g_shm->chat[0] % 255 + 1);
+        logf("chat command: %s", cmd == HB_SAY_FOLLOW ? "follow me" : "roam");
+    }
+}
+
 static DWORD g_esc_eat;              // Esc closed the panel at this tick: its release (and repeats) stay ours
 static LRESULT CALLBACK wndproc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
     if (msg == WM_KEYDOWN || msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN || msg == WM_MOUSEWHEEL) g_pad_last = false;
@@ -529,6 +543,7 @@ static LRESULT CALLBACK wndproc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         if ((g_panel && (mouse || keys)) || (g_hover_tile && mouse && msg != WM_MOUSEMOVE)) return 0;   // ours
     } else if (g_ready && in_match()) {                         // the bug report over a match
         bool typing = g_bug_open && ImGui::GetIO().WantTextInput;
+        if (!g_bug_open) chat_key(msg, wp);                     // (the report's own typing is no chat)
         if (!typing && msg == WM_KEYDOWN && wp == VK_F9 && !(lp & (1 << 30))) { g_bug_open = !g_bug_open; return 0; }
         // ImGui hears the game's input only while the report UI is up: fed in play it queued every key and letter
         // typed, with no frame to take them, and F9's window took the backlog as typing; its WM_SETCURSOR answer put

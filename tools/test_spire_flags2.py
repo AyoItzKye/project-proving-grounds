@@ -1,8 +1,8 @@
 """the player's Spire Invasion flags of, match 230700, each at its live moment:
 
 1. Man cannons cost their time aloft: the mini base cannon's flight is no longer priced as 1.5x its 24 u, so a bot on the
-   mini base by its pad (Sidewinder at 283 s, "just missed man cannon") takes it, and a Conveyor Belt spawn rides the
-   middle cannon; rides start at the cannon's trigger (where people's rides start), not its marker 1.2 u into it
+   mini base by its pad (Sidewinder at 283 s, "just missed man cannon") takes it, and a Conveyor Belt spawn rides a
+   cannon up to the core (the middle one, or the left one where the PC's scan makes its walk cheaper); rides start at the cannon's trigger (where people's rides start), not its marker 1.2 u into it
 3. A Falcon beside the spire's top, under its level by the core (Moose 337-430 s, "flying into spire, not on top of it"):
    it climbs and does not set down; over the top by the core it sets down
 4. The focus rifle is held on the man at 20 u, not burst ("needs to hold it down, not burst fire it")
@@ -32,6 +32,7 @@ T = terrain(M)
 STAND = Vec(-178.24, -405.33, -22.9)
 CORE = Vec(-172.51, -405.87, -23.88)
 MINI_PAD, MID_PAD = (-143.6, -392.1), (-161.0, -380.8)
+LEFT_PAD = (-191.25, -389.59)    # the other cannon up to the core's level people rode (twice, features found by them)
 
 
 def first_link(p):
@@ -63,9 +64,12 @@ def main():
     q = first_link(Vec(-143.38, -389.53, -53.65))
     if not near(q, MINI_PAD):
         fails.append(f"on the mini base by its cannon (Sidewinder, 283 s): first link {q} (want the cannon {MINI_PAD})")
+    # from Conveyor Belt a cannon up to the core, not the walk or the lift: the middle one, or (this PC's Nov 7 21:32
+    # Spire scan made the walk to it cheaper) the left one people rode too, which lands 9.7 u from the core's stand to
+    # the middle's 15.6 u; both cost their time aloft (checked below)
     q = first_link(Vec(-180.0, -364.0, -55.0))
-    if not near(q, MID_PAD):
-        fails.append(f"from Conveyor Belt: first link {q} (want the middle cannon {MID_PAD})")
+    if not (near(q, MID_PAD) or near(q, LEFT_PAD)):
+        fails.append(f"from Conveyor Belt: first link {q} (want a cannon up to the core: {MID_PAD} or {LEFT_PAD})")
     for src, dst, k, w in T.hjumps:
         if k.get("ride") and k["land"][2] - k["take_off"][2] > 10 and k.get("air_s"):
             if abs(w - (k["air_s"] * 2.25 + 1.0)) > 0.01:
