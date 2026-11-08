@@ -28,7 +28,7 @@ DOWNLOADS = os.path.join(ROOT, "user", "updates")
 # a release updated in place (same-day fixes) keeps its version: each build has a stamp (BUILD beside VERSION), the
 # release's notes carry it (<!-- build: ... -->, tools/release_notes.py), and a newer stamp of the same version is an
 # update too. What is new comes from that release's own docs/UPDATES.md, all of it since the player's copy: every version
-# newer than ours, and of ours every stamped batch newer than our build
+# newer than ours, and of ours every item stamped after our build (one section per version, its items stamped)
 NOTES = f"https://api.github.com/repos/{REPO}/contents/docs/UPDATES.md?ref={{tag}}"   # (not raw.githubusercontent.com:
 #   it keeps a moved tag's old file for 5 minutes)
 BUILD_MARK = re.compile(r"<!--\s*build:\s*(\d{8}-\d{4})\s*-->")
@@ -53,32 +53,56 @@ def build():
 
 
 def parse_updates(md):
-    """docs/UPDATES.md as [dict(name, key, title, batches=[(build stamp or "", text)])], newest first: each version's
-    <details> section, split at its <!-- build: ... --> marks (the text before the first: its first build, unstamped)."""
+    """docs/UPDATES.md as [dict(name, key, title, items=[dict(head, build, text)])], newest first: each version's
+    <details> section (one per version, "0.2.2"), its "+ Added" / "- Fixed" lists, every top-level item with the build
+    stamp at its start (<!-- build: ... -->: the build, or in-place update, it came in; "" before stamps)."""
     out = []
     for name, title, body in SECTION.findall(md or ""):
-        parts = BUILD_MARK.split(body)            # [text, stamp, text, stamp, text ...]
-        batches = [("", parts[0])] + [(parts[k], parts[k + 1]) for k in range(1, len(parts) - 1, 2)]
-        batches = [(b, t.strip()) for b, t in batches if t.strip()]
-        out.append(dict(name=name.strip(), key=version_key(name), title=title.strip(" :\n"), batches=batches))
+        items, head = [], ""
+        for line in body.splitlines():
+            h = re.match(r"#{2,6}\s+(.*)", line)
+            if h:
+                head = h.group(1).strip()
+            elif line.startswith("- "):
+                m = BUILD_MARK.search(line)
+                items.append(dict(head=head, build=m.group(1) if m else "",
+                                  text="- " + BUILD_MARK.sub("", line[2:]).strip()))
+            elif items and line.strip():
+                items[-1]["text"] += "\n" + line.rstrip()     # (its sub-items)
+        out.append(dict(name=name.strip(), key=version_key(name), title=title.strip(" :\n"), items=items))
     return out
+
+
+def items_text(items):
+    """Items as markdown under their headings, in their order."""
+    out, head = [], None
+    for i in items:
+        if i["head"] != head:
+            head = i["head"]
+            out.append(("\n" if out else "") + f"### {head}")
+        out.append(i["text"])
+    return "\n".join(out).strip()
 
 
 def news(md, cur, cur_build):
     """What is new for a copy of version cur and build cur_build: [dict(title, text)], newest first: every version
-    newer than cur, whole; of cur itself, the stamped batches newer than cur_build (all of them for an unstamped copy)."""
+    newer than cur, whole; of cur's own version (the same major.minor.patch: one section per version, its builds and
+    in-place updates in it), the items stamped after cur_build; for a copy from before build stamps all of it when the
+    version has stamped items (updated since), else nothing."""
     ck = version_key(cur)
     out = []
     for sec in parse_updates(md):
         if not ck or not sec["key"]:
             continue
-        if sec["key"] > ck:
+        if sec["key"][:3] > ck[:3]:
             out.append(dict(title=f"{sec['name']}{(' ' + sec['title']) if sec['title'] else ''}",
-                            text="\n\n".join(t for _, t in sec["batches"])))
-        elif sec["key"] == ck:
-            newer = [t for b, t in sec["batches"] if b and b > (cur_build or "")]
+                            text=items_text(sec["items"])))
+        elif sec["key"][:3] == ck[:3]:
+            # (a copy from before stamps: all of it if the version was updated in place since, else it is this version)
+            stamped = any(i["build"] for i in sec["items"])
+            newer = [i for i in sec["items"] if (i["build"] > cur_build if cur_build else stamped)]
             if newer:
-                out.append(dict(title=f"{sec['name']}: updated since your copy", text="\n\n".join(newer)))
+                out.append(dict(title=f"{sec['name']}: updated since your copy", text=items_text(newer)))
     return out
 
 

@@ -676,7 +676,7 @@ $("updauto").onchange = async (e) => { showUpdate(await post("/update/auto", { o
 const laterKey = u => u.latest + " " + (u.latest_build || "");     // (Later hides this update, not the next one)
 $("updlater").onclick = () => { if (upd) sessionStorage.setItem("upd-later", laterKey(upd)); $("updbar").hidden = true; };
 // what's new: every version and in-place update since the player's copy (updater.news), from the release's docs/UPDATES.md.
-// Its little markdown: #### an update's heading, ### New / Fixed (as **New**), **bold**, - lists (two deep), [links] (out to
+// Its little markdown: ### + Added / - Fixed (as **+ Added**), **bold**, - lists (two deep), [links] (out to
 // the repository only, as /open)
 const DOCS = "https://github.com/AyoItzKye/project-proving-grounds/blob/main/docs/";
 const esc = s => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");

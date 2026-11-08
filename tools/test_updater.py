@@ -1,7 +1,7 @@
 """The update check (tools/updater.py) and the release's text (tools/release_notes.py): a release updated in place (same
 version, newer build stamp) is an update; What's new lists everything since the player's copy (every newer version
-whole, and of the player's version each update built after theirs); the release text carries the build stamp the
-check reads; BUILD is docs/UPDATES.md's newest stamp.
+whole, and of the player's version each item built after theirs; one + Added and one - Fixed list per version); the
+release text carries the build stamp the check reads; BUILD is docs/UPDATES.md's newest stamp.
 
 usage: python -I test_updater.py      -> "updater OK"
 """
@@ -19,8 +19,8 @@ import updater  # noqa: E402
 MD = open(os.path.join(updater.ROOT, "docs", "UPDATES.md"), encoding="utf-8").read()
 STALE = updater.BUILD_MARK.sub("", MD)                                  # (an UPDATES.md from before the stamps)
 NEWEST = max(updater.BUILD_MARK.findall(MD))                         # (s181's newest update)
-NEXT = ("<details open>\n<summary><b>0.2.3 s182</b> (December 1, 2026): a test version</summary>\n\n"
-        "### Fixed\n- **Test**: a fix.\n\n</details>\n\n")
+NEXT = ("<details open>\n<summary><b>0.2.3</b> (December 1, 2026): a test version</summary>\n\n"
+        "### - Fixed\n- <!-- build: 20261201-1200 --> **Test**: a fix.\n\n</details>\n\n")
 
 
 def texts(items):
@@ -38,30 +38,38 @@ def main():
     assert not nw("0.2.2-s182", "", "v0.2.2-s181", "20261106-2300")
     assert not nw("dev", "", "v0.2.2-s181", "20261106-2300")
 
+    # one section per version, each one "+ Added" and one "- Fixed" list (no dated updates), every item stamped with
+    # the build it came in ("" before stamps)
     secs = updater.parse_updates(MD)
-    s181 = next(s for s in secs if s["key"] == (0, 2, 2, 181))
-    stamps = [b for b, _ in s181["batches"]]
-    assert stamps[0] == "" and stamps[1] == NEWEST and stamps[-3:] == ["20261106-2300", "20261106-1840", "20261106-1440"], stamps
-    assert s181["title"].startswith("(November 6, 2026)"), s181["title"]
+    v022 = next(s for s in secs if s["key"][:3] == (0, 2, 2))
+    assert all({i["head"] for i in s["items"]} <= {"+ Added", "- Fixed"} for s in secs), [s["name"] for s in secs]
+    assert "#### " not in MD and "update (November" not in MD and "<!--" not in texts([dict(title="", text=i["text"])
+                                                                                       for i in v022["items"]])
+    stamps = [i["build"] for i in v022["items"] if i["build"]]
+    assert max(stamps) == NEWEST and "20261106-1440" in stamps and any(not i["build"] for i in v022["items"]), stamps
+    assert v022["title"].startswith("(November 6 and 7, 2026)"), v022["title"]
 
-    n = updater.news(MD, "0.2.2-s181", "20261106-1840")                 # one update behind: only the third
-    assert len(n) == 1 and "Third update" in n[0]["text"] and "Second update" not in n[0]["text"], n
-    assert "Call a bot into your vehicle" in n[0]["text"] and "since your copy" in n[0]["title"]
+    n = updater.news(MD, "0.2.2-s181", "20261106-1840")                 # updates behind: the items since, by list
+    t = texts(n)
+    assert len(n) == 1 and "since your copy" in n[0]["title"] and "Call a bot into your vehicle" in t, n
+    assert "Gravity lifts" not in t and "Jetpacks" not in t and "+ Added" in t and "- Fixed" in t, t[:300]
     assert updater.news(MD, "0.2.2-s181", NEWEST) == []                 # up to date: nothing
-    t = texts(updater.news(MD, "0.2.2-s181", ""))                      # a copy from before stamps: all three
-    assert all(k in t for k in ("Third update", "Second update", "First release")), t[:200]
-    n = updater.news(MD, "0.2.2-s180", "")                              # one version behind: s181 whole, not s180
-    assert len(n) == 1 and n[0]["title"].startswith("0.2.2 s181") and "First release" in n[0]["text"], n
-    n = updater.news(MD, "0.2.2-s179", "")                              # two behind: s181 then s180
-    assert [i["title"].split(" (")[0] for i in n] == ["0.2.2 s181", "0.2.2 s180"], [i["title"] for i in n]
+    t = texts(updater.news(MD, "0.2.2-s181", ""))                      # a copy from before stamps: all of 0.2.2
+    assert all(k in t for k in ("Halo 2 vehicles", "Gravity lifts", "Jetpacks")), t[:200]
+    t = texts(updater.news(MD, "0.2.2-s180", ""))                      # an older 0.2.2 build: all of 0.2.2
+    assert "Jetpacks" in t and "Halo 2 vehicles" in t, t[:200]
+    n = updater.news(MD, "0.2.1", "")                                   # a version behind: 0.2.2 whole
+    assert len(n) == 1 and n[0]["title"].startswith("0.2.2 (") and "Jetpacks" in n[0]["text"], n
+    n = updater.news(MD, "0.2.0", "")                                   # two behind: 0.2.2 then 0.2.1
+    assert [i["title"].split(" (")[0] for i in n] == ["0.2.2", "0.2.1"], [i["title"] for i in n]
     n = updater.news(NEXT + MD, "0.2.2-s181", "20261106-1840")          # a new version and an update of ours
-    assert [i["title"].split(" (")[0].split(":")[0] for i in n] == ["0.2.3 s182", "0.2.2 s181"], n
-    assert "Third update" in n[1]["text"] and "Second update" not in n[1]["text"]
+    assert [i["title"].split(" (")[0].split(":")[0] for i in n] == ["0.2.3", "0.2.2"], n
+    assert "Call a bot" in n[1]["text"] and "Gravity lifts" not in n[1]["text"]
 
     # check() and info(): the release's body gives its build, its tag's UPDATES.md gives What's new
     body = release_notes.notes(MD, "0.2.2-s181", NEWEST)
     assert f"<!-- build: {NEWEST} -->" in body and "Download **ProjectProvingGrounds-Setup-0.2.2-s181.exe**" in body
-    assert body.count("<!-- build:") == len(stamps) - 1 and "/docs/KNOWN_BUGS.md" in body
+    assert body.count("<!-- build:") == len(stamps) and "/docs/KNOWN_BUGS.md" in body and "### + Added" in body
     for bad in (("0.2.2-s181", "20261106-2359"), ("0.9.9-s999", "")):
         try:
             release_notes.notes(MD, *bad)
@@ -98,21 +106,22 @@ def main():
     i = updater.check(force=True)
     assert asked[-1] == updater.NOTES.format(tag="v0.2.2-s181") and "api.github.com" in asked[-1], asked
     assert i["available"] and i["same_version"] and i["latest_build"] == NEWEST and i["can_install"], i
-    assert len(i["news"]) == 1 and "Third update" in i["news"][0]["text"], i["news"]
+    assert len(i["news"]) == 1 and "Call a bot" in i["news"][0]["text"], i["news"]
+    assert "Gravity lifts" not in i["news"][0]["text"], i["news"]
     updater.build = lambda: NEWEST
     i = updater.info()
     assert not i["available"] and i["news"] == [], i
-    # its UPDATES.md not read, or an older copy of it (no stamp of this release): the release's text, of our version
-    # only the updates built after ours
+    # its UPDATES.md not read, or an older copy of it (no stamp of this release; a launcher from before one section per
+    # version reads the release's text this way too): of our version only the items built after ours
     for notes_ok in (False, "stale"):
         updater.build = lambda: "20261106-1440"
         i = updater.check(force=True)
         t = i["news"][0]["text"] if i["news"] else ""
         assert i["available"] and len(i["news"]) == 1 and "<!--" not in t and "Download" not in t, (notes_ok, i["news"])
-        assert "Third update" in t and "Second update" in t and "First release" not in t, (notes_ok, t[:300])
+        assert "Call a bot" in t and "Gravity lifts" in t and "Jetpacks" not in t, (notes_ok, t[:300])
     updater.current, updater.build = (lambda: "0.2.2-s180"), (lambda: "")
-    i = updater.info()                                                  # (a version behind: the whole text)
-    assert i["available"] and not i["same_version"] and "First release" in i["news"][0]["text"], i
+    i = updater.info()                                                  # (an older build: the whole text)
+    assert i["available"] and not i["same_version"] and "Jetpacks" in i["news"][0]["text"], i
     st = json.load(open(updater.STATE, encoding="utf-8"))
     assert time.time() - st["checked"] < 60 and st["latest"] == "v0.2.2-s181"
 
