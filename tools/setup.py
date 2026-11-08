@@ -80,14 +80,14 @@ def _odst_model():
     ok, last = tool("make_models.py", "--only", "odst_spartan,odst_dare", "--clean-exports")
     if ok:                                   # (the models of this release made: an older pair is made again)
         with open(os.path.join(ROOT, ODST_MARK), "w", encoding="utf-8") as f:
-            f.write("ODST 3D bots with the silenced SMG, one-handed (Nov 8)\n")
+            f.write("ODST 3D bots with the silenced SMG in both hands, across the body (Nov 8)\n")
     return ok, last
 
 
 # the ODST 3D bots' marker: renamed when they change (v2 the silenced SMG, v3 held one-handed: the left arm was in the
-# body, Nov 8), so installs with an older pair make them
+# body; v4 both hands across the body, the left hand on the gun, Nov 8), so installs with an older pair make them
 # again (ponytail: one marker per change; a hash of make_models' ODST entries if they change often)
-ODST_MARK = "native/bin/models/odst_v3.txt"
+ODST_MARK = "native/bin/models/odst_v4.txt"
 
 
 def _no_odst():

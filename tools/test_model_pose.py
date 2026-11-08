@@ -11,7 +11,8 @@
    the IK only swung the upper arm, the hinges 0.35-0.65 of the natural way), the gun
    held in the palm (Reach's and Halo 2: Anniversary's hand markers sit at the wrist: the sword's hilt hung outside the
    fist), and the gun no more than 9 mm into the torso and legs of the default pieces (the arms and hands left out;
-   "Halo 3 rifle in body a lil bit": 16 mm, Reach, Halo 2: Anniversary and Halo 4 26-30 mm)
+   "Halo 3 rifle in body a lil bit": 16 mm, Reach, Halo 2: Anniversary and Halo 4 26-30 mm), the forearms no more
+   than ARM_IN (both by a ray test of the body's shell), a two-handed hold's left elbow bent ELBOW_BENT or more
 6. ... a Spartan holds the rifle close at low ready: both elbows at least 0.045 u (a Spartan's units) below the shoulders (the right one sat level
    with the shoulder, a flared "chicken wing"), the grip hand within 0.15 u in front of the pelvis (it was out at arm's
    length, the rifle standing up before the face from the side), the muzzle down toward the left knee (its slope -0.3
@@ -60,38 +61,20 @@ def arm():
     return mp.Skeleton(bones)
 
 
-ARM_IN = 0.02                # u a Spartan's forearm may sink into its torso and legs (its packed models: 0-13 mm; the
-                             # ODST silenced SMG hold with the elbow in, 37-38 mm, "the left arm is inside the body").
-                             # Two-handed Spartan holds only: a hanging arm reads 25-90 mm by the bulky armour (the
-                             # approved H2 / H3 Elites 27-49 mm, the ODST squad's free arm at its side)
+ELBOW_BENT = 40              # degrees a two-handed hold's left elbow bends at least (the packed models 51-71; the ODST
+                             # silenced SMG pointed forward, 5: "the left arm is still straightened out")
+ARM_IN = 0.02                # u a forearm may sink into its torso and legs (arm_depth: the packed models 0-18 mm; the
+                             # ODST silenced SMG holds with the elbow in, the squad's 36 mm, Dare's 33: "the left arm is
+                             # inside the body")
 HANDY = ("hand", "finger", "index", "middle", "ring", "pinky", "thumb", "grip", "wrist", "palm")
 
 
-def gun_depth(S, body, held, W, origin):
-    """How far the gun sinks under the skin of the torso and legs of the body's default pieces (u): its vertices
-    against the nearest body vertex's normal (the arms and hands left out: a grip sits in the fist, the forearms on the
-    gun)."""
-    from scipy.spatial import cKDTree
-    pos, nrm, _, faces = mp.read_obj(body, (), mp.instance_owners(body + ".regions.json"))
-    bones, idx, w = mp.read_skin(body + ".skin")
-    regions = {}
-    for (region, pi, perm, mat) in faces:
-        regions.setdefault(region, set()).add((pi, perm))
-    keep = []
-    for region, perms in regions.items():
-        pick = next((p for p in perms if p[1] in ("default", "base")), min(perms))
-        keep += [faces[k] for k in faces if k[0] == region and (k[1], k[2]) == pick and faces[k]]
-    vi = np.unique(np.concatenate([np.asarray(f, np.int64) for f in keep]))
-    handy = np.array([any(t in n for t in HANDY + ("upperarm", "forearm", "elbow", "clav", "shoulder"))
-                      for n, _, _ in bones])
-    vi = vi[~handy[idx[vi, np.argmax(w[vi], axis=1)]]]
-    P, N = S.skin(pos[vi], nrm[vi], idx[vi], w[vi])
+def gun_depth(shell, held, W, origin):
+    """How far the gun sinks into the torso and legs of the body's default pieces (u): its vertices inside the body's
+    shell (body_shell: the arms and hands left out, a grip sits in the fist, the forearms on the gun). By the nearest
+    body vertex's normal first: the chest plate's inner face read the ODST squad's SMG in front of it 23 mm "in"."""
     wpos, _, _, wfaces = mp.read_obj(held)
-    G = wpos[np.unique(np.concatenate([np.asarray(f, np.int64) for f in wfaces.values() if f]))] @ W + origin
-    dist, j = cKDTree(P).query(G)
-    s = np.einsum("ij,ij->i", G - P[j], N[j])
-    inside = (dist < 0.03) & (s < 0)
-    return float(-s[inside].min()) if inside.any() else 0.0
+    return sunk(shell, wpos[np.unique(np.concatenate([np.asarray(f, np.int64) for f in wfaces.values() if f]))] @ W + origin)
 
 
 def palm_gaps(S, bm, species, held, W, origin):
@@ -125,11 +108,26 @@ def head_pitch(S):
     return float(slope(sgn * R1[axis]) - slope(sgn * R0[axis]))
 
 
-def arm_depth(S, body):
-    """How far each arm sinks into the torso and legs of the body's default pieces (u), {"l": d, "r": d}: its posed
-    forearm (its upper arm meets the body at the shoulder) against the nearest body vertex's normal.
-    The player: "the left arm is inside the body" (ODST with the silenced SMG, Nov 8: the left elbow pulled in to
-    straighten its wrist passed every check here)."""
+def ray_inside(a, b, c, pts):
+    """Which points lie inside the triangles' closed shells: a vertical ray up and one down from each both cross them
+    an odd number of times (a, b, c: the triangles' corners, n x 3 each)."""
+    out = np.zeros(len(pts), bool)
+    for k in range(0, len(pts), 64):
+        p = pts[k:k + 64, None, :]
+        v0, v1, v2 = a[None, :, :2] - p[..., :2], b[None, :, :2] - p[..., :2], c[None, :, :2] - p[..., :2]
+        d0 = v0[..., 0] * v1[..., 1] - v0[..., 1] * v1[..., 0]
+        d1 = v1[..., 0] * v2[..., 1] - v1[..., 1] * v2[..., 0]
+        d2 = v2[..., 0] * v0[..., 1] - v2[..., 1] * v0[..., 0]
+        hit = ((d0 > 0) & (d1 > 0) & (d2 > 0)) | ((d0 < 0) & (d1 < 0) & (d2 < 0))
+        s = d0 + d1 + d2
+        z = (d1 * a[None, :, 2] + d2 * b[None, :, 2] + d0 * c[None, :, 2]) / np.where(s == 0, 1, s)
+        out[k:k + 64] = ((hit & (z > p[..., 2])).sum(1) % 2 == 1) & ((hit & (z < p[..., 2])).sum(1) % 2 == 1)
+    return out
+
+
+def body_shell(S, body):
+    """The posed torso and legs of the body's default pieces (the arms and hands left out): (its vertices, a kd-tree
+    of them, the triangles' corners a, b, c, the read obj's (pos, nrm, idx, w, the body's vertices, their bone names))."""
     from scipy.spatial import cKDTree
     pos, nrm, _, faces = mp.read_obj(body, (), mp.instance_owners(body + ".regions.json"))
     bones, idx, w = mp.read_skin(body + ".skin")
@@ -140,23 +138,39 @@ def arm_depth(S, body):
     for region, perms in regions.items():
         pick = next((p for p in perms if p[1] in ("default", "base")), min(perms))
         keep += [faces[k] for k in faces if k[0] == region and (k[1], k[2]) == pick and faces[k]]
-    vi = np.unique(np.concatenate([np.asarray(f, np.int64) for f in keep]))
     names = [n for n, _, _ in bones]
-    dom = idx[vi, np.argmax(w[vi], axis=1)]
+    dom = idx[np.arange(len(pos)), np.argmax(w, axis=1)]
     handy = np.array([any(t in n for t in HANDY + ("upperarm", "forearm", "elbow", "clav", "shoulder")) for n in names])
-    torso = vi[~handy[dom]]
-    P, N = S.skin(pos[torso], nrm[torso], idx[torso], w[torso])
-    tree, out = cKDTree(P), {}
+    tri = np.concatenate([np.asarray(f, np.int64).reshape(-1, 3) for f in keep])
+    tri = tri[~handy[dom[tri]].any(axis=1)]
+    used = np.unique(tri)
+    P = np.zeros((len(pos), 3))
+    P[used], _ = S.skin(pos[used], nrm[used], idx[used], w[used])
+    vi = np.unique(np.concatenate([np.asarray(f, np.int64).ravel() for f in keep]))
+    return P[used], cKDTree(P[used]), (P[tri[:, 0]], P[tri[:, 1]], P[tri[:, 2]]), (pos, nrm, idx, w, vi, names, dom)
+
+
+def sunk(shell, pts):
+    """How far the deepest of the points lies inside the body's shell (u, its distance to the nearest body vertex;
+    0: none inside)."""
+    inside = ray_inside(*shell[2], pts)
+    return float(shell[1].query(pts[inside])[0].max()) if inside.any() else 0.0
+
+
+def arm_depth(S, shell):
+    """How far each arm sinks into the torso and legs of the body's default pieces (u), {"l": d, "r": d}: its posed
+    forearm (its upper arm meets the body at the shoulder) inside the body's shell (ray_inside).
+    The player: "the left arm is inside the body" (ODST with the silenced SMG, Nov 8: the left elbow pulled in to
+    straighten its wrist passed every check here). By the nearest body vertex's normal first: an armour plate's inner
+    face read the squad's forearm in front of its belly 52 mm "in", a belt pouch's top 90 mm off its right one 36."""
+    pos, nrm, idx, w, vi, names, dom = shell[3]
+    out = {}
     for side in ("l", "r"):
-        arm = vi[np.array([f"{side}_forearm" in names[d] for d in dom])]
+        arm = vi[np.array([f"{side}_forearm" in names[d] for d in dom[vi]])]
         if not len(arm):
             continue
         A, _ = S.skin(pos[arm], nrm[arm], idx[arm], w[arm])
-        A = A[np.linalg.norm(A - S.pos(f"{side}_upperarm"), axis=1) > 0.08]
-        dist, j = tree.query(A)
-        s = np.einsum("ij,ij->i", A - P[j], N[j])
-        inside = (dist < 0.15) & (s < 0)
-        out[side] = float(-s[inside].min()) if inside.any() else 0.0
+        out[side] = sunk(shell, A[np.linalg.norm(A - S.pos(f"{side}_upperarm"), axis=1) > 0.08])
     return out
 
 
@@ -196,16 +210,27 @@ def check_model(weapon, species, game, opts, base):
         if np.linalg.norm(rh[1]) < 0.5 * reach:
             fails.append(f"{weapon}: the gun held {np.linalg.norm(rh[1]):.3f} u from the wrist joint, the knuckles "
                          f"{reach:.3f} (want in the palm)")
-    dp = gun_depth(S, body, held, W, origin)
-    for side, d in (arm_depth(S, body) if species == "spartan" and two else {}).items():   # (forearms out of the torso)
+    shell = body_shell(S, body)
+    dp = gun_depth(shell, held, W, origin)
+    for side, d in arm_depth(S, shell).items():             # (forearms out of the torso)
         if os.environ.get("ARM_DEPTH_PRINT"):
             print(f"{weapon}: {side} arm {d * 1000:.0f} mm into the body")
         if d > ARM_IN:
             fails.append(f"{weapon}: the {side} arm {d * 1000:.0f} mm into the body (want {ARM_IN * 1000:.0f} or less)")
     if dp > 0.009:
         fails.append(f"{weapon}: the gun {dp * 1000:.0f} mm into the body")
+    if two:                                                # a bent left elbow, not a locked arm out to the grip
+        a, e, c = (S.pos(f"l_{n}") for n in ("upperarm", "forearm", "hand"))
+        u, v = (e - a) / np.linalg.norm(e - a), (c - e) / np.linalg.norm(c - e)
+        lb = float(np.degrees(np.arccos(np.clip(u @ v, -1, 1))))
+        if os.environ.get("ARM_DEPTH_PRINT"):
+            print(f"{weapon}: left elbow bent {lb:.0f} degrees")
+        if lb < ELBOW_BENT:
+            fails.append(f"{weapon}: the left arm nearly straight, its elbow bent {lb:.0f} degrees (want {ELBOW_BENT} or more)")
     if two:                                                # both palms on the gun (the player: "Halo reach
         for side, gap in palm_gaps(S, bm, species, held, W, origin).items():   # spartan not holding gun with left
+            if os.environ.get("ARM_DEPTH_PRINT"):
+                print(f"{weapon}: {side} palm gap {gap:.3f}")
             if gap > 0.035:                                # hand": its wrist marker read as a palm put it 0.042 off)
                 fails.append(f"{weapon}: the {side} palm {gap:.3f} u from the gun (want on it, within 0.035)")
     feet = min(m[3, 2] for m in S.pose)
