@@ -495,6 +495,16 @@ static void pad_frame() {
     g_pad_held = (g_show_tile && g_panel) || (g_pad_held && any);
 }
 
+// ImGui's failed checks (imconfig.h IM_ASSERT with HB_BOTCORE): one log line per place, the game goes on. The C runtime's
+// assert dialog over MCC was its end (the Bot editor, Nov 7). (A plain lock-free list: checks fail on the render thread)
+void hb_imgui_assert(const char* expr, const char* file, int line) {
+    static int seen[32], n;
+    for (int k = 0; k < n; k++) if (seen[k] == line) return;
+    if (n < 32) seen[n++] = line;
+    const char* f = strrchr(file, '\\');
+    logf("ImGui check failed (game goes on): %s, %s line %d", expr, f ? f + 1 : file, line);
+}
+
 static DWORD g_esc_eat;              // Esc closed the panel at this tick: its release (and repeats) stay ours
 static LRESULT CALLBACK wndproc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
     if (msg == WM_KEYDOWN || msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN || msg == WM_MOUSEWHEEL) g_pad_last = false;

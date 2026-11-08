@@ -26,6 +26,7 @@ Click a version to see what it added and fixed.
 - **Flight heights from the map**: aircraft pick their attack and travel heights from the ground under them; painting airspace is optional.
 
 ### - Fixed
+- <!-- build: 20261107-2240 --> **The BOTS panel**: opening a bot's profile no longer stops the game with an error box; a controller's stick resting a little off centre no longer scrolls the panel's lists by itself (only a real push moves them); closing it with Esc no longer backs you out of the lobby, and the BOTS tile no longer shows on top of the post-game scoreboard.
 - <!-- build: 20261107-2115 --> **The update notes**: each version is now one list of what was added and one of what was fixed, here, on the Releases page and in the launcher's What's new, instead of a separate dated note for every update.
 - <!-- build: 20261107-1945 --> **Halo 2 Containment**: bots never started there (the map's name could not be read), and in Capture the Flag the bots stopped on the first moment of the match.
 - <!-- build: 20261107-2145 --> **Halo 2 vehicles on their side**: bots now see when a Halo 2 vehicle is on its side or roof and leave it alone, and a vehicle that lets a bot in and puts it straight back out is left alone for a while too.
@@ -66,7 +67,6 @@ Click a version to see what it added and fixed.
 - **Halo: Reach weapon pickups**: bots see and pick up the weapons placed on a Forge creation ([#11](https://github.com/AyoItzKye/project-proving-grounds/issues/11)), and a dropped gun that isn't on one of the map's weapon spots, when their own guns run dry.
 - **Halo 2 Anniversary**: bots pick up the Assault bomb, which needs Use held ([#7](https://github.com/AyoItzKye/project-proving-grounds/issues/7)), and the enemy flag in CTF again.
 - **Vehicles**: bots take empty Banshees, and aircraft climb over the Spire instead of flying into its side.
-- **The BOTS panel**: closing it with Esc no longer backs you out of the lobby, and the BOTS tile no longer shows on top of the post-game scoreboard.
 - **Jetpacks**: bots let them refill before flying again.
 - **Paint the nav**: works in an installed copy, and opens a map straight away.
 - **LiDAR Viewer and Simulator**: the Viewer shows maps you mapped in the Simulator, with its controls grouped and a map's Forge layouts in one drop-down; the Simulator no longer cuts maps short at Max speed ([#8](https://github.com/AyoItzKye/project-proving-grounds/issues/8)) and starts bots inside Forge creations ([#10](https://github.com/AyoItzKye/project-proving-grounds/issues/10)).

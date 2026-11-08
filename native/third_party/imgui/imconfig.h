@@ -19,6 +19,13 @@
 // - Compiling with NDEBUG will usually strip out assert() to nothing, which is NOT recommended because we use asserts to notify of programmer mistakes.
 //#define IM_ASSERT(_EXPR)  MyAssert(_EXPR)
 //#define IM_ASSERT(_EXPR)  ((void)(_EXPR))     // Disable asserts
+// Project Proving Grounds (botcore only, native/build.bat /DHB_BOTCORE): a failed check is written to botcore's log once
+// per place (hb_imgui_assert, overlay.cpp) and the frame goes on, never the C runtime's assert dialog over the game: the
+// Bot editor's dim-background check (imgui.cpp, cmd.ElemCount == 6) stopped MCC (Nov 7). The native tests keep assert()
+#ifdef HB_BOTCORE
+void hb_imgui_assert(const char* expr, const char* file, int line);
+#define IM_ASSERT(_EXPR)  ((_EXPR) ? (void)0 : hb_imgui_assert(#_EXPR, __FILE__, __LINE__))
+#endif
 
 //---- Define attributes of all API symbols declarations, e.g. for DLL under Windows
 // Using Dear ImGui via a shared library is not recommended, because of function call overhead and because we don't guarantee backward nor forward ABI compatibility.
