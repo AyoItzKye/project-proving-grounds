@@ -204,7 +204,7 @@ def main():
     # 5. the real models, where exported (make_models' list, with each model's own hold)
     seen, base = 0, {k: dict(v) for k, v in mp.HOLDS.items()}
     for weapon, species, game, _, _, _, opts in make_models.MODELS:
-        body = os.path.join(ROOT, "maps", "_models", game, species + ".obj")
+        body = make_models.body_obj(os.path.join(ROOT, "maps", "_models", game), weapon, species, game)
         held = os.path.join(ROOT, "maps", "_models", game, weapon + "_weapon.obj")
         if not all(os.path.exists(p) for p in (body + ".skin", body + ".markers.json", held + ".markers.json")):
             continue

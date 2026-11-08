@@ -45,13 +45,16 @@ MAX_PLAYERS, FIREFIGHT_PLAYERS = 16, 4
 # (docs/bot-brain/11-reach-firefight-versus.md 1.4, 1.5). Live Beachhead Versus Nov 8: 4 Spartans and 4 Elites joined
 # and played both turns.
 REACH_FF_PLAYERS, FF_SIDE = 8, 4
+# ODST Firefight in MCC: 8 players, all on the person's team (held at 4 after Oct 25, when 7, 15 and 16 players crashed
+# the renderer at halo3odst +0x15950b on an older botcore)
+ODST_FF_PLAYERS = 8
 
 
 def player_cap(game, firefight=False):
-    """Players a match may hold, bots and people: ODST's Firefight 4 (more crashed it every time, Oct 25 live: 7, 15
-    and 16 players, the renderer, halo3odst +0x15950b); Reach's Firefight 8, 4 a side (ff_side_cap)."""
+    """Players a match may hold, bots and people: ODST's Firefight 8 (ODST_FF_PLAYERS); Reach's Firefight 8, 4 a side
+    (ff_side_cap)."""
     if game == "odst":
-        return FIREFIGHT_PLAYERS
+        return ODST_FF_PLAYERS
     return REACH_FF_PLAYERS if firefight else MAX_PLAYERS
 
 
@@ -129,7 +132,7 @@ def roster(path, firefight=False, game="reach"):
     """The BOTS panel's list from botcore.ini (native/bots_panel.cpp roster_write: "bot=<team>,<tier>,<style>,
     <name>"): [{name, team, tier, style}] in the panel's order, exactly the bots of the next match. None when
     the file has no list (written by a build from before). firefight: Firefight's own list, Reach's ("ffbot=", 7 bots
-    on the Spartan team 0 and the Elite team 1) or ODST's ("odbot=", 3 bots on your team; Reach's before Nov 8)."""
+    on the Spartan team 0 and the Elite team 1) or ODST's ("odbot=", up to 7 bots on your team; Reach's before Nov 8)."""
     try:
         lines = open(path, encoding="utf-8", errors="replace").read().splitlines()
     except OSError:

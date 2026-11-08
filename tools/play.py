@@ -89,7 +89,7 @@ def roster_plan(roster, players, teams, game):
 
 def ff_plan(plan, players, game):
     """Firefight's bots of roster_plan's [(team, name)]: ([(team, name)] that join, [names left out]). ODST: all on the
-    person's team, 4 players in all. Reach: the panel's Spartan team (0) and Elite team (1) are the lobby's first two
+    person's team, 8 players in all. Reach: the panel's Spartan team (0) and Elite team (1) are the lobby's first two
     teams (live Beachhead Versus Nov 8: team 0 Red, the first turn's Spartans; 1 Blue, its Elites), 4 a side with the
     people already there, 8 in all (docs/bot-brain/11-reach-firefight-versus.md 9.2)."""
     cap = botctl.player_cap(game, firefight=True)
@@ -254,7 +254,7 @@ def main():
     if roster is not None and ff:                    # Firefight's own list (botcore.cpp ff_seed: the first 3 till saved)
         ff_list = botctl.roster(o.roster, firefight=True, game=o.game)
         roster = ff_list if ff_list is not None else roster[:botctl.FIREFIGHT_PLAYERS - 1]
-    # one cap on every path below, LiDAR included: ODST's Firefight holds 4 players (it crashed with more), Reach's 8
+    # one cap on every path below, LiDAR included: Firefight holds 8 players, ODST's and Reach's
     room = botctl.player_cap(o.game, ff) - len(players)
     if getattr(o, "max_bots", None) is not None:     # test override: leave room for Claude's probe bots
         room = min(room, int(o.max_bots))
@@ -279,7 +279,7 @@ def main():
             count[p["team"]] = count.get(p["team"], 0) + 1
         sides = ((0, o.red), (1, o.blue))
         if firefight or o.game == "odst":            # Firefight: teammates only
-            sides = ((players[0]["team"], botctl.FIREFIGHT_PLAYERS),)
+            sides = ((players[0]["team"], botctl.ODST_FF_PLAYERS if o.game == "odst" else botctl.FIREFIGHT_PLAYERS),)
         if o.lidar:                                  # LiDAR: everyone mapping on the player's side
             sides = ((players[0]["team"], o.lidar),)
         for team, want in sides:

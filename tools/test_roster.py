@@ -72,11 +72,11 @@ def main():
     plan = roster_plan([dict(name="Player", team=1, tier="top", style="any")], people, True, "reach")
     if plan[0][1].lower() == "player":
         fails.append("took a person's name")
-    # ODST's Firefight holds 4 players in all (it crashed with 7, 15 and 16-25), Reach's 8 (MCC custom games), 4 a
+    # ODST's Firefight holds 8 players in all (MCC's cap; held at 4 after Oct 25 crashes), Reach's 8 (MCC custom games), 4 a
     # side: botctl.player_cap, and every path of play.py's bot adding (the panel's list, team games, free for all,
     # LiDAR) goes through it
-    if (botctl.player_cap("odst"), botctl.player_cap("reach", firefight=True), botctl.player_cap("h3")) != (4, 8, 16):
-        fails.append("player cap: ODST 4, Reach Firefight 8, other games 16")
+    if (botctl.player_cap("odst"), botctl.player_cap("reach", firefight=True), botctl.player_cap("h3")) != (8, 8, 16):
+        fails.append("player cap: ODST 8, Reach Firefight 8, other games 16")
     src = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "play.py"), encoding="utf-8").read()
     if ("room = botctl.player_cap(o.game, ff)" not in src or src.count("room > 0") < 2
             or "[:max(0, room)]" not in src):
@@ -94,8 +94,8 @@ def main():
     if sides != [3, 4] or len(left) != 2:                # (you are the 4th Spartan; a 5th Elite and Spartan stay out)
         fails.append(f"Reach Firefight: 4 a side with the person, 8 in all ({sides}, left {left})")
     got, left = ff_plan(want, me, "odst")
-    if len(got) != 3 or {t for t, _ in got} != {0}:
-        fails.append("ODST Firefight: 3 bots, all on the person's team")
+    if len(got) != 7 or {t for t, _ in got} != {0}:   # (9 asked: 7 join, the person the 8th)
+        fails.append(f"ODST Firefight: 7 bots, all on the person's team ({len(got)})")
     if fails:
         sys.exit("FAIL: " + "; ".join(fails))
     print("roster OK")

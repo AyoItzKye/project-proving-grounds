@@ -56,9 +56,9 @@ static volatile LONG g_session;      // title of the last custom game lobby open
 static hb_roster& ff_list() { return g_session == 8 ? g_od_roster : g_ff_roster; }   // (the Firefight lobby's own list)
                                      // Classic, 3 Halo 3, 5 Reach, 6 H2A, 7 H4, 8 ODST (the titles with bots), 4 any other, 0 none
 static volatile DWORD g_lobby_gfx_at;
-static volatile LONG g_ff_lobby;     // the lobby last opened is Firefight's (FirefightCustomGame.gfx): it holds 4 players
+static volatile LONG g_ff_lobby;     // the lobby last opened is Firefight's (FirefightCustomGame.gfx): it holds 8 players
 static bool bots_title(LONG t) { return t >= 1 && t <= 8 && t != 4; }
-extern int hb_panel_firefight;   // (bots_panel.cpp: the roster's cap, 3 bots in Firefight)
+extern int hb_panel_firefight;   // (bots_panel.cpp: the roster's cap, 7 bots in Firefight)
 static const wchar_t* wcsistr(const wchar_t* s, const wchar_t* f) {   // (MCC opens some screens in lower case)
     for (; *s; s++) {
         const wchar_t *a = s, *b = f;

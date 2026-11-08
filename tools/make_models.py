@@ -53,6 +53,10 @@ MODELS = [
     # Halo 3: ODST: the squad model, its characters by region (maps/_looks/odst.json "view"), Halo 3's hold (one skeleton)
     ("odst_spartan", "spartan", "odst", ODST, r"characters\odst\odst", r"assault_rifle\assault_rifle",
      ["--hold", "grip=0.14,-0.02,0.06;barrel=0.25,0.9,-0.45;pole_r=-0.3,-0.8,-0.5;pole_l=-0.5,0.5,-0.7"]),
+    # Dare (ODST character 8): her own body, the ONI operative's (helmet, head, hair, beacon by region); the squad's
+    # hold with the gun closer (her shorter arms: the left hand 0.023 u short at the squad's grip)
+    ("odst_dare", "spartan", "odst", ODST, r"characters\odst_oni_op\odst_oni_op", r"assault_rifle\assault_rifle",
+     ["--hold", "grip=0.10,0.0,0.07;barrel=0.25,0.9,-0.45;pole_r=-0.3,-0.8,-0.5;pole_l=-0.5,0.5,-0.7"]),
     # Halo 2: Anniversary's bots wear its three original sets (spartan_iv Mark VI, spartan_var2 Centurion, spartan_var3
     # Hoplite) and in Modern MCC's added pieces (Orion, Bioroid, Robot, Trooper, Breach, Panzer: its customization
     # table, maps/_looks/h2a.json, h2a_armory.json): pieces no bot wears (Halo 4's left in this model, the Flood's) out
@@ -76,6 +80,12 @@ MODELS = [
      r"rifle\storm_assault_rifle\storm_assault_rifle",
      ["--hold", "grip=0.09,0.01,0.04;barrel=0.1,0.9,-0.35;pole_r=-0.3,-0.8,-0.5;pole_l=-0.3,0.7,-0.65"]),
 ]
+
+
+def body_obj(tmp, name, species, game):
+    """A model's body export: <species>.obj for the game's own <game>_<species> model, <name>.obj for another body of
+    the same species (ODST's Dare: it overwrote the squad's spartan.obj, and test_model_pose read hers for both)."""
+    return os.path.join(tmp, (species if name == f"{game}_{species}" else name) + ".obj")
 
 
 def prune(out):
@@ -118,7 +128,7 @@ def main():
         tmp = os.path.join(ROOT, "maps", "_models", game)
         tex = os.path.join(tmp, "tex")
         os.makedirs(tex, exist_ok=True)
-        body, held = os.path.join(tmp, species + ".obj"), os.path.join(tmp, name + "_weapon.obj")
+        body, held = body_obj(tmp, name, species, game), os.path.join(tmp, name + "_weapon.obj")
         out = os.path.join(OUT, name + ".mdl")
         r = subprocess.run([exe, os.path.join(MCC, mp), tag, body, "--uv", "--skin", "--tex", tex], capture_output=True,
                            text=True, errors="replace")

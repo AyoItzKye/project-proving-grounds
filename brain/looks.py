@@ -4,7 +4,7 @@ bot renamed in the BOTS panel) gets a seed from its name.
 
 maps/_looks/<game>.json says which bytes of that game's player configuration hold what (decoded per game,
 tools/look_probe.py): {"fields": [{"name", "at": config offset, "count": n | "values": [...], "when": {field:
-value}}], "how": "..."}. A game with no file keeps the copy of the player's look (botcore's old behaviour)."""
+value or [values]}}], "how": "..."}. A game with no file keeps the copy of the player's look (botcore's old behaviour)."""
 import json
 import os
 import random
@@ -64,11 +64,13 @@ EFFECT_CHANCE = {"none": 0.0, "rare": 0.10, "common": 0.33, "frequent": 0.66}
 
 def read_profiles(path=PROFILES):
     """(bots [(name, seed, clan)], settings {"experience": "original" | "modern", "effects": EFFECT_CHANCE key,
-    "species": "spartans" | "mixed" | "elites", "elites": percent or None}) from bot_profiles.ini: lines experience=,
+    "species": "spartans" | "mixed" | "elites", "elites": percent or None, "odst_helmets": "on" | "mixed" | "off",
+    "odst_off": percent or None}) from bot_profiles.ini: lines experience=, odst_helmets=, odst_helmets_off=,
     effects=, species=, elites= (the Settings tab's re-roll, native/bots_panel.cpp) and bot=<name>,<seed>[,<clan>];
     a file from before the re-roll has no settings: Original, no effects, each game's own Spartan / Elite mix. The
     first re-roll build wrote effects=0 / 1: none / common."""
-    bots, settings = [], {"experience": "original", "effects": "none", "species": "mixed", "elites": None}
+    bots, settings = [], {"experience": "original", "effects": "none", "species": "mixed", "elites": None,
+                          "odst_helmets": "mixed", "odst_off": None}
     if os.path.exists(path):
         for line in open(path, encoding="utf-8"):
             line = line.strip()
@@ -82,6 +84,11 @@ def read_profiles(path=PROFILES):
                 settings["species"] = v if v in ("spartans", "mixed", "elites") else "mixed"
             elif line.startswith("elites=") and line[7:].isdigit():
                 settings["elites"] = min(100, int(line[7:]))
+            elif line.startswith("odst_helmets="):
+                v = line[13:].lower()
+                settings["odst_helmets"] = v if v in ("on", "mixed", "off") else "mixed"
+            elif line.startswith("odst_helmets_off=") and line[17:].isdigit():
+                settings["odst_off"] = min(100, int(line[17:]))
             elif line.startswith("bot="):
                 parts = line[4:].split(",")
                 if len(parts) >= 2 and parts[0] and parts[1].isdigit():
@@ -154,6 +161,12 @@ def choices(spec):
     return list(spec)
 
 
+def when_ok(f, picked):
+    """A field's "when": each named field picked as that value, or as one of a list of them (ODST: the squad's eight
+    characters against Dare's)."""
+    return all(picked.get(k) in v if isinstance(v, list) else picked.get(k) == v for k, v in f.get("when", {}).items())
+
+
 def pick_field(f, rng, modern, wears):
     """One field's value (maps/_looks/<game>.json): "values" (+ "weights"), "range": [lo, hi], or "original" /
     "modern" (Original Experience: what the game shipped with; Modern: everything MCC adds). "effect": the values
@@ -182,11 +195,30 @@ def elite_share(settings):
     return settings["elites"] / 100.0 if settings.get("elites") is not None else None
 
 
+def helmet_share(settings):
+    """The share of ODST bots rolled with the helmet off (the re-roll's "ODST helmets": on 0, off 1, mixed its percent),
+    None: each character's own odds (odst.json). The Rookie always wears it and Johnson never does, whatever this says."""
+    h = settings.get("odst_helmets", "mixed")
+    if h in ("on", "off"):
+        return 1.0 if h == "off" else 0.0
+    return settings["odst_off"] / 100.0 if settings.get("odst_off") is not None else None
+
+
+def shares(settings):
+    """The re-roll's shares a roll uses: {"species": elite_share, "helmets": helmet_share}."""
+    return {"species": elite_share(settings), "helmets": helmet_share(settings)}
+
+
 def with_share(f, layout, share):
-    """The species field rolled at that share (still one draw, so the fields after it keep theirs)."""
-    if share is None or f["name"] != layout.get("species_field") or "values" not in f:
+    """The species field rolled at that share, and a field marked "setting": "helmets" (ODST's helmet off) at the helmet
+    share (still one draw, so the fields after it keep theirs). share: shares(), or the species share alone."""
+    sh = share if isinstance(share, dict) else {"species": share}
+    if f.get("setting") == "helmets" and sh.get("helmets") is not None and f.get("values") == [0, 1]:
+        return dict(f, weights=[1.0 - sh["helmets"], sh["helmets"]])
+    s = sh.get("species")
+    if s is None or f["name"] != layout.get("species_field") or "values" not in f:
         return f
-    return dict(f, values=[0, 1], weights=[1.0 - share, share])
+    return dict(f, values=[0, 1], weights=[1.0 - s, s])
 
 
 def allowed(f, modern):
@@ -232,11 +264,11 @@ def look(name, game, path=PROFILES, looks_dir=LOOKS, hand=True):
             eb = layout["effect_byte"]    # {"none": 0, "values": [...], "modern_only": bool}
             allowed = wears and (settings["experience"] == "modern" or not eb.get("modern_only"))
             effect = rng.choice(eb["values"]) if allowed else eb["none"]
-            return "roll", seed, mask, 0, effect, roll_fields(layout, rng, settings["experience"] == "modern", wears, over, elite_share(settings))
+            return "roll", seed, mask, 0, effect, roll_fields(layout, rng, settings["experience"] == "modern", wears, over, shares(settings))
         mask = (mask | fx) if wears else (mask & ~fx)
-        return "roll", seed, mask, 0 if wears else fx, None, roll_fields(layout, rng, settings["experience"] == "modern", wears, over, elite_share(settings))
+        return "roll", seed, mask, 0 if wears else fx, None, roll_fields(layout, rng, settings["experience"] == "modern", wears, over, shares(settings))
     out = roll_fields(layout, rng, settings["experience"] == "modern", rng.random() < EFFECT_CHANCE[settings["effects"]], over,
-                      elite_share(settings))
+                      shares(settings))
     if not out:
         return None
     off = min(out)                        # botctl sends one window of 64 bytes from an offset
@@ -249,7 +281,7 @@ def roll_fields(layout, rng, modern, wears, over, share=None):
     """{configuration offset: value} for a layout's fields (maps/_looks/<game>.json), hand-set values kept."""
     picked, out = {}, {}
     for f in layout.get("fields", []):
-        if any(picked.get(k) != v for k, v in f.get("when", {}).items()):
+        if not when_ok(f, picked):
             continue
         if "mcc" in f:                    # Reach / Halo 4, Modern only: an MCC item the game's own Armory does not
             if modern and f["mcc"] and rng.random() < len(f["mcc"]) / (len(f["mcc"]) + f["catalog"]):   # hold, by
@@ -291,11 +323,11 @@ def resolved(name, game, species=None, path=PROFILES, looks_dir=LOOKS, ignore_sp
         over.setdefault(sf, over["species"])
     if species is not None and sf:
         over[sf] = species
-    modern, share = settings["experience"] == "modern", elite_share(settings)
+    modern, share = settings["experience"] == "modern", shares(settings)
     wears = rng.random() < EFFECT_CHANCE[settings["effects"]]
     picked = {}
     for f in layout["fields"]:
-        if any(picked.get(k) != v for k, v in f.get("when", {}).items()):
+        if not when_ok(f, picked):
             continue
         v = rng.randrange(f["count"]) if "count" in f else pick_field(with_share(f, layout, share), rng, modern, wears)
         if not modern and f.get("original_same_as") in picked:
@@ -361,6 +393,8 @@ def table_pieces(name, game, species=None, path=PROFILES, looks_dir=LOOKS):
     if view:                                  # ODST: a character's pieces by its value (maps/_looks/odst.json "view")
         worn = resolved(name, game, species, path, looks_dir)
         ch = str(worn.get("character", 0))
+        if ch in view.get("own_body", {}):     # (Dare: her own model, models/odst_dare.mdl, her helmet on or off)
+            return ";pieces=" + view["own_body"][ch]["off" if worn.get("helmet_off") else "on"]
         parts = dict(q.split(":") for q in (view["base"] + "," + view["character"].get(ch, "")).split(",") if q)
         if worn.get("helmet_off") and ch in view.get("face", {}):    # (the helmet off: the character's face)
             parts.pop("headgear", None)

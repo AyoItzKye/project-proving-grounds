@@ -14,7 +14,7 @@
 #include "third_party/imgui/imgui.h"
 #include "third_party/imgui/imgui_impl_dx11.h"
 
-extern int hb_panel_firefight;    // bots_panel.cpp: the Firefight lobby's list (3 bots, your team)
+extern int hb_panel_firefight;    // bots_panel.cpp: the Firefight lobby's list (7 bots)
 
 void bots_panel_debug(int select, const char* popup);
 void bots_panel_debug_tab(int tab);
@@ -93,12 +93,12 @@ static int selftest() {
         for (int i = 0; i < q.n; i++) on += q.bot[i].tier == 4;
         CHECK(q.n == 8 && on == 8, "quick setup's Scaling puts every bot on Scaling");
     }
-    {   // Firefight (4 players): its list holds 3 bots on one team, whatever quick setup or Add asks for
+    {   // ODST Firefight (8 players): its list holds 7 bots on one team, whatever quick setup or Add asks for
         hb_panel_firefight = 1;
         hb_roster q{};
-        roster_fill(q, 4, 5, 3, HB_STYLE_ANY, 7);
+        roster_fill(q, 4, 9, 3, HB_STYLE_ANY, 7);        // (9 asked: 7 kept)
         bool more = roster_add(q, 0, 3, HB_STYLE_ANY, 9);
-        CHECK(q.n == 3 && q.teams == 1 && !more && roster_max_teams(8) == 1, "ODST Firefight: 3 bots, one team, Add stops");
+        CHECK(q.n == 7 && q.teams == 1 && !more && roster_max_teams(8) == 1, "ODST Firefight: 7 bots, one team, Add stops");
         // Reach's (8 players): a Spartan and an Elite team, 4 a side, 7 bots (the 8th seat yours); the Elites fill first
         hb_panel_firefight = 2;
         roster_fill(q, 2, 4, 3, HB_STYLE_ANY, 7);
@@ -155,6 +155,15 @@ static int selftest() {
     CHECK(profiles_save(), "save after the species re-roll");
     bots_panel_profiles(pp);
     CHECK(profiles_species() == 1 && profiles_elite_share() == 35, "the species share kept by a save and a reload");
+    // ODST helmets (brain/looks.py helmet_share): on / off / mixed at a share, kept by a save
+    CHECK(profiles_odst_helmets() == 1 && profiles_odst_off() == -1, "ODST helmets by default: mixed, each character's odds");
+    CHECK(profiles_reroll(pp, 0, 0, 79, 1, -1, 2) && profiles_odst_helmets() == 2, "re-roll: ODST helmets off");
+    CHECK(profiles_reroll(pp, 0, 0, 79, 1, -1, 0) && profiles_odst_helmets() == 0, "re-roll: ODST helmets on");
+    CHECK(profiles_reroll(pp, 0, 0, 79, 1, -1, 1, 60) && profiles_odst_helmets() == 1 && profiles_odst_off() == 60,
+          "re-roll: ODST helmets mixed, 60% off");
+    CHECK(profiles_save(), "save after the ODST helmets re-roll");
+    bots_panel_profiles(pp);
+    CHECK(profiles_odst_helmets() == 1 && profiles_odst_off() == 60, "the ODST helmet share kept by a save and a reload");
     CHECK(profiles_reroll(pp, 0, 0, 78), "re-roll back to the defaults");
     // the bot editor's hand-set looks: set, replace, clear, and kept through a save and a reload with the clan tag
     char clan0[8]; strcpy_s(clan0, profile_clan(0));
@@ -303,7 +312,7 @@ int main(int argc, char** argv) {
         if (!strcmp(state, "reachffempty")) { r.n = 0; select = -1; }
         if (!strcmp(state, "reachffnone")) select = -1;
     }
-    else if (!strncmp(state, "firefight", 9)) {           // ODST Firefight's own list: 3 bots, your team (botcore.cpp ff_seed)
+    else if (!strncmp(state, "firefight", 9)) {           // ODST Firefight's own list: seeded with 3 bots, your team (ff_seed)
         title = 8; hb_panel_firefight = 1; roster_fill(r, 1, 3, 3, HB_STYLE_ANY, 42); select = 1;
         if (!strcmp(state, "firefightquick")) popup = "Quick setup";
         if (!strcmp(state, "firefightempty")) { r.n = 0; select = -1; }

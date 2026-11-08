@@ -80,7 +80,9 @@ void bots_panel_profiles(const wchar_t* path);           // load native\bin\bot_
 // adds), and how many wear armor effects: 0 none, 1 rare, 2 common, 3 frequent. Writes bot_profiles.ini (lines
 // experience=, effects=, bot=<name>,<seed>,<clan>) and loads it; the brain (brain/looks.py) dresses the bots from it.
 bool profiles_reroll(const wchar_t* path, int experience, int effects, uint32_t seed, int species = 1,
-                     int elite_share = -1);   // species: 0 Spartans only, 1 mixed (elite_share %, -1 each game's own), 2 Elites only
+                     int elite_share = -1,    // species: 0 Spartans only, 1 mixed (elite_share %, -1 each game's own), 2 Elites only
+                     int odst_helm = 1, int odst_off = -1);   // ODST helmets: 0 on, 1 mixed (odst_off % off, -1 each
+                                                               // character's own odds), 2 off (odst_helmets=)
 int  profiles_count();
 const char* profile_name(int i);
 const char* profile_clan(int i);                        // "" for a bot in no clan
@@ -92,6 +94,8 @@ int  profiles_experience();                             // 0 Original, 1 Modern
 int  profiles_effects();                                // 0 none, 1 rare, 2 common, 3 frequent
 int  profiles_species();                                // 0 Spartans only, 1 mixed, 2 Elites only (the re-roll)
 int  profiles_elite_share();                            // mixed: the percent rolled Elite, -1 each game's own mix
+int  profiles_odst_helmets();                           // ODST helmets: 0 on, 1 mixed, 2 off (the re-roll)
+int  profiles_odst_off();                               // mixed: the percent rolled helmet off, -1 each character's odds
 int  roster_on_team(const hb_roster& r, int team);
 int  roster_mixed_tier(int k);                          // "Mixed": Heroic, Normal, Legendary, Easy in turn
 const char* team_name(int team);
@@ -100,7 +104,7 @@ const char* tier_key(int tier);                         // novice average strong
 const char* style_name(int style);                      // rusher .. sniper, any (brain/profiles.py)
 
 // botcore.ini lines: "roster=1", "teams=N", "bot=<team>,<tier key>,<style key>,<name>" (tools/botctl.py reads
-// them too); parse returns true when the line was a roster line. Firefight's own list (3 bots, your team) is written
+// them too); parse returns true when the line was a roster line. Firefight's own list (up to 7 bots) is written
 // with the prefix "ff": "ffroster=1", "ffbot=..." (no teams line)
 bool roster_parse_line(const char* line, hb_roster& r);
 void roster_write(FILE* f, const hb_roster& r, const char* prefix = "");

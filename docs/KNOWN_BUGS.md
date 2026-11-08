@@ -83,7 +83,7 @@ For everything that works, game by game, see the [bot status sheet](BOT_STATUS.p
 
 **Works, but buggy**
 
-- **Firefight**: Your 3 Firefight bots join your team as their own ODST characters and fight the Covenant (they can't tell enemy types apart in ODST yet). ODST Firefight stays at 4 players with bots: MCC allows 8, but ODST crashed with 7 or more players before and 5 to 8 hasn't been tried again yet. Dare isn't one of the characters bots can play yet.
+- **Firefight**: Your Firefight bots (up to 7) join your team as their own ODST characters, Dare included, and fight the Covenant (they can't tell enemy types apart in ODST yet).
 
 ## Halo: Reach
 

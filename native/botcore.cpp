@@ -323,7 +323,7 @@ static void ini_path(wchar_t* out) { swprintf_s(out, MAX_PATH, L"%sbotcore.ini",
 
 hb_roster g_roster;                  // the BOTS panel's list: exactly the bots of the next match (bots_panel.h)
 hb_roster g_ff_roster;               // Reach Firefight's list: up to 7 bots, Spartan and Elite teams (botcore.ini ffbot=)
-hb_roster g_od_roster;               // ODST Firefight's: up to 3 bots, all on your team (odbot=)
+hb_roster g_od_roster;               // ODST Firefight's: up to 7 bots, all on your team (odbot=)
 uint32_t g_prejoin = 1;              // H2A, Halo 4: a match's first tick waits for the bots (native/h4f.cpp f_prejoin; botcore.ini prejoin=0: off)
 uint32_t g_collector = 0;            // the brain records the player for the Observer (collector=; tools/collector.py)
 uint32_t g_scale_games = 5;         // Scaling difficulty: the player's last games averaged (scale_games=)
@@ -367,7 +367,7 @@ void save_settings() {
 }
 
 // Firefight's own lists, first made from the 16-player list's first 3 (never cut to fit Firefight): Reach's (8 players,
-// a Spartan and an Elite team, 4 a side: ffbot=) and ODST's (you and 3 bots, all on your team: odbot=; it was the
+// a Spartan and an Elite team, 4 a side: ffbot=) and ODST's (you and 7 bots, all on your team: odbot=; it was the
 // one list, Reach's too, until Nov 8: an old list seeds ODST's)
 static void ff_seed(hb_roster& r) {
     r.n = 0; r.teams = 1;
@@ -390,7 +390,7 @@ static void load_settings() {
             if (!strncmp(line, "ffroster=", 9)) { ff_listed = true; continue; }
             if (!strncmp(line, "ffbot=", 6)) { if (g_ff_roster.n < 7) roster_parse_line(line + 2, g_ff_roster); continue; }
             if (!strncmp(line, "odroster=", 9)) { od_listed = true; continue; }
-            if (!strncmp(line, "odbot=", 6)) { if (g_od_roster.n < 3) roster_parse_line(line + 2, g_od_roster); continue; }
+            if (!strncmp(line, "odbot=", 6)) { if (g_od_roster.n < 7) roster_parse_line(line + 2, g_od_roster); continue; }
             if (roster_parse_line(line, g_roster)) continue;
             if (sscanf_s(line, "enabled=%u", &v) == 1) g_shm->bots_enabled = v != 0;
             else if (sscanf_s(line, "red=%u", &v) == 1) g_shm->red_players = v > 8 ? 8 : v;

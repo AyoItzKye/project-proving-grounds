@@ -25,13 +25,13 @@
 #include "third_party/imgui/imgui.h"
 #include "third_party/imgui/imgui_internal.h"             // (SetKeyOwner: the 3D view keeps its arrow keys)
 
-// overlay.cpp: the lobby open is Firefight's. 1: ODST's (4 players: you and 3 bots, all on your team); 2: Reach's (set in
+// overlay.cpp: the lobby open is Firefight's. 1: ODST's (8 players: you and 7 bots, all on your team); 2: Reach's (set in
 // bots_panel by the lobby's title), MCC's custom Firefight since July 2023: 8 players in all, a Spartan team and an
 // Elite team (Versus, Generator Defense), this mod's rule 4 a side (docs/bot-brain/11-reach-firefight-versus.md 1.5)
 int hb_panel_firefight = 0;
 static const int FF_SIDE = 4;    // (Reach Firefight: players a side, you included)
 static const char* FF_FULL = "Firefight holds 8 players in all and this mod runs 4 a side: a side cannot hold more than 4.";
-static int roster_cap() { return hb_panel_firefight == 2 ? 7 : hb_panel_firefight ? 3 : HB_ROSTER_MAX; }
+static int roster_cap() { return hb_panel_firefight ? 7 : HB_ROSTER_MAX; }   // (Firefight: 8 players, you and 7 bots)
 static const char* side_name(int t) { return hb_panel_firefight == 2 ? (t == 0 ? "Spartan team" : "Elite team") : nullptr; }
 
 // ------------------------------------------------------------------ tables
@@ -167,6 +167,9 @@ static const char* EFFECTS_LEVEL[4] = { "none", "rare", "common", "frequent" }; 
 static int g_species = 1;                                // the bots' species: 0 Spartans only, 1 mixed, 2 Elites only
 static int g_elite_share = -1;                           // mixed: the percent rolled Elite (-1: each game's own mix)
 static const char* SPECIES_LEVEL[3] = { "spartans", "mixed", "elites" };   // brain/looks.py elite_share
+static int g_odst_helm = 1;                              // ODST helmets: 0 on, 1 mixed, 2 off (brain/looks.py helmet_share)
+static int g_odst_off = -1;                              // mixed: the percent rolled helmet off (-1: each character's odds)
+static const char* HELM_LEVEL[3] = { "on", "mixed", "off" };
 
 int profiles_count() { return g_nprof; }
 const char* profile_name(int i) { return i >= 0 && i < g_nprof ? g_prof[i] : ""; }
@@ -175,6 +178,8 @@ int profiles_experience() { return g_experience; }
 int profiles_effects() { return g_effects; }
 int profiles_species() { return g_species; }
 int profiles_elite_share() { return g_elite_share; }
+int profiles_odst_helmets() { return g_odst_helm; }
+int profiles_odst_off() { return g_odst_off; }
 
 static int effects_level(const char* v) {                // a level name; the first files said 0 (off) or 1 (on)
     for (int k = 0; k < 4; k++) if (_stricmp(v, EFFECTS_LEVEL[k]) == 0) return k;
@@ -189,6 +194,8 @@ void bots_panel_profiles(const wchar_t* path) {
     g_effects = 0;
     g_species = 1;
     g_elite_share = -1;
+    g_odst_helm = 1;
+    g_odst_off = -1;
     if (_wfopen_s(&f, path, L"r") != 0 || !f) return;
     char line[512];
     while (g_nprof < 32 && fgets(line, sizeof line, f)) {
@@ -200,6 +207,11 @@ void bots_panel_profiles(const wchar_t* path) {
             continue;
         }
         if (strncmp(line, "elites=", 7) == 0) { g_elite_share = atoi(line + 7) > 100 ? 100 : atoi(line + 7); continue; }
+        if (strncmp(line, "odst_helmets_off=", 17) == 0) { g_odst_off = atoi(line + 17) > 100 ? 100 : atoi(line + 17); continue; }
+        if (strncmp(line, "odst_helmets=", 13) == 0) {
+            for (int k = 0; k < 3; k++) if (_stricmp(line + 13, HELM_LEVEL[k]) == 0) g_odst_helm = k;
+            continue;
+        }
         if (strncmp(line, "bot=", 4) != 0) continue;
         char* name = line + 4;
         char* comma = strchr(name, ',');                     // <name>,<seed>[,<clan>[,<overrides>]]: no commas in names
@@ -234,6 +246,8 @@ bool profiles_save() {
     fprintf(f, "experience=%s\neffects=%s\n", g_experience ? "modern" : "original", EFFECTS_LEVEL[g_effects & 3]);
     fprintf(f, "species=%s\n", SPECIES_LEVEL[g_species >= 0 && g_species < 3 ? g_species : 1]);
     if (g_elite_share >= 0) fprintf(f, "elites=%d\n", g_elite_share);
+    fprintf(f, "odst_helmets=%s\n", HELM_LEVEL[g_odst_helm >= 0 && g_odst_helm < 3 ? g_odst_helm : 1]);
+    if (g_odst_helm == 1 && g_odst_off >= 0) fprintf(f, "odst_helmets_off=%d\n", g_odst_off);
     for (int i = 0; i < g_nprof; i++) {
         if (g_prof_over[i][0]) fprintf(f, "bot=%s,%u,%s,%s\n", g_prof[i], g_prof_seed[i], g_prof_clan[i], g_prof_over[i]);
         else fprintf(f, "bot=%s,%u,%s\n", g_prof[i], g_prof_seed[i], g_prof_clan[i]);
@@ -537,7 +551,8 @@ static void made_clan(char* t, uint32_t& s) {
     t[n] = 0;
 }
 
-bool profiles_reroll(const wchar_t* path, int experience, int effects, uint32_t seed, int species, int elite_share) {
+bool profiles_reroll(const wchar_t* path, int experience, int effects, uint32_t seed, int species, int elite_share,
+                     int odst_helm, int odst_off) {
     uint32_t s = seed | 1;
     char names[15][16];
     for (int i = 0; i < 15; i++) {
@@ -558,6 +573,8 @@ bool profiles_reroll(const wchar_t* path, int experience, int effects, uint32_t 
     fprintf(f, "experience=%s\neffects=%s\n", experience ? "modern" : "original", EFFECTS_LEVEL[effects >= 0 && effects < 4 ? effects : 0]);
     fprintf(f, "species=%s\n", SPECIES_LEVEL[species >= 0 && species < 3 ? species : 1]);
     if (species == 1 && elite_share >= 0) fprintf(f, "elites=%d\n", elite_share > 100 ? 100 : elite_share);
+    fprintf(f, "odst_helmets=%s\n", HELM_LEVEL[odst_helm >= 0 && odst_helm < 3 ? odst_helm : 1]);
+    if (odst_helm == 1 && odst_off >= 0) fprintf(f, "odst_helmets_off=%d\n", odst_off > 100 ? 100 : odst_off);
     for (int i = 0; i < 15; i++) {
         uint32_t look = rnd(s) & 0x7FFFFFFF;
         const char* clan = rint(s, 100) < 55 ? clans[rint(s, nclans)] : "";
@@ -1161,7 +1178,7 @@ static void inspector(bots_panel_env& e, bool& changed) {
         if (hb_panel_firefight == 1) {                       // (ODST's Firefight: one team, yours)
             muted("Pick a bot to change its difficulty or play style. Names, clan tags and armor are in Settings.");
             ImGui::Dummy(ImVec2(0, px(12)));
-            muted("Firefight holds 4 players: you and up to 3 bots, all on your team. "
+            muted("Firefight holds 8 players: you and up to 7 bots, all on your team. "
                   "Right-click a bot for more; Del removes the picked one.");
             return;
         }
@@ -1365,6 +1382,8 @@ static int rr_experience = 0;                            // the re-roll dialog's
 static int rr_effects = 0;                               // 0 none, 1 rare, 2 common, 3 frequent
 static int rr_species = 1;                               // 0 Spartans only, 1 mixed, 2 Elites only
 static int rr_elite_share = 20;                          // mixed: the percent of bots rolled Elite (the games' own: 20-30)
+static int rr_odst_helm = 1;                             // ODST helmets: 0 on, 1 mixed, 2 off
+static int rr_odst_off = 35;                             // mixed: the percent rolled helmet off (odst.json's own odds)
 static bool rr_failed = false;                           // the last re-roll could not write the file
 void bots_panel_debug_reroll_failed(bool f) { rr_failed = f; }   // native/panel_preview.cpp
 static const char* FX_NAME[4] = { "None", "Rare", "Common", "Frequent" };   // EFFECTS_LEVEL, as the menu says it
@@ -1442,6 +1461,42 @@ static void reroll_dialog(bots_panel_env& e, bool& changed) {
           rr_species == 2 ? "Every bot is an Elite in Halo 2, Halo 3, Halo: Reach and Halo 2: Anniversary. Halo: CE and "
                             "Halo 4 bots are always Spartans."
                           : "Halo: CE and Halo 4 bots are always Spartans.");
+    ImGui::Dummy(ImVec2(0, px(6)));
+    // ODST's helmets: brain/looks.py helmet_share (the characters with the choice: the squad but the Rookie and Johnson,
+    // and Dare)
+    caption("ODST helmets");
+    static const char* HLN[3] = { "Helmets on", "Mixed", "Helmets off" };
+    segmented("odsthelm", HLN, 3, &rr_odst_helm, W);
+    if (rr_odst_helm == 1) {
+        ImGui::Dummy(ImVec2(0, px(2)));
+        push(SMALL);
+        ImGui::PushStyleColor(ImGuiCol_Text, v4(TEXT2));
+        ImGui::TextUnformatted("More helmets on");
+        const char* rt = "More helmets off";
+        ImGui::SameLine(W - ImGui::CalcTextSize(rt).x);
+        ImGui::TextUnformatted(rt);
+        ImGui::PopStyleColor();
+        pop();
+        push(BODY);
+        ImGui::PushStyleColor(ImGuiCol_FrameBg, v4(SURF2));
+        ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, v4(HOVER));
+        ImGui::PushStyleColor(ImGuiCol_FrameBgActive, v4(HOVER));
+        ImGui::PushStyleColor(ImGuiCol_SliderGrab, v4(ACCENT));
+        ImGui::PushStyleColor(ImGuiCol_SliderGrabActive, v4(IM_COL32(150, 218, 255, 255)));
+        ImGui::PushStyleColor(ImGuiCol_Border, v4(LINE));
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_GrabMinSize, px(18));
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(px(8), px(8)));
+        ImGui::SetNextItemWidth(W);
+        char fmt[48];
+        sprintf_s(fmt, "%d%%%% helmets off, %d%%%% on", rr_odst_off, 100 - rr_odst_off);
+        if (ImGui::SliderInt("##odstoff", &rr_odst_off, 0, 100, fmt, ImGuiSliderFlags_AlwaysClamp))
+            rr_odst_off = (rr_odst_off + 2) / 5 * 5;         // (in steps of 5)
+        ImGui::PopStyleVar(3);
+        ImGui::PopStyleColor(6);
+        pop();
+    }
+    muted("The Rookie always wears his helmet and Sgt. Johnson never wears one.");
     line(18);
     push(BODY);
     ImGui::PushStyleColor(ImGuiCol_Text, v4(GOLD));
@@ -1463,7 +1518,8 @@ static void reroll_dialog(bots_panel_env& e, bool& changed) {
     }
     ImGui::SameLine(0, px(10));
     if (button("Re-roll", PRIMARY, ImVec2(bw, px(44)))) {
-        rr_failed = !profiles_reroll(g_prof_path, rr_experience, rr_effects, seed(), rr_species, rr_elite_share);
+        rr_failed = !profiles_reroll(g_prof_path, rr_experience, rr_effects, seed(), rr_species, rr_elite_share,
+                                     rr_odst_helm, rr_odst_off);
         if (!rr_failed) {
             roster_rename_all(r, seed());
             changed = true;
@@ -1703,10 +1759,15 @@ static const int ED_N = 7;
 static const ed_game ED_GAMES[ED_N] = { {"ce", "Halo: Combat Evolved", "ce", false}, {"h2", "Halo 2", "h2", true},
     {"h3", "Halo 3", "h3", true}, {"reach", "Halo: Reach", "reach", true}, {"h2a", "Halo 2: Anniversary", "h2a", true},
     {"h4", "Halo 4", "h4", false}, {"odst", "Halo 3: ODST", "odst", false} };   // (ODST: GitHub #15)
-// Halo 3: ODST's Firefight characters (maps/_looks/odst.json +0x49): the 2009 six, then MCC's two (Modern only)
-static const int ODST_CHAR_ORIGINAL = 6;
+// Halo 3: ODST's Firefight characters (maps/_looks/odst.json +0x49): the 2009 seven (Dare her own body, +0x3C), then
+// MCC's two (Modern only)
+static const int ODST_CHAR_ORIGINAL = 7;
 static const piece ODST_CHAR[] = { {0, "The Rookie"}, {1, "Mickey"}, {2, "Dutch"}, {3, "Romeo"}, {4, "Buck"},
-    {5, "Sgt. Johnson"}, {6, "Bug-splattered Buck"}, {7, "Injured Romeo"} };
+    {5, "Sgt. Johnson"}, {8, "Dare"}, {6, "Bug-splattered Buck"}, {7, "Injured Romeo"} };
+static const char* odst_char_name(int v) {
+    for (const piece& p : ODST_CHAR) if (p.v == v) return p.name;
+    return "ODST";
+}
 static const piece ODST_HELMET[] = { {0, "Helmet on"}, {1, "Helmet off"} };
 static int g_edit = -1;                                  // the profile being viewed
 static int g_edit_game = 2;                              // ED_GAMES index
@@ -1866,7 +1927,9 @@ static ImVec4 h3_rgb(int i) { return pal_rgb(H3_COL, 30, i); }
 static unsigned long long ed_model(bots_panel_env* e, int G, int sp, float yaw, int w, int h) {
     if (!e || !e->render_model || !e->model_has) return 0;
     wchar_t path_rel[64];
-    swprintf_s(path_rel, L"models\\%S_%S.mdl", ED_GAMES[G].key, sp == 1 ? "elite" : "spartan");
+    // (ODST's Dare, character 8, is her own body: models/odst_dare.mdl)
+    swprintf_s(path_rel, L"models\\%S_%S.mdl", ED_GAMES[G].key,
+               G == 6 && ed_value(G, "character") == 8 ? "dare" : sp == 1 ? "elite" : "spartan");
     wchar_t path[300];
     bin_file(path, 300, path_rel);
     if (GetFileAttributesW(path) == INVALID_FILE_ATTRIBUTES) {   // beside the program (the preview)
@@ -2240,7 +2303,7 @@ static void ed_preview(ImVec2 p0, ImVec2 size, int G, bool& dirty) {
     if (ED_GAMES[G].species) sprintf_s(head, "%s%s", sp == 1 ? "ELITE" : "SPARTAN", G == 3 && sp == pref ? "  -  PREFERRED" : "");
     else if (G == 6) {                                       // ODST: the character it plays
         int ch = ed_value(G, "character");
-        sprintf_s(head, "%s", ch >= 0 && ch < COUNT(ODST_CHAR) ? ODST_CHAR[ch].name : "ODST");
+        sprintf_s(head, "%s", odst_char_name(ch));
         for (char* c = head; *c; c++) *c = (char)toupper((unsigned char)*c);
     } else strcpy_s(head, "SPARTAN");
     dl->AddText(ImVec2(p0.x + pad, p0.y + px(18)), TEXT2, head);
@@ -2910,6 +2973,8 @@ static void mod_settings(bots_panel_env& e, bool& changed, ImVec2 body0, float w
     if (profiles_species() != 1) ImGui::Text("Species: %s", profiles_species() == 0 ? "Spartans only" : "Elites only");
     else if (profiles_elite_share() >= 0) ImGui::Text("Species: mixed, %d%% Elites", profiles_elite_share());
     else ImGui::TextUnformatted("Species: mixed");
+    if (profiles_odst_helmets() != 1) ImGui::Text("ODST helmets: %s", profiles_odst_helmets() == 0 ? "on" : "off");
+    else if (profiles_odst_off() >= 0) ImGui::Text("ODST helmets: mixed, %d%% off", profiles_odst_off());
     pop();
     ImGui::Dummy(ImVec2(0, px(10)));
     if (button("Re-roll profiles...", PRIMARY, ImVec2(px(240), px(46)))) {
@@ -2917,6 +2982,8 @@ static void mod_settings(bots_panel_env& e, bool& changed, ImVec2 body0, float w
         rr_effects = profiles_effects();
         rr_species = profiles_species();
         rr_elite_share = profiles_elite_share() >= 0 ? profiles_elite_share() : 20;
+        rr_odst_helm = profiles_odst_helmets();
+        rr_odst_off = profiles_odst_off() >= 0 ? profiles_odst_off() : 35;
         ImGui::OpenPopup("Re-roll bot profiles");
     }
     if (e.sounds) {                                          // the panel's sounds: their volume, 0 off
@@ -3213,7 +3280,7 @@ bool bots_panel(bots_panel_env& e) {
         dl->AddText(ImVec2(body0.x + (grid_w - ts.x) * 0.5f, body0.y + body_h * 0.36f), TEXT, t1);
         pop();
         push(BODY);
-        const char* t2 = hb_panel_firefight == 1 ? "Choose up to 3 bots for your team, and how hard they play."
+        const char* t2 = hb_panel_firefight == 1 ? "Choose up to 7 bots for your team, and how hard they play."
                        : hb_panel_firefight == 2 ? "Choose bots for the Spartan and Elite teams, and how hard they play."
                                             : "Choose how many teams and bots, and how hard they play.";
         ImVec2 t2s = ImGui::CalcTextSize(t2);
@@ -3273,7 +3340,7 @@ bool bots_panel(bots_panel_env& e) {
     ImGui::EndDisabled();
     char lim[96];
     if (hb_panel_firefight == 2) sprintf_s(lim, "%d of 7 bots. Firefight holds 8 players, 4 a side.", r.n);
-    else if (hb_panel_firefight) sprintf_s(lim, "%d of 3 bots. Firefight holds 4 players.", r.n);
+    else if (hb_panel_firefight) sprintf_s(lim, "%d of 7 bots. Firefight holds 8 players.", r.n);
     else sprintf_s(lim, "%d of %d bots. The game holds 16 players.", r.n, HB_ROSTER_MAX);
     push(SMALL);
     float lw2 = ImGui::CalcTextSize(lim).x;
