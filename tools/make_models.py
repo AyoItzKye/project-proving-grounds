@@ -50,13 +50,15 @@ MODELS = [
     ("h3_elite", "elite", "h3", H3, r"mp_elite\mp_elite", r"fp_energy_blade\fp_energy_blade",
      ["--one-hand", "--hold", "grip=0.09,-0.21,-0.05;barrel=0.45,-0.3,-0.84;pole_r=-0.6,-0.6,-0.4;rest=0.1,0.21,-0.05;"
       "upright=-10;chin=8"]),
-    # Halo 3: ODST: the squad model, its characters by region (maps/_looks/odst.json "view"), Halo 3's hold (one skeleton)
-    ("odst_spartan", "spartan", "odst", ODST, r"characters\odst\odst", r"assault_rifle\assault_rifle",
-     ["--hold", "grip=0.14,-0.02,0.06;barrel=0.25,0.9,-0.45;pole_r=-0.3,-0.8,-0.5;pole_l=-0.5,0.5,-0.7"]),
+    # Halo 3: ODST: the squad model, its characters by region (maps/_looks/odst.json "view"), with the silenced SMG (the
+    # game's own Firefight gun): low ready, the barrel more forward, the left elbow in (its front grip: 80 degrees of left wrist
+    # at the rifle's hold)
+    ("odst_spartan", "spartan", "odst", ODST, r"characters\odst\odst", r"smg_silenced\smg_silenced",
+     ["--hold", "grip=0.14,-0.02,0.06;barrel=0.4,0.8,-0.3;pole_r=-0.3,-0.8,-0.5;pole_l=-0.5,-0.6,-0.6"]),
     # Dare (ODST character 8): her own body, the ONI operative's (helmet, head, hair, beacon by region); the squad's
     # hold with the gun closer (her shorter arms: the left hand 0.023 u short at the squad's grip)
-    ("odst_dare", "spartan", "odst", ODST, r"characters\odst_oni_op\odst_oni_op", r"assault_rifle\assault_rifle",
-     ["--hold", "grip=0.10,0.0,0.07;barrel=0.25,0.9,-0.45;pole_r=-0.3,-0.8,-0.5;pole_l=-0.5,0.5,-0.7"]),
+    ("odst_dare", "spartan", "odst", ODST, r"characters\odst_oni_op\odst_oni_op", r"smg_silenced\smg_silenced",
+     ["--hold", "grip=0.10,0.0,0.07;barrel=0.4,0.8,-0.3;pole_r=-0.3,-0.8,-0.5;pole_l=-0.5,-0.6,-0.6"]),
     # Halo 2: Anniversary's bots wear its three original sets (spartan_iv Mark VI, spartan_var2 Centurion, spartan_var3
     # Hoplite) and in Modern MCC's added pieces (Orion, Bioroid, Robot, Trooper, Breach, Panzer: its customization
     # table, maps/_looks/h2a.json, h2a_armory.json): pieces no bot wears (Halo 4's left in this model, the Flood's) out

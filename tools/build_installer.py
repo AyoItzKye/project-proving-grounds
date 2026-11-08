@@ -69,6 +69,32 @@ DEV_ONLY = ("tools/test_*.py", "tools/run_tests.py", "tools/testdata.py", "tools
             "requirements-dev.txt", ".gitignore", ".github/**", make_release.MARK)
 
 
+LATEST = "https://github.com/AyoItzKye/project-proving-grounds/releases/latest"
+
+
+def readme_release(text, ver, stamp):
+    """The README's Release row (the line marked <!-- release -->) for this version (its build tag left off) and the
+    day of its last update (BUILD's stamp, YYYYMMDD-HHMM)."""
+    import datetime
+    import re
+    day = datetime.datetime.strptime(stamp[:8], "%Y%m%d")
+    row = (f"| **[Release]({LATEST})** | Version **{ver.split('-')[0]}**, last updated **{day:%B} {day.day}, {day.year}**. "
+           f"Download it from the Releases page. <!-- release --> |")
+    return re.sub(r"^\|.*<!-- release -->.*$", lambda m: row, text, count=1, flags=re.M)
+
+
+def update_readme():
+    """README.md's Release row brought up to VERSION and BUILD before the public copy is made from it."""
+    p = os.path.join(ROOT, "README.md")
+    text = open(p, encoding="utf-8").read()
+    new = readme_release(text, version(), open(os.path.join(ROOT, "BUILD"), encoding="utf-8").read().strip())
+    if "<!-- release -->" not in text:
+        raise SystemExit("README.md has no Release row (<!-- release -->): not building")
+    if new != text:
+        open(p, "w", encoding="utf-8", newline="").write(new)
+        print("README: Release row updated")
+
+
 def stage_project():
     """The public copy (less DEV_ONLY) and the map pack, merged into the payload."""
     step("public copy and map pack (tools/make_release.py)")
@@ -226,6 +252,7 @@ def main():
     if os.path.exists(PAYLOAD):
         shutil.rmtree(PAYLOAD)
     os.makedirs(PAYLOAD)
+    update_readme()
     stage_project()
     stage_native("--skip-native" in sys.argv)
     stage_map_tools()

@@ -8,6 +8,7 @@ Click a version to see what it added and fixed.
 <summary><b>0.2.2</b> (November 6 to 8, 2026): Halo 2 vehicles, the Halo 4 Mantis and Banshee bombs, call bots into your vehicle, follow me and roam chat commands, Firefight bots that follow and respawn, Reach Firefight Versus and Generator Defense with Spartan and Elite bots, ODST characters for bots, an Invasion rework</summary>
 
 ### + Added
+- <!-- build: 20261108-1250 --> **ODST bots in the editor hold the silenced SMG**: the 3D view of your ODST bots, Dare too, shows them with ODST's silenced SMG instead of the assault rifle.
 - <!-- build: 20261108-1120 --> **Dare in Halo 3: ODST**: bots can play as Dare, with her helmet on or off, in Firefight, as the other ODST characters do. Pick her in the bot editor, whose 3D view shows her own model. Bots no longer take on your character either: while you played Dare, every bot became Dare too.
 - <!-- build: 20261108-1120 --> **8 players in ODST Firefight**: your ODST list holds up to 7 bots, all on your team.
 - <!-- build: 20261108-1120 --> **ODST helmets in the re-roll**: choose helmets on, helmets off, or a mix with the share of bots that take theirs off. The Rookie always keeps his helmet and Sgt. Johnson never wears one.

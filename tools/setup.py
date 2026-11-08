@@ -77,7 +77,16 @@ def _odst_model():
     them get them too (one with the squad and not Dare yet gets Dare)."""
     if not paths.map_tool("model2obj"):
         return False, "the map tools are missing (tools/map_tools: reinstall, or see docs/BUILDING.md)"
-    return tool("make_models.py", "--only", "odst_spartan,odst_dare", "--clean-exports")
+    ok, last = tool("make_models.py", "--only", "odst_spartan,odst_dare", "--clean-exports")
+    if ok:                                   # (the models of this release made: an older pair is made again)
+        with open(os.path.join(ROOT, ODST_MARK), "w", encoding="utf-8") as f:
+            f.write("ODST 3D bots with the silenced SMG (Nov 8)\n")
+    return ok, last
+
+
+# the ODST 3D bots' marker: renamed when they change (the silenced SMG, Nov 8), so installs with the older pair make them
+# again (ponytail: one marker per change; a hash of make_models' ODST entries if they change often)
+ODST_MARK = "native/bin/models/odst_v2.txt"
 
 
 def _no_odst():
@@ -124,7 +133,8 @@ STEPS = (
     ("logos", lambda: has("native/bin/art/ce.rgba", "native/bin/art/h4.rgba"), _logos, True, None),
     ("3D bots", lambda: has("native/bin/models/made.txt") or has("native/bin/models/h3_spartan.mdl",
                                                                  "maps/_models/emblems_mcc"), _models, True, None),
-    ("ODST 3D bot", lambda: has("native/bin/models/odst_spartan.mdl", "native/bin/models/odst_dare.mdl"), _odst_model, True,
+    ("ODST 3D bot", lambda: has("native/bin/models/odst_spartan.mdl", "native/bin/models/odst_dare.mdl", ODST_MARK), _odst_model,
+     True,
      _no_odst),
     ("effects", lambda: has("native/bin/art/fx_fire.rgba"), _effects, True, _no_reach),
     ("looks", lambda: _looks_current(), _looks, False, None),
