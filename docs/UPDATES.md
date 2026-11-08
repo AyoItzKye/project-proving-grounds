@@ -5,9 +5,15 @@ What changed in each version. Download the newest one from the [Releases page](h
 Click a version to see what it added and fixed.
 
 <details open>
-<summary><b>0.2.2</b> (November 6 and 7, 2026): Halo 2 vehicles, the Halo 4 Mantis and Banshee bombs, call bots into your vehicle, Firefight bots that follow and respawn, an Invasion rework</summary>
+<summary><b>0.2.2</b> (November 6 to 8, 2026): Halo 2 vehicles, the Halo 4 Mantis and Banshee bombs, call bots into your vehicle, Firefight bots that follow and respawn, Reach Firefight Versus with Spartan and Elite bots, ODST characters for bots, an Invasion rework</summary>
 
 ### + Added
+- <!-- build: 20261108-0230 --> **Firefight bots**: the BOTS tile and panel in the Reach and ODST Firefight lobbies, next to START, with Firefight's own bot list (your 16-player list is kept as it is). Teammates stay a few steps behind you and fight what comes; while you're down they hold a safe spot nearby.
+  - **Reach: Firefight Versus and Generator Defense**: the list has a Spartan team and an Elite team, up to 4 each, 8 players in all with you (MCC's custom Firefight). Bots on the Elite team play as Elites beside the Covenant, and at each turn they swap sides with the Spartans as the game does. A fifth bot on a side is refused, with a message saying why.
+  - **ODST** keeps its own list of up to 3 bots on your team (ODST Firefight holds 4 players).
+- <!-- build: 20261108-0230 --> **Bots that know the Covenant**: in Firefight bots tell every enemy apart (Grunt, Jackal sniper, Elite Ultra, Hunter, Brute Chieftain and the rest) and shoot the most dangerous first: a fuel rod Grunt before an Elite, an Engineer before anything, a Hunter that is right on them over all. In Versus a player Elite is worth a life, so Spartans go for one when the team's lives run low.
+  - Spartan bots fall back sooner as the team's shared lives run out. Elite bots never trade their life: they hunt the Spartan who is alone or out of shields, move with the biggest Covenant squad, back off to recharge, and late in a turn with the Spartans low they hang back and run the clock.
+- <!-- build: 20261108-0230 --> **Halo 3: ODST bots with their own looks** ([#15](https://github.com/AyoItzKye/project-proving-grounds/issues/15)): each bot plays as its own ODST, The Rookie, Mickey, Dutch, Romeo, Buck or Sgt. Johnson (with Modern also Bug-splattered Buck and Injured Romeo), with or without the helmet, in its own two colours. The bot profile editor has Halo 3: ODST with a 3D view of the bot to pick its character, helmet and colours.
 - <!-- build: 20261107-1945 --> **Halo 2 vehicles**: bots get into vehicles in Halo 2. They drive Warthogs, Ghosts and Scorpions, fly Banshees, and man Warthog chainguns and gauss guns, firing Ghost and Banshee bolts and Scorpion shells (seen in real matches on Coagulation and Containment).
 - <!-- build: 20261107-1945 --> **Halo 2 boosts and the Scorpion's machine gun**: on the right click, as players use it. Ghosts, Spectres, Banshees and Wraiths boost on open stretches (the Wraith in short bursts), and Ghosts and Wraiths also boost into a player close ahead; the Scorpion's driver uses its machine gun on players on foot close by.
 - <!-- build: 20261107-1530 --> **Banshee bombs in Halo 4**: bots switch to the bomb like a second weapon, drop it with the main trigger and switch back, the way players do it (five bombs in a five-minute match).
@@ -19,13 +25,13 @@ Click a version to see what it added and fixed.
 - <!-- build: 20261106-2300 --> **Aircraft pick up bots**: land an aircraft next to teammate bots and they get in, both of a Falcon's gunner seats too. Bots flying one do the same for their teammates.
 - <!-- build: 20261106-2300 --> **The launcher's What's new**: when an update is out, it lists everything added and fixed since the copy you have, same-day updates of a version included.
 - **Update check in the launcher**: it checks GitHub for a new version (at most every 6 hours, or with **Check**), shows when it last checked, and tells you when one is out. **Auto-update** is off unless you turn it on; nothing is ever installed without it or the **Update** button.
-- **Firefight bots**: the BOTS tile and panel in the Reach and ODST Firefight lobbies, next to START, with Firefight's own list of up to 3 bots, all on your team (your 16-player list is kept as it is). Teammates stay a few steps behind you and fight what comes; while you're down they hold a safe spot nearby.
 - **Observer**: the game list shows games only. A game with bug reports has a flag, and a **Bug reports** section lists each report with its time; click one to jump to that moment.
 - **A real player's guide**: **Read the guide** in the launcher opens a searchable guide in the mod's own window.
 - **The launcher** in the Proving Grounds art's colours, with the sign as the app icon.
 - **Flight heights from the map**: aircraft pick their attack and travel heights from the ground under them; painting airspace is optional.
 
 ### - Fixed
+- <!-- build: 20261108-0230 --> **Firefight respawns on the Elite side** ([#12](https://github.com/AyoItzKye/project-proving-grounds/issues/12)): bots on the Elite side never came back after dying; they now respawn after the Elites' longer wait, at the Elites' spawn, and after a turn swap each bot respawns on its new side.
 - <!-- build: 20261107-2240 --> **The BOTS panel**: opening a bot's profile no longer stops the game with an error box; a controller's stick resting a little off centre no longer scrolls the panel's lists by itself (only a real push moves them); closing it with Esc no longer backs you out of the lobby, and the BOTS tile no longer shows on top of the post-game scoreboard.
 - <!-- build: 20261107-2115 --> **The update notes**: each version is now one list of what was added and one of what was fixed, here, on the Releases page and in the launcher's What's new, instead of a separate dated note for every update.
 - <!-- build: 20261107-1945 --> **Halo 2 Containment**: bots never started there (the map's name could not be read), and in Capture the Flag the bots stopped on the first moment of the match.

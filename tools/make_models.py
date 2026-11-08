@@ -25,6 +25,7 @@ ONLY = sys.argv[sys.argv.index("--only") + 1].split(",") if "--only" in sys.argv
 OUT = sys.argv[sys.argv.index("--out") + 1] if "--out" in sys.argv else os.path.join(ROOT, "native", "bin", "models")
 CE, H2, H3 = r"halo1\maps\bloodgulch.map", r"halo2\h2_maps_win64_dx11\lockout.map", r"halo3\maps\construct.map"
 H2A, REACH = r"groundhog\maps\ca_lockout.map", r"haloreach\maps\20_sword_slayer.map"
+ODST = r"halo3odst\maps\h100.map"    # (the Firefight squad: objects\characters\odst\odst, every character a variant)
 # out name, species (the pose), game (texture name prefix), map, the model's tag name end, the held weapon's tag name
 # end, model_pack2 options (an Elite holds the energy sword, one-handed: the player's picture; Halo 3 has one sword
 # model for both views, fp_energy_blade) each model's own hold ("Halo 3 rifle in body a lil bit", Reach's Elite sword
@@ -49,6 +50,9 @@ MODELS = [
     ("h3_elite", "elite", "h3", H3, r"mp_elite\mp_elite", r"fp_energy_blade\fp_energy_blade",
      ["--one-hand", "--hold", "grip=0.09,-0.21,-0.05;barrel=0.45,-0.3,-0.84;pole_r=-0.6,-0.6,-0.4;rest=0.1,0.21,-0.05;"
       "upright=-10;chin=8"]),
+    # Halo 3: ODST: the squad model, its characters by region (maps/_looks/odst.json "view"), Halo 3's hold (one skeleton)
+    ("odst_spartan", "spartan", "odst", ODST, r"characters\odst\odst", r"assault_rifle\assault_rifle",
+     ["--hold", "grip=0.14,-0.02,0.06;barrel=0.25,0.9,-0.45;pole_r=-0.3,-0.8,-0.5;pole_l=-0.5,0.5,-0.7"]),
     # Halo 2: Anniversary's bots wear its three original sets (spartan_iv Mark VI, spartan_var2 Centurion, spartan_var3
     # Hoplite) and in Modern MCC's added pieces (Orion, Bioroid, Robot, Trooper, Breach, Panzer: its customization
     # table, maps/_looks/h2a.json, h2a_armory.json): pieces no bot wears (Halo 4's left in this model, the Flood's) out

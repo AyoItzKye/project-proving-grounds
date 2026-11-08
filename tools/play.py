@@ -87,6 +87,27 @@ def roster_plan(roster, players, teams, game):
     return out
 
 
+def ff_plan(plan, players, game):
+    """Firefight's bots of roster_plan's [(team, name)]: ([(team, name)] that join, [names left out]). ODST: all on the
+    person's team, 4 players in all. Reach: the panel's Spartan team (0) and Elite team (1) are the lobby's first two
+    teams (live Beachhead Versus Nov 8: team 0 Red, the first turn's Spartans; 1 Blue, its Elites), 4 a side with the
+    people already there, 8 in all (docs/bot-brain/11-reach-firefight-versus.md 9.2)."""
+    cap = botctl.player_cap(game, firefight=True)
+    side = {}
+    for p in players:
+        side[p["team"]] = side.get(p["team"], 0) + 1
+    total, out, left = len(players), [], []
+    for team, name in plan:
+        team = players[0]["team"] if game == "odst" and players else min(max(team, 0), 1)
+        if total >= cap or (game != "odst" and side.get(team, 0) >= botctl.FF_SIDE):
+            left.append(name)
+            continue
+        out.append((team, name))
+        side[team] = side.get(team, 0) + 1
+        total += 1
+    return out, left
+
+
 def add_bot(m, machine, team, name, game):
     """botctl.add_bot with this install's look, clan and emblem for the name, waited through a paused game (botcore
     takes commands on the game's thread: none in the pause menu). Prints the outcome; True when the game made it. A
@@ -231,18 +252,25 @@ def main():
     ff = firefight or o.game == "odst"
     roster = botctl.roster(o.roster) if o.roster and not o.lidar else None
     if roster is not None and ff:                    # Firefight's own list (botcore.cpp ff_seed: the first 3 till saved)
-        ff_list = botctl.roster(o.roster, firefight=True)
+        ff_list = botctl.roster(o.roster, firefight=True, game=o.game)
         roster = ff_list if ff_list is not None else roster[:botctl.FIREFIGHT_PLAYERS - 1]
-    # one cap on every path below, LiDAR included: Firefight holds 4 players in all (ODST crashed with more)
-    room = botctl.player_cap(o.game, firefight) - len(players)
+    # one cap on every path below, LiDAR included: ODST's Firefight holds 4 players (it crashed with more), Reach's 8
+    room = botctl.player_cap(o.game, ff) - len(players)
     if getattr(o, "max_bots", None) is not None:     # test override: leave room for Claude's probe bots
         room = min(room, int(o.max_bots))
     if room < botctl.MAX_PLAYERS - len(players):
-        print(f"Firefight: {room} bots at most ({botctl.FIREFIGHT_PLAYERS} players in all)")
-    if roster is not None:                           # the BOTS panel's list (Firefight: its first 3, all your teammates)
+        print(f"Firefight: {room} bots at most ({botctl.player_cap(o.game, ff)} players in all)")
+    if roster is not None:                           # the BOTS panel's list (Firefight: its own, 4 a side in Reach)
         print(f"bot list: {len(roster)} bots from {o.roster}" + (f", {max(0, room)} join (Firefight)" if ff else ""))
-        for team, name in roster_plan(roster, players, teams, o.game)[:max(0, room)]:
-            team = players[0]["team"] if ff else team
+        plan = roster_plan(roster, players, teams, o.game)
+        if ff:
+            plan, left = ff_plan(plan, players, o.game)
+            if left:                                 # (the person took a seat on a side the list filled)
+                print("Firefight: no room for", ", ".join(left))
+                botctl.notice(m, "Firefight is full", f"{len(left)} {'bot' if len(left) == 1 else 'bots'} left out: "
+                              f"{botctl.player_cap(o.game, ff)} players in all"
+                              + (f", {botctl.FF_SIDE} a side" if o.game != "odst" else ""))
+        for team, name in plan[:max(0, room)]:
             add_bot(m, machine, team, name, o.game)
             machine += 1
     elif teams:

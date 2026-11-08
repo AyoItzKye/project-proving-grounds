@@ -25,6 +25,7 @@ from brain.tracefmt import (Everyone, blitz_rows, call_lines, crosshair, meta_li
 from brain.maps import get_map, terrain as map_terrain, save_learned, grow as map_grow, swap as map_swap  # noqa: E402
 from brain.bot import Bot  # noqa: E402
 from brain import vehicles as V  # noqa: E402
+from brain import firefight as FF  # noqa: E402
 from brain.director import Director  # noqa: E402
 from brain.loadouts import Palette, liked_guns, record_death, want_slot  # noqa: E402
 from brain.profiles import make_profile  # noqa: E402
@@ -105,6 +106,30 @@ def horn_call(now, players, vehicles, person, horn):
         HORN["call"] = None if c is not None and (not at_wheel or now > c[2]) else c
         return {}
     return {c[0]: c[1]}
+
+
+def ff_state(live, players):
+    """Firefight's state for the brain (brain/firefight.py): versus (players on both sides: Versus or Generator
+    Defense), the Spartans' lives, each team's side {team: 1 Spartans or 7 Elites} (they swap each turn), the enemies
+    of the Spartans left, the heat for the Spartans and its zone (guide 11 section 2.4)."""
+    side = {}
+    for p in players:
+        if p.name != "ai" and p.side in (FF.SPARTAN, FF.ELITE):
+            side.setdefault(p.team, p.side)
+    versus = len(set(side.values())) == 2
+    lives = (getattr(live, "ff_lives", lambda: None)() or [-1] * 8)[FF.SPARTAN]
+    spartans = {t for t, s in side.items() if s == FF.SPARTAN}
+    foes = [p for p in players if p.alive and p.team not in spartans and (p.name == "ai" or p.side == FF.ELITE)]
+    npcs = [p for p in foes if p.name == "ai"]
+    ranks = [p.rank for p in npcs]
+    elites = sum(1 for r in ranks if "elite" in r)
+    h = FF.heat(squads_alive=len(FF.squads([(p.pos.x, p.pos.y) for p in npcs])),
+                big=any(any(k in r for k in FF.BIG) for r in ranks), elite_majority=bool(ranks) and elites > len(ranks) / 2,
+                player_elites=sum(1 for p in foes if p.name != "ai"), lives=lives,
+                unshielded=any(p.alive and p.team in spartans and p.name != "ai" and p.shield <= 0.0 for p in players),
+                power_weapon=any(p.alive and p.team in spartans and p.weapon in FF.POWER
+                                 for p in players))
+    return dict(versus=versus, lives=lives, side=side, left=len(npcs), heat=h, zone=FF.heat_zone(h))
 
 
 def snapshot(live, now, prev, bot_ids, crouch=(), person_crouch=False, person_horn=None):
@@ -191,7 +216,7 @@ def snapshot(live, now, prev, bot_ids, crouch=(), person_crouch=False, person_ho
                                    # ability hides him like the camo powerup does
                                    equipment=d.get("equipment", ""), ability_on=on,
                                    # the match's motion tracker setting for him (off in SWAT)
-                                   tracker=d.get("tracker", True),
+                                   tracker=d.get("tracker", True), side=d.get("side", 0),   # (side: Firefight)
                                    head_pos=Vec(*d["head_pos"]) if d.get("head_pos") is not None else None,
                                    view_pos=Vec(*d["view_pos"]) if d.get("view_pos") is not None else None,
                                    camo_until=now + 0.3 if on and d.get("equipment") == "active_camo" else 0.0))
@@ -310,8 +335,9 @@ def snapshot(live, now, prev, bot_ids, crouch=(), person_crouch=False, person_ho
             fx, fy, fz = d["aim"]
             players.append(PlayerState(d["index"], d["team"], "ai", Vec(*d["pos"]), Vec(),
                                        math.atan2(fy, fx), math.atan2(fz, math.hypot(fx, fy)), True,
-                                       d["shield"], d["health"], d["weapon"]))
+                                       d["shield"], d["health"], d["weapon"], rank=d.get("rank") or ""))
         snap.mode = "firefight"
+        snap.ff = ff_state(live, players)
     if engine == 4:                              # King of the Hill
         h = live.king_hill() or HILL.get("last")
         # (a King game always has a hill: a read that misses keeps the last one. Halo 3's comes from the host's HUD
@@ -752,7 +778,7 @@ def main():
     SCALE, SCALE_CFG = None, scaling.settings()
     panel = (botctl.roster(o.roster) or []) if o.roster else []
     if o.roster and o.ff_list:   # Firefight's own list (play.py), else the list's first 3 till it is saved (ff_seed)
-        ff_list = botctl.roster(o.roster, firefight=True)
+        ff_list = botctl.roster(o.roster, firefight=True, game=o.game)
         panel = ff_list if ff_list is not None else panel[:botctl.FIREFIGHT_PLAYERS - 1]
     on_list = [b["tier"] for b in panel]
     if "scaling" in o.tier.split(",") + on_list:

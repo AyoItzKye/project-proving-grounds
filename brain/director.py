@@ -13,6 +13,7 @@
 import math
 import random
 from .core import PlayerState, Vec, dist
+from . import firefight as FF
 from .bot import Bot, Order
 from .callouts import Call, VoiceChannel, TIMING, LISTENER_BUSY
 from .modes import NEW_MODES
@@ -1440,6 +1441,42 @@ class Director:
                     + s.rng.uniform(0, 1.0 - 0.5 * r))
         return max(options, key=score)[0]
 
+    def ff_elite_slots(s, snap, n):
+        """Firefight's Elite team without a person on it (Versus, Generator Defense; guide 11 sections 2.3, 5): hunters
+        on the Spartan the guide's pressure picks (the lone one, shields down, the last life), a shadow with the
+        biggest Covenant squad (it strikes when the Spartans engage it), a stalker at Medium band from the target, and
+        every one a stalker late in the turn with the Spartans low (no Elite dies in the last minute)."""
+        ff = snap.ff or {}
+        spartans = [p for p in snap.players if p.alive and p.side == FF.SPARTAN and p.name != "ai"]
+        npcs = [p for p in snap.players if p.alive and p.team == s.team and p.name == "ai"]
+        groups = FF.squads([(p.pos.x, p.pos.y) for p in npcs])
+        big = max(groups, key=len) if groups else None
+        squad = (next(p.pos for p in npcs if (p.pos.x, p.pos.y) == big[0]) if big else None)
+        if not spartans:
+            pt = squad or getattr(s, "ff_last", None) or s.map["points"]["mid"]
+            return [("defender", pt, "camping")] * n
+
+        def pressure(p):
+            alone = not any(q.id != p.id and q.team == p.team and dist(q.pos, p.pos) < 3.0 for q in spartans)
+            return FF.spartan_pressure(alone, p.shield <= 0.0, ff.get("lives"), p.weapon in FF.POWER)
+        target = max(spartans, key=pressure)
+        late_low = ff.get("versus") and ff.get("lives", 9) is not None and 0 <= ff.get("lives", 9) <= 2 and \
+            snap.time_left is not None and snap.time_left < 60
+        roles = FF.elite_roles(n, versus=ff.get("versus", False), late_low=bool(late_low))
+        home = squad or target.pos
+        d = home - target.pos
+        k = d.length() or 1.0
+        stalk = target.pos + d * (min(k, 8.0) / k)       # Medium band off the target, on the squad's side
+        out = []
+        for r in roles:
+            if r == "hunter":
+                out.append(("hunter", target.pos, "aggression"))
+            elif r == "shadow":
+                out.append(("defender", squad or target.pos, "teamwork"))
+            else:                                          # stalker (breaker, distractor: no generators read yet)
+                out.append(("defender", stalk, "camping"))
+        return out
+
     def role_slots(s, now, snap, n):
         """Ordered list of (role, point, preferred trait)."""
         enemy = 1 - s.side                 # CTF: two teams, team == side
@@ -1453,6 +1490,17 @@ class Director:
                 s.ff_last, s.ff_lead = people[0].pos, people[0].id   # (assign_roles: the escorts' lead, Bot.lead)
                 return [("escort", people[0].pos, "aggression")] * n
             s.ff_lead = None
+            ff = snap.ff or {}
+            side = ff.get("side", {}).get(s.team)
+            if side != getattr(s, "ff_side", side):            # a turn swap (Versus): the old turn's spots are void
+                s.ff_last = None
+            s.ff_side = side
+            if side == FF.ELITE:                               # the Elite team, no person on it: hunt the Spartans
+                return s.ff_elite_slots(snap, n)
+            mine = [p for p in snap.players if p.team == s.team and p.alive and p.name != "ai"]
+            if ff.get("versus") and mine and not getattr(s, "ff_last", None):
+                s.ff_last = Vec(sum(p.pos.x for p in mine) / len(mine), sum(p.pos.y for p in mine) / len(mine),
+                                sum(p.pos.z for p in mine) / len(mine))   # (a bots-only Spartan team: where it is)
             # the player is down (Nov 6: when the player dies they roam or find a safe spot): they hold the map's safe
             # spots nearest where the player fell (its holds and named points), two spots so they are not stacked, and
             # fight from there until the player is back (they ran into the open middle before)
@@ -1462,6 +1510,12 @@ class Director:
             if not spots:
                 return [("defender", last, "camping")] * n
             a, b = spots[0], spots[1] if len(spots) > 1 else spots[0]
+            if ff.get("versus"):    # a bots-only Spartan team (guide 11 sections 2.3, 3.4): the anchor and the support
+                foes = [p for p in snap.players if p.alive and p.team != s.team and p.name != "ai"]   # hold the
+                roles = FF.spartan_roles(n, zone=ff.get("zone", "warm"))   # strongpoint; the roamer, when it is cool,
+                hunt = min(foes, key=lambda p: dist(p.pos, a), default=None)   # hunts the nearest player Elite
+                return [("hunter", hunt.pos, "aggression") if r == "roamer" and hunt is not None and ff.get("zone") == "cool"
+                        else ("defender", a if r == "anchor" else b, "camping") for r in roles]
             return [("defender", a, "camping") if i % 2 == 0 else ("defender", b, "camping") for i in range(n)]
         if snap.mode == "king" and snap.hill is not None:
             # theirs on it (guide 19 KOTH-STATIC-04, the contested hill): we take it, one more of us inside than of them

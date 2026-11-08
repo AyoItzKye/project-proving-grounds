@@ -21,7 +21,7 @@
 
 extern hb_shared* g_shm;
 extern hb_roster g_roster;           // botcore.cpp: the BOTS panel's list
-extern hb_roster g_ff_roster;        // botcore.cpp: Firefight's list (3 bots, your team)
+extern hb_roster g_ff_roster, g_od_roster;   // botcore.cpp: Firefight's lists (Reach: Spartan and Elite teams; ODST: 3, yours)
 extern uint32_t g_collector;         // botcore.cpp: the brain records the player (Data collector)
 extern uint32_t g_scale_games;       // botcore.cpp: Scaling difficulty's games averaged
 extern uint32_t g_sounds;            // botcore.cpp: the BOTS panel's sound volume, 0-100 (0 off)
@@ -53,6 +53,7 @@ typedef HANDLE(WINAPI* createfile_fn)(LPCWSTR, DWORD, DWORD, LPSECURITY_ATTRIBUT
 // not covered by the carnage report or a menu) is checked on the frame itself (probe_lobby).
 static createfile_fn o_createfile;
 static volatile LONG g_session;      // title of the last custom game lobby opened: 1 CE, 2 Halo 2
+static hb_roster& ff_list() { return g_session == 8 ? g_od_roster : g_ff_roster; }   // (the Firefight lobby's own list)
                                      // Classic, 3 Halo 3, 5 Reach, 6 H2A, 7 H4, 8 ODST (the titles with bots), 4 any other, 0 none
 static volatile DWORD g_lobby_gfx_at;
 static volatile LONG g_ff_lobby;     // the lobby last opened is Firefight's (FirefightCustomGame.gfx): it holds 4 players
@@ -307,13 +308,13 @@ static void draw_tile(float t) {
     else if (g_shm->bots_enabled)
     {
         // the list in a few words: 7v8 Legendary, 12 bots Mixed (more than two teams), No bots
-        const hb_roster& R = g_ff_lobby ? g_ff_roster : g_roster;   // (Firefight: its own list of 3)
+        const hb_roster& R = g_ff_lobby ? ff_list() : g_roster;     // (Firefight: its own list)
         int teams = 0, tier = -1, n = R.n;
         for (int t = 0; t < HB_TEAMS_MAX; t++) teams += roster_on_team(R, t) > 0;
         for (int i = 0; i < n; i++) tier = tier < 0 || tier == R.bot[i].tier ? R.bot[i].tier : 5;
         const char* d = tier < 0 ? "" : DIFF_NAME[tier < 6 ? tier : 5];
         if (!n) sprintf_s(sum, "No bots");
-        else if (g_ff_lobby) sprintf_s(sum, "%d %s %s", n, n == 1 ? "bot" : "bots", d);
+        else if (g_ff_lobby && g_session != 5) sprintf_s(sum, "%d %s %s", n, n == 1 ? "bot" : "bots", d);
         else if (teams <= 2) sprintf_s(sum, "%dv%d %s", roster_on_team(R, 0), roster_on_team(R, 1), d);
         else sprintf_s(sum, "%d bots %s", R.n, d);
     }
@@ -375,7 +376,7 @@ static void draw_panel() {
     bots_panel_env e{};
     e.make_texture = make_texture;
     e.render_model = render_model; e.model_has = model_has; e.model_zoom = mv_set_zoom; e.model_head = mv_head; e.model_headroom = mv_set_headroom;
-    e.roster = g_ff_lobby ? &g_ff_roster : &g_roster;     // (Firefight: its own list of 3; the 16-player list is kept)
+    e.roster = g_ff_lobby ? &ff_list() : &g_roster;       // (Firefight: its own list; the 16-player list is kept)
     e.enabled = &g_shm->bots_enabled; e.difficulty = &g_shm->difficulty;
     e.lidar_mode = &g_shm->lidar_mode; e.lidar_players = &g_shm->lidar_players;
     e.collector = &g_collector;

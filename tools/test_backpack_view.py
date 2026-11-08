@@ -6,9 +6,9 @@ clicks (native/bin/panel_preview.exe --click: the Backpack box, then Seafoam Tri
 2. and not the front it showed before
 3. picking its own roll again (nothing changes) leaves it facing the front
 Keyboard (Master of UI/UX 11.11; the panel's keyboard navigation, overlay.cpp):
-4. Tab x22 to the Backpack box, Space, Down x3, Enter: Law's End (13) picked, the view as the bot set to it, turned
+4. Tab x23 to the Backpack box, Space, Down x3, Enter: Law's End (13) picked, the view as the bot set to it, turned (one stop per game in the list: 7 with ODST)
 5. Esc in the open list closes the list, not the editor (the editor as before the list opened)
-6. the arrows on the 3D view (Tab x10) turn it, and nothing else moves (the focus stays on it)
+6. the arrows on the 3D view (Tab x11) turn it, and nothing else moves (the focus stays on it)
 A save that fails (--readonly: the profiles file read-only, Code Master DD-01 8):
 7. the pick shows the save error (its red line under the pickers) and the bot stays facing the front (no look made,
    no turn to the old one); the file is writable again afterwards
@@ -55,12 +55,12 @@ def main():
     picked = shot("picked", "--state", "edit2mo", "--click", CLICKS)
     back = shot("back", "--state", "edit2mor", "--set", "h3.backpack=10")
     same = shot("same", "--state", "edit2mo", "--click", SAME)
-    keyed = shot("keyed", "--state", "edit2mo", "--keys", "tab*22,space,down*3,enter")
+    keyed = shot("keyed", "--state", "edit2mo", "--keys", "tab*23,space,down*3,enter")
     back13 = shot("back13", "--state", "edit2mor", "--set", "h3.backpack=13")
-    on_box = shot("onbox", "--state", "edit2mo", "--keys", "tab*22", view=EDITOR)
-    esc = shot("esc", "--state", "edit2mo", "--keys", "tab*22,space,esc", view=EDITOR)
-    on_view = shot("onview", "--state", "edit2mo", "--keys", "tab*10", view=FULL)
-    turned = shot("turned", "--state", "edit2mo", "--keys", "tab*10,left*20", view=FULL)
+    on_box = shot("onbox", "--state", "edit2mo", "--keys", "tab*23", view=EDITOR)
+    esc = shot("esc", "--state", "edit2mo", "--keys", "tab*23,space,esc", view=EDITOR)
+    on_view = shot("onview", "--state", "edit2mo", "--keys", "tab*11", view=FULL)
+    turned = shot("turned", "--state", "edit2mo", "--keys", "tab*11,left*20", view=FULL)
     prof = os.path.join(os.environ.get("TEMP", ""), "hb_profiles_preview.ini")
     try:
         failed = shot("failed", "--state", "edit2mo", "--click", CLICKS, "--readonly", view=FULL)
@@ -78,7 +78,7 @@ def main():
         fails.append(f"picking its own roll again moved the view {np.abs(same - front).mean():.1f} (want it left facing the front)")
     d_keys, d_esc = np.abs(keyed - back13).mean(), np.abs(esc - on_box).mean()
     if d_keys > 1.0:
-        fails.append(f"by keys (Tab x22, Space, Down x3, Enter): the view is {d_keys:.1f} off the bot turned round in Law's End "
+        fails.append(f"by keys (Tab x23, Space, Down x3, Enter): the view is {d_keys:.1f} off the bot turned round in Law's End "
                      f"(want under 1: the Backpack box reached and its pack picked)")
     if d_esc > 1.0:
         fails.append(f"Esc in the open Backpack list: the editor is {d_esc:.1f} off how it was (want under 1: the list "

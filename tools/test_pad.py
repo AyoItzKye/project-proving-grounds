@@ -2,7 +2,7 @@
 tabs, back backs out one level, directions follow the layout). On the offline panel (native/bin/panel_preview.exe --keys
 pad_...: the pad's buttons as ImGui gets them from XInput), the bot editor at 1920x1080:
 
-1. D-pad Down x2, Right x2, Down x3 reach the Backpack box (its focus frame)
+1. D-pad Down x2, Right x2, Down x5, Right reach the Backpack box (its focus frame)
 2. then A, Down x3, A: Law's End picked, the bot turned round in it (the same pixels as the bot set to it)
 3. B in the open list closes the list, not the editor; B again closes the editor
 4. Down from Halo 2 goes to Halo 3, the chosen game below it (not the picker in line with it)
@@ -26,7 +26,7 @@ EXE = os.path.join(BIN, "panel_preview.exe")
 OUT = os.path.join(HERE, "..", "logs", "tmp", "pad_test.ppm")
 VIEW = (672, 336, 1034, 768)
 EDITOR = (380, 180, 1540, 900)
-ROUTE = "pad_down*2,pad_right*2,pad_down*3"
+ROUTE = "pad_down*2,pad_right*2,pad_down*5,pad_right"   # (7 games in the list since Nov 8: the left column's Tech suit, then right)
 FOCUS = (226, 236, 245)
 
 
@@ -67,7 +67,7 @@ def main():
     if mean(crop(gone, EDITOR), crop(a, EDITOR)) < 10.0:
         fails.append("B twice: the editor still open (want it closed)")
     h3, _ = shot("edit2mo", "tab*5,pad_down")                 # (Tab x5: Halo 2)
-    ring = int((np.abs(h3[490:500, 395:660] - FOCUS).sum(2) < 30).sum())   # the ring's top edge, round Halo 3
+    ring = int((np.abs(h3[466:478, 395:660] - FOCUS).sum(2) < 30).sum())   # the ring's top edge, round Halo 3 (7 games: y 472)
     if ring < 100:
         fails.append(f"Down from Halo 2: {ring} px of a ring round Halo 3 (want the focus on it, the game below)")
     rb, _ = shot("edit2mo", "pad_rb")

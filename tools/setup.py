@@ -8,8 +8,10 @@ step by step, skipping what is already there:
   5 logos       the game logos for the BOTS panel's profile view (tools/panel_art.py)
   6 3D bots     the profile view's 3D bots and the emblem art, from MCC's map files with the map tools
                 (tools/make_models.py; a few minutes, about 470 MB)
-  7 effects     the armor effect sprites (tools/fx_art.py, the map tools)
-  8 looks       each bot's armor and emblem as rolled (tools/looks_export.py)
+  7 ODST 3D bot Halo 3: ODST's squad model for the profile view (make_models.py --only odst_spartan; added after the
+                3D bots step, so installs that have the others get it too)
+  8 effects     the armor effect sprites (tools/fx_art.py, the map tools)
+  9 looks       each bot's armor and emblem as rolled (tools/looks_export.py)
 
 Each step prints one line, "STEP <n>/<total> <name>: done | already there | skipped (<why>) | failed: <why>", which
 the launcher shows. A failed step does not stop the ones after it that do not need it. Steam installs MCC's games one
@@ -70,6 +72,18 @@ def _models():
     return tool("make_models.py", "--clean-exports")
 
 
+def _odst_model():
+    """Halo 3: ODST's 3D bot (added Nov 8, GitHub #15): installs whose 3D bots step was done before it get it too."""
+    if not paths.map_tool("model2obj"):
+        return False, "the map tools are missing (tools/map_tools: reinstall, or see docs/BUILDING.md)"
+    return tool("make_models.py", "--only", "odst_spartan", "--clean-exports")
+
+
+def _no_odst():
+    """Why the ODST 3D bot step does not apply (None: it does)."""
+    return None if not paths.mcc() or "odst" in paths.games() else "Halo 3: ODST is not installed"
+
+
 def _effects():
     if not paths.map_tool("model2obj"):
         return False, "the map tools are missing (tools/map_tools)"
@@ -78,6 +92,16 @@ def _effects():
 
 def _looks():
     return tool("looks_export.py")
+
+
+def _looks_current():
+    """bot_looks.ini there and holding every game the profile view shows (an install from before a game joined the view,
+    Halo 3: ODST on Nov 8, re-exports it: the panel itself only does when the profiles change)."""
+    if not has("native/bin/bot_looks.ini"):
+        return False
+    from brain import looks
+    text = open(os.path.join(ROOT, "native", "bin", "bot_looks.ini"), encoding="utf-8", errors="replace").read()
+    return all(f"|{g}|own|" in text for g in looks.VIEW_GAMES)
 
 
 def _no_reach():
@@ -93,8 +117,9 @@ STEPS = (
     ("logos", lambda: has("native/bin/art/ce.rgba", "native/bin/art/h4.rgba"), _logos, True, None),
     ("3D bots", lambda: has("native/bin/models/made.txt") or has("native/bin/models/h3_spartan.mdl",
                                                                  "maps/_models/emblems_mcc"), _models, True, None),
+    ("ODST 3D bot", lambda: has("native/bin/models/odst_spartan.mdl"), _odst_model, True, _no_odst),
     ("effects", lambda: has("native/bin/art/fx_fire.rgba"), _effects, True, _no_reach),
-    ("looks", lambda: has("native/bin/bot_looks.ini"), _looks, False, None),
+    ("looks", lambda: _looks_current(), _looks, False, None),
 )
 TOTAL = len(STEPS) + 1
 

@@ -357,6 +357,15 @@ def table_pieces(name, game, species=None, path=PROFILES, looks_dir=LOOKS):
     """";pieces=region:permutation,..." a decoded look wears by its game's customization table (Halo 3, H2A: their bytes
     are the table's values, maps/_looks/<game>_armory.json), the hand-set values in (the view shows what the bot wears;
     species as resolved()), or "" for a game without a table."""
+    view = json.load(open(os.path.join(looks_dir, game + ".json"), encoding="utf-8")).get("view")
+    if view:                                  # ODST: a character's pieces by its value (maps/_looks/odst.json "view")
+        worn = resolved(name, game, species, path, looks_dir)
+        ch = str(worn.get("character", 0))
+        parts = dict(q.split(":") for q in (view["base"] + "," + view["character"].get(ch, "")).split(",") if q)
+        if worn.get("helmet_off") and ch in view.get("face", {}):    # (the helmet off: the character's face)
+            parts.pop("headgear", None)
+            parts.update(helmet="off", head=view["face"][ch])
+        return ";pieces=" + ",".join(f"{r}:{p}" for r, p in parts.items())
     t = armory.table(os.path.join(looks_dir, game + "_armory.json"))
     if t is None:
         return ""
@@ -369,7 +378,7 @@ def table_pieces(name, game, species=None, path=PROFILES, looks_dir=LOOKS):
 
 
 VIEW = os.path.join(ROOT, "native", "bin", "bot_looks.ini")
-VIEW_GAMES = ("ce", "h2", "h3", "h2a")
+VIEW_GAMES = ("ce", "h2", "h3", "h2a", "odst")
 
 
 def export_view(path=PROFILES, out=VIEW, looks_dir=LOOKS):

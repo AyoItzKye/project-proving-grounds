@@ -340,47 +340,81 @@ void hr_bot_solo_spawn(uint32_t player) {
 // bot of a team with lives (Firefight) gets the person's own last spawn point, or else a spot 1.5 u behind him;
 // the game then spawns it on time and takes the life from the team as for him (live s187 Beachhead: bots back
 // after 10.0 s like the person, the team's lives 6 -> 0 one per respawn, then they waited)
+// Versus and Generator Defense (Nov 8): +0xAC is the side, not the lobby team: 1 Spartans (lives: the shared pool),
+// 7 Elites (-1, unlimited; a 15 s timer to the Spartans' 10 s), swapped at each turn. An Elite bot's spawn failed
+// the same way (live Beachhead Versus: timer down to 0, then dead for good) and came back at once with an Elite
+// spawn point set (logs/tmp/set_spawn.py). So the point is now the bot's own side's: where the game last spawned
+// someone of that side this match (a person's death-screen pick, a turn start; a new body is a new spawn), else a
+// person's last spawn point on its side (at a match's start it still holds the last match's: second), else behind a
+// living teammate of that side. Firefight is told by any side having lives (PvP has none).
 void hr_bot_spawn_point(uint32_t player) {
-    static bool logged[HB_MAX_PLAYERS];
+    static bool logged[HB_MAX_PLAYERS], side_ok[8];
+    static uint32_t seen_unit[HB_MAX_PLAYERS];      // (a new body is a new spawn, this match or the next)
+    static float side_pt[8][6];
     int index = player & 0xFFFF;
     if (!g_shm || !g_hr || index >= HB_MAX_PLAYERS) return;
-    bool bot = false;
-    for (int i = 0; i < HB_MAX_PLAYERS; i++) bot |= g_shm->bot_player_index[i] == index;
-    if (!bot) return;
+    auto is_bot = [](int i) {
+        for (int k = 0; k < HB_MAX_PLAYERS; k++) if (g_shm->bot_player_index[k] == i) return true;
+        return false;
+    };
     __try {
         uint8_t* tls = hr_tls();
         uint8_t* p = tls ? hr_player(tls, index) : nullptr;
         uint8_t* gg = tls ? *(uint8_t**)(tls + 0x20) : nullptr;
         if (!p || !gg) return;
-        if (*(int32_t*)(p + 0x28) != -1) { logged[index] = false; return; }
-        int team = (int8_t)p[0xAC];
-        if (team < 0 || team >= 8 || *(int32_t*)(gg + 0x16C + team * 4) < 0 || p[0x410]) return;   // (no lives: not Firefight)
-        uint8_t* me = nullptr;                      // the person: the first player no bot is
-        for (int i = 0; i < HB_MAX_PLAYERS && !me; i++) {
-            bool b = false;
-            for (int k = 0; k < HB_MAX_PLAYERS; k++) b |= g_shm->bot_player_index[k] == i;
-            if (!b && hr_live(tls, i)) me = hr_player(tls, i);
+        int side = (int8_t)p[0xAC];
+        if (side < 0 || side >= 8) return;
+        uint32_t unit = *(uint32_t*)(p + 0x28);
+        if (unit != 0xFFFFFFFF) {                   // alive: where it came in is a spawn point of its side
+            if (unit != seen_unit[index]) {
+                seen_unit[index] = unit;
+                uint8_t* u = hr_object(tls, unit);
+                if (u && *(uint32_t*)(u + 0x14) == 0xFFFFFFFF) {   // (on foot: a rider's position is the seat's)
+                    memcpy(side_pt[side], u + 0x44, 12);
+                    memcpy(side_pt[side] + 3, u + 0x50, 12);
+                    side_pt[side][2] += 0.1f;
+                    side_pt[side][5] = 0.0f;
+                    side_ok[side] = true;
+                }
+            }
+            logged[index] = false;
+            return;
         }
-        if (!me) return;
+        if (!is_bot(index)) return;                 // (a person's death screen picks his own)
+        bool ff = false;                           // (no side with lives: not Firefight)
+        for (int t = 0; t < 8; t++) ff |= *(int32_t*)(gg + 0x16C + t * 4) >= 0;
+        if (!ff || p[0x410]) return;
+        uint8_t* me = nullptr;                      // a person on its side
+        uint8_t* mate = nullptr;                    // else a living teammate
+        for (int i = 0; i < HB_MAX_PLAYERS; i++) {
+            uint8_t* q = hr_live(tls, i) && i != index ? hr_player(tls, i) : nullptr;
+            if (!q || (int8_t)q[0xAC] != side) continue;
+            if (!is_bot(i) && !me) me = q;
+            if (*(int32_t*)(q + 0x28) != -1 && !mate) mate = q;
+        }
         float* at = (float*)(p + 0x3EC);
-        const float* his = (const float*)(me + 0x3EC);
+        const float* his = me ? (const float*)(me + 0x3EC) : nullptr;
         const char* from;
-        if (his[0] || his[1] || his[2]) {           // his last spawn point and facing (the game's own pick)
-            memcpy(p + 0x3EC, me + 0x3EC, 24);
+        if (side_ok[side]) {                        // the newest spawn of its side this match (a person's pick too)
+            memcpy(at, side_pt[side], 24);
+            from = "its side's last spawn";
+        } else if (his && (his[0] || his[1] || his[2])) {   // his last spawn point (at a match's start: the last
+            memcpy(at, his, 24);                            // match's, Nov 8, so second)
             from = "his last spawn point";
         } else {
-            uint8_t* u = hr_object(tls, *(uint32_t*)(me + 0x28));
-            if (!u) return;                         // (he is down too, and never spawned at a point: wait)
+            uint8_t* who = me && *(int32_t*)(me + 0x28) != -1 ? me : mate;
+            uint8_t* u = who ? hr_object(tls, *(uint32_t*)(who + 0x28)) : nullptr;
+            if (!u) return;                         // (nobody of its side up, none seen spawn: wait)
             const float* pos = (const float*)(u + 0x44);
             const float* fwd = (const float*)(u + 0x50);
             at[0] = pos[0] - 1.5f * fwd[0]; at[1] = pos[1] - 1.5f * fwd[1]; at[2] = pos[2] + 0.1f;
             at[3] = fwd[0]; at[4] = fwd[1]; at[5] = 0.0f;
-            from = "behind him";
+            from = "behind a teammate";
         }
         p[0x410] = 1;
         if (!logged[index]) {
             logged[index] = true;
-            logf("reach respawn: bot %d spawns at %s (%.1f %.1f %.1f)", index, from, at[0], at[1], at[2]);
+            logf("reach respawn: bot %d (side %d) spawns at %s (%.1f %.1f %.1f)", index, side, from, at[0], at[1], at[2]);
         }
     } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }

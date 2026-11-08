@@ -9,6 +9,7 @@ from .profiles import HANDS
 from . import profiles
 from .terrain import MAX_DROP, MAX_RISE, ROUTE_JUMP, ROUTE_CROUCH, EYE, CHEST
 from . import vehicles
+from . import firefight as FF
 
 FOV_HALF = math.radians(35)      # CE default 70 degree horizontal FOV
 PERIPHERAL_HALF = math.radians(55)  # noticed later, at the edge of attention
@@ -1820,7 +1821,23 @@ class Bot:
             v += 60.0 * s.p.tactics
         if e is not None:
             v *= s.kit.threat_mod(s, now, me, e, snap)   # armor lock, decoys, sprinters, jetpacks (guide 08)
+        if e is not None and snap.mode == "firefight":
+            v *= s.ff_threat(me, snap, e, d)
         return v
+
+    def ff_threat(s, me, snap, e, d):
+        """Firefight's factor (brain/firefight.py): an NPC by its rank's lethality at this band and its value (the
+        handbook's ladder: a fuel rod Grunt before an Ultra before a Minor; an Engineer first), a player Elite in Versus
+        worth a life (over everything but a Hunter at Melee band at 2 lives or fewer); an Elite bot's pick among
+        Spartans by the guide's pressure (the lone one, shields down, the last life; not the one with rockets on us)."""
+        ff = snap.ff or {}
+        if me.side == FF.ELITE and e.side == FF.SPARTAN and e.name != "ai":
+            alone = not any(p.alive and p.team == e.team and p.id != e.id and p.name != "ai" and dist(p.pos, e.pos) < 3.0
+                            for p in snap.players)
+            facing = e.weapon in FF.POWER and d >= FF.BANDS[1] and aims_at(e, me)
+            return 0.5 + FF.spartan_pressure(alone, e.shield <= 0.0, ff.get("lives"), facing)
+        return FF.threat_mult(e.rank, d, e.side if e.name != "ai" else None, ff.get("versus", False), ff.get("lives"),
+                              ff.get("left", 9) <= 3)
 
     def pick_target(s, now, me, snap, seen):
         """Highest threat; a new target must beat the current one by 25% (no flip-flopping between two
@@ -1975,6 +1992,9 @@ class Bot:
         # enemy is healthier. Otherwise commit (a human finishes a fight he is winning). How cracked
         # is cracked follows the posture: careful near the enemy's win, stubborn when all-in.
         thr = max(0.05, min(0.45, 0.25 + 0.5 * (0.5 - post)))
+        ff_side = me.side if snap.mode == "firefight" and me.side in (FF.SPARTAN, FF.ELITE) else 0
+        if ff_side:     # Firefight's Survive threshold: the Spartans' rises as the shared lives fall, an Elite's is 0.5
+            thr = max(thr, FF.survive(ff_side, (snap.ff or {}).get("lives")))   # (an Elite death is a Spartan life)
         # (a match without shields, Team SWAT: every shield reads 0, so cracked is the body at half)
         cracked = me.health < 0.5 if snap.shieldless else me.shield < thr and me.health < 0.8
         threats = [s.per.beliefs[k].pos for k in seen]
@@ -1982,13 +2002,14 @@ class Bot:
         if cracked and seen and s.p.tactics > 0.15:      # novices fight it out wherever they stand
             mine = me.shield + me.health
             theirs = max(((snap.player(k).shield + snap.player(k).health) for k in seen if snap.player(k)), default=0.0)
-            if len(seen) > 1 or theirs > mine + 0.3:
+            if len(seen) > 1 or theirs > mine + 0.3 or ff_side == FF.ELITE:   # (an Elite never trades: guide 11 5.2)
                 # losing: break line of sight, but only to cover that is right there
                 cover = s.cover_from(me, threats)
                 # ... cover reached before the damage coming in kills us (run 2.25 u/s); else fight it out
                 taking = sum(x for t, x in getattr(s.per, "losses", []) if now - t < 1.5) / 1.5
                 if cover is not None and dist(me.pos, cover) <= reach and dist(me.pos, cover) / 2.25 < 0.6 * mine / max(taking, 1e-3):
-                    scores[("retreat", cover)] = 2.5 + 0.5 * s.p.tactics + 0.3 * s.p.caution
+                    scores[("retreat", cover)] = (2.5 + 0.5 * s.p.tactics + 0.3 * s.p.caution) * (
+                        FF.retreat_bias(ff_side) / 1.2 if ff_side else 1.0)   # (Firefight: Elites 1.4, Spartans 1.2)
                     s.recharge_until = now + 7.0  # guide 06: a popped shield is 7-10 s out of the fight
         moved = s.relocate_point(now, me, snap)
         if moved is not None:

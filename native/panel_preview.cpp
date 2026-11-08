@@ -98,7 +98,14 @@ static int selftest() {
         hb_roster q{};
         roster_fill(q, 4, 5, 3, HB_STYLE_ANY, 7);
         bool more = roster_add(q, 0, 3, HB_STYLE_ANY, 9);
-        CHECK(q.n == 3 && q.teams == 1 && !more && roster_max_teams(5) == 1, "Firefight: 3 bots, one team, Add stops");
+        CHECK(q.n == 3 && q.teams == 1 && !more && roster_max_teams(8) == 1, "ODST Firefight: 3 bots, one team, Add stops");
+        // Reach's (8 players): a Spartan and an Elite team, 4 a side, 7 bots (the 8th seat yours); the Elites fill first
+        hb_panel_firefight = 2;
+        roster_fill(q, 2, 4, 3, HB_STYLE_ANY, 7);
+        CHECK(q.n == 7 && q.teams == 2 && roster_on_team(q, 1) == 4 && roster_on_team(q, 0) == 3 &&
+              !roster_add(q, 0, 3, HB_STYLE_ANY, 9) && roster_max_teams(5) == 2, "Reach Firefight: 4 Elites, 3 Spartans");
+        roster_remove(q, 0);
+        CHECK(!roster_add(q, 1, 3, HB_STYLE_ANY, 9) || roster_on_team(q, 1) <= 4, "Reach Firefight: no 5th on a side");
         hb_panel_firefight = 0;
         CHECK(roster_max_teams(5) == 8, "multiplayer keeps its eight teams after Firefight");
     }
@@ -290,8 +297,14 @@ int main(int argc, char** argv) {
     else if (!strcmp(state, "collector")) collector = 1;
     else if (!strcmp(state, "collectoroff")) { collector = 1; enabled = 0; }   // on, but greyed out: no bots
     else if (!strcmp(state, "ce")) { title = 1; r.bot[0].team = 2; r.teams = 3; }
-    else if (!strncmp(state, "firefight", 9)) {           // Firefight's own list: 3 bots, your team (botcore.cpp ff_seed)
-        hb_panel_firefight = 1; roster_fill(r, 1, 3, 3, HB_STYLE_ANY, 42); select = 1;
+    else if (!strncmp(state, "reachff", 7)) {             // Reach Firefight: Spartan and Elite teams, 4 a side
+        hb_panel_firefight = 2; roster_fill(r, 2, 4, 3, HB_STYLE_ANY, 42); select = 1;
+        if (!strcmp(state, "reachffquick")) popup = "Quick setup";
+        if (!strcmp(state, "reachffempty")) { r.n = 0; select = -1; }
+        if (!strcmp(state, "reachffnone")) select = -1;
+    }
+    else if (!strncmp(state, "firefight", 9)) {           // ODST Firefight's own list: 3 bots, your team (botcore.cpp ff_seed)
+        title = 8; hb_panel_firefight = 1; roster_fill(r, 1, 3, 3, HB_STYLE_ANY, 42); select = 1;
         if (!strcmp(state, "firefightquick")) popup = "Quick setup";
         if (!strcmp(state, "firefightempty")) { r.n = 0; select = -1; }
     }
@@ -326,8 +339,8 @@ int main(int argc, char** argv) {
         if (!strcmp(state, "reroll") || !strcmp(state, "rerollerr")) popup = "Re-roll bot profiles";
         bots_panel_debug_reroll_failed(!strcmp(state, "rerollerr"));   // the file could not be written
         if (!strncmp(state, "edit", 4)) {   // edit<game 0-5>[c][e][o][n]: the profile view as rolled; c: some looks
-            int game = state[4] >= '0' && state[4] <= '5' ? state[4] - '0' : 2;   // changed by hand, e: the species
-            static const char* KEY[6] = { "ce", "h2", "h3", "reach", "h2a", "h4" };   // set to Elite, o: Reach
+            int game = state[4] >= '0' && state[4] <= '6' ? state[4] - '0' : 2;   // changed by hand, e: the species
+            static const char* KEY[7] = { "ce", "h2", "h3", "reach", "h2a", "h4", "odst" };   // set to Elite, o: Reach
             const char* fl = state + 5;                                               // showing the other species, n:
             char k[32];                                                               // no look file (made before one),
             if (strchr(fl, 'c')) {                                                    // s: set to Spartan (each on the --bot shown)

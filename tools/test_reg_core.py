@@ -633,7 +633,10 @@ def check_ff_sides():
     from brain.live import LiveReach, NONE
 
     class FakeReach:
-        ai_units, UNIT_TEAM = LiveReach.ai_units, LiveReach.UNIT_TEAM
+        ai_units, UNIT_TEAM, ACTOR_AT, ACTOR_CHARACTER = LiveReach.ai_units, LiveReach.UNIT_TEAM, LiveReach.ACTOR_AT, LiveReach.ACTOR_CHARACTER
+
+        def ai_rank(s, u):
+            return None                                  # (no actor array here: brain/live.py ai_rank)
 
         def __init__(s, sides):
             s.mem, ents, s.g = {}, bytearray(), s

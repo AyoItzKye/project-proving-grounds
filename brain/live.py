@@ -1600,7 +1600,7 @@ class LiveReach(LiveH3):
             name = b[0xB0:0xD0].decode("utf-16-le", "replace").partition(chr(0))[0]
             o = s.object(unit)
             # the joined configuration sits at +0x90 (name +0x20, team byte +0x98)
-            d = dict(index=i, name=name, team=b[0x128], unit=unit, pos=None, fwd=None,
+            d = dict(index=i, name=name, team=b[0x128], side=b[0xAC], unit=unit, pos=None, fwd=None,   # (side: Firefight)
                      aim=None, vehicle=-1, health=0.0, shield=0.0, weapon="none")
             if o:
                 u = s.g.read(o, 0x400)
@@ -1634,6 +1634,36 @@ class LiveReach(LiveH3):
 
     # unit's side byte: Spartan players 1, Elite players 7, the Covenant AI 3 (live Beachhead Nov 6, Classic and Versus)
     UNIT_TEAM = 0x1CA
+    # an AI unit's actor (TLS +0x8 "actor" array) and the actor's character tag, objects\characters\<species>\ai\<rank>
+    # (grunt_major, jackal_sniper, elite_ultra, ...): live Beachhead Versus Nov 8 (tools/ff_inspect.py)
+    ACTOR_AT, ACTOR_CHARACTER = 0x1BC, 0x6C
+
+    def ff_lives(s):
+        """Firefight: each side's lives (game globals +0x16C + side * 4; side 1 the Spartans' shared pool, 7 the Elites'
+        -1, no limit), [8 ints], or None."""
+        try:
+            return list(struct.unpack("<8i", s.g.read(s.g.u64(s._blk + 0x20) + 0x16C, 32)))
+        except Exception:
+            return None
+
+    def ai_rank(s, unit_bytes):
+        """An AI unit's rank, its character tag's name ("grunt_major"), or None (no actor: a player's, or a dead body)."""
+        a = struct.unpack_from("<I", unit_bytes, s.ACTOR_AT)[0]
+        if a == NONE:
+            return None
+        try:
+            data, mx, size = s._array(0x8)
+            if (a & 0xFFFF) >= mx:
+                return None
+            e = s.g.read(data + (a & 0xFFFF) * size, s.ACTOR_CHARACTER + 4)
+            if struct.unpack_from("<H", e, 0)[0] != a >> 16:
+                return None
+            from .forge import _tag_names
+            names = _tag_names(s) or []
+            t = struct.unpack_from("<I", e, s.ACTOR_CHARACTER)[0] & 0xFFFF
+            return names[t].rsplit("\\", 1)[-1] if t < len(names) and names[t] else None
+        except Exception:
+            return None
 
     def ai_units(s, players):
         """Firefight: the AI's bipeds as player-like dicts (index 1000 + object slot): human-side AI (UNIT_TEAM 1, 2) on
@@ -1658,7 +1688,7 @@ class LiveReach(LiveH3):
                 continue
             if struct.unpack_from("<I", u, 0x1D0)[0] != NONE:   # a player's (a bot's old body)
                 continue
-            out.append(dict(index=1000 + i, name="ai", team=u[s.UNIT_TEAM], unit=(salt << 16) | i,
+            out.append(dict(index=1000 + i, name="ai", team=u[s.UNIT_TEAM], unit=(salt << 16) | i, rank=s.ai_rank(u),
                             pos=struct.unpack_from("<3f", u, 0x44), fwd=struct.unpack_from("<3f", u, 0x50),
                             aim=struct.unpack_from("<3f", u, 0x208), vehicle=-1, weapon="unknown", weapons=[],
                             **dict(zip(("shield", "health"), s._vitals((salt << 16) | i, shield_dmg, body_dmg, player=False)))))

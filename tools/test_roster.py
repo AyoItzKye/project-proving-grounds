@@ -72,19 +72,30 @@ def main():
     plan = roster_plan([dict(name="Player", team=1, tier="top", style="any")], people, True, "reach")
     if plan[0][1].lower() == "player":
         fails.append("took a person's name")
-    # Firefight holds 4 players in all (ODST crashed with 7, 15 and 16-25): botctl.player_cap, and every path of
-    # play.py's bot adding (the panel's list, team games, free for all, LiDAR) goes through it
-    if (botctl.player_cap("odst"), botctl.player_cap("reach", firefight=True), botctl.player_cap("h3")) != (4, 4, 16):
-        fails.append("player cap: ODST / Firefight 4, other games 16")
+    # ODST's Firefight holds 4 players in all (it crashed with 7, 15 and 16-25), Reach's 8 (MCC custom games), 4 a
+    # side: botctl.player_cap, and every path of play.py's bot adding (the panel's list, team games, free for all,
+    # LiDAR) goes through it
+    if (botctl.player_cap("odst"), botctl.player_cap("reach", firefight=True), botctl.player_cap("h3")) != (4, 8, 16):
+        fails.append("player cap: ODST 4, Reach Firefight 8, other games 16")
     src = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "play.py"), encoding="utf-8").read()
-    if ("room = botctl.player_cap(o.game, firefight)" not in src or src.count("room > 0") < 2
+    if ("room = botctl.player_cap(o.game, ff)" not in src or src.count("room > 0") < 2
             or "[:max(0, room)]" not in src):
         fails.append("play.py adds bots on a path the player cap does not cover")
     # Firefight takes the panel's list too (s169: it used made-up teammates, the panel's 3 never joined): its own
-    # list, all on your team, and live_bots reads the same list for each bot's difficulty
-    if ('team = players[0]["team"] if ff else team' not in src or "botctl.roster(o.roster, firefight=True)" not in src
+    # list (ODST's all on your team, Reach's Spartan and Elite teams), and live_bots reads the same list
+    if ("ff_plan(plan, players, o.game)" not in src or "botctl.roster(o.roster, firefight=True, game=o.game)" not in src
             or '["--ff-list"]' not in src):
-        fails.append("play.py: Firefight does not take the panel's Firefight list onto the player's team")
+        fails.append("play.py: Firefight does not take the panel's Firefight list")
+    from play import ff_plan
+    me = [dict(index=0, name="Me", team=0)]
+    want = [(1, f"E{k}") for k in range(5)] + [(0, f"S{k}") for k in range(4)]
+    got, left = ff_plan(want, me, "reach")
+    sides = [sum(1 for t, _ in got if t == s) for s in (0, 1)]
+    if sides != [3, 4] or len(left) != 2:                # (you are the 4th Spartan; a 5th Elite and Spartan stay out)
+        fails.append(f"Reach Firefight: 4 a side with the person, 8 in all ({sides}, left {left})")
+    got, left = ff_plan(want, me, "odst")
+    if len(got) != 3 or {t for t, _ in got} != {0}:
+        fails.append("ODST Firefight: 3 bots, all on the person's team")
     if fails:
         sys.exit("FAIL: " + "; ".join(fails))
     print("roster OK")

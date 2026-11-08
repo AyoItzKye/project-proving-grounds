@@ -40,12 +40,18 @@ BTN = dict(fire=1, jump=2, crouch=4, grenade=8, melee=16, action=32, reload=64, 
 GAME_ID = {"ce": 1, "h2": 2, "h3": 3, "reach": 4, "odst": 5, "h2a": 6, "h4": 7}
 GAME_BIT = {"h2": 1 << 24, "h3": 1 << 25, "reach": 1 << 26, "odst": 1 << 27, "h2a": 1 << 28, "h4": 1 << 29}
 MAX_PLAYERS, FIREFIGHT_PLAYERS = 16, 4
+# Reach Firefight in MCC custom games (July 2023 update): 8 players in all, both sides; this mod's rule 4 a side
+# (docs/bot-brain/11-reach-firefight-versus.md 1.4, 1.5). Live Beachhead Versus Nov 8: 4 Spartans and 4 Elites joined
+# and played both turns.
+REACH_FF_PLAYERS, FF_SIDE = 8, 4
 
 
 def player_cap(game, firefight=False):
-    """Players a match may hold, bots and people: Firefight (ODST's only multiplayer, and Reach's Firefight) is built
-    for 4; more crashed ODST every time (-25 live: 7, 15 and 16 players, the renderer, halo3odst +0x15950b)."""
-    return FIREFIGHT_PLAYERS if firefight or game == "odst" else MAX_PLAYERS
+    """Players a match may hold, bots and people: ODST's Firefight 4 (more crashed it every time, Oct 25 live: 7, 15
+    and 16 players, the renderer, halo3odst +0x15950b); Reach's Firefight 8, 4 a side (ff_side_cap)."""
+    if game == "odst":
+        return FIREFIGHT_PLAYERS
+    return REACH_FF_PLAYERS if firefight else MAX_PLAYERS
 
 
 OFF_SETTINGS = 752
@@ -118,15 +124,18 @@ TIER_KEYS = ("novice", "average", "strong", "top", "scaling")
 STYLE_KEYS = ("rusher", "camper", "flanker", "objector", "spammer", "grudger", "sniper", "any")
 
 
-def roster(path, firefight=False):
+def roster(path, firefight=False, game="reach"):
     """The BOTS panel's list from botcore.ini (native/bots_panel.cpp roster_write: "bot=<team>,<tier>,<style>,
     <name>"): [{name, team, tier, style}] in the panel's order, exactly the bots of the next match. None when
-    the file has no list (written by a build from before). firefight: Firefight's own list ("ffbot=", 3 bots)."""
+    the file has no list (written by a build from before). firefight: Firefight's own list, Reach's ("ffbot=", 7 bots
+    on the Spartan team 0 and the Elite team 1) or ODST's ("odbot=", 3 bots on your team; Reach's before Nov 8)."""
     try:
         lines = open(path, encoding="utf-8", errors="replace").read().splitlines()
     except OSError:
         return None
-    pre = "ff" if firefight else ""
+    pre = ("od" if game == "odst" else "ff") if firefight else ""
+    if pre == "od" and not any(line.startswith("odroster=") for line in lines):
+        pre = "ff"                                       # (a list saved before ODST had its own)
     if not any(line.startswith(pre + "roster=") for line in lines):
         return None
     out = []

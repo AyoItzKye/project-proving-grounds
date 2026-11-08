@@ -78,6 +78,8 @@ class PlayerState:
     tracker: bool = True       # enemies show on this player's motion tracker (the match settings: live.tracker())
     head_pos: object = None    # Vec: the animated head (Reach / Halo 4 on foot: live.py's head readers), None not read
     view_pos: object = None    # Vec: Halo 4's view point that head goes with (its place is not the feet), None not read
+    rank: str = ""              # Firefight: an NPC's rank, its character tag ("grunt_heavy": brain/firefight.py), "" a player
+    side: int = 0              # Firefight: a player's side, 1 Spartans, 7 Elites (they swap each turn), 0 not read
 
 
 @dataclass
@@ -131,6 +133,9 @@ class Snapshot:
     infected: int = -1         # Infection: the infected side when the reader knows it (Halo 3: by the zombies' gun)
     vips: tuple = ()           # VIP: each team's VIP (player ids), as the game marks them (Halo 3: brain/modes.py)
     race_next: dict = field(default_factory=dict)   # Race: player id -> his next gate (Vec), brain/modes.py Race
+    # Firefight (brain/firefight.py, tools/live_bots.py): versus (both sides have players), the Spartans' lives (-1 no
+    # limit), heat 0..1 and its zone, each team's side {team: 1 or 7}, the wave's enemies left
+    ff: dict = field(default_factory=dict)
 
     def player(s, pid):
         return next((p for p in s.players if p.id == pid), None)
