@@ -70,6 +70,49 @@ static uint32_t h2_pickup_target(uint8_t* unit) {
     return best;
 }
 
+// boarding: near a vehicle a player's action carries interaction type 5 (+0x2C), the seat (+0x2E) and the vehicle
+// (+0x30), and Use takes that seat (a person's recorded play, Nov 7, Coagulation / Containment: every boarding, the
+// Scorpion's, Banshee's and Spectre's driver seat 0, the Spectre's passengers 1 and 2, its gun seat 0 of its own
+// vehicle object riding on the Spectre). A bot's was always empty: Halo 2 bots stood by vehicles and never got in.
+// The vehicle (type 1) nearest the unit within 3 u, or with turret the gun (a vehicle with a parent) on the nearest
+// vehicle, measured at that vehicle (a child's place is its offset). ponytail: linear scan, only while Use is held
+static uint32_t h2_near_vehicle(uint8_t* unit, bool turret) {
+    uint8_t* hdr = *(uint8_t**)(g_h2 + H2_OBJ_HEADERS);
+    if (!hdr) return 0xFFFFFFFFu;
+    int n = *(int32_t*)(hdr + 0x20);
+    uint8_t* ents = hdr + *(int64_t*)(hdr + 0x48);
+    const float* p = (const float*)(unit + 0x64);
+    uint32_t best = 0xFFFFFFFFu;
+    float bd = 3.0f * 3.0f;
+    for (int i = 0; i < n; i++) {
+        uint8_t* e = ents + (size_t)i * 12;
+        if (!*(uint16_t*)e || e[3] != 1) continue;
+        uint32_t h = (uint32_t)*(uint16_t*)e << 16 | (uint32_t)i;
+        uint8_t* o = h2_object(h);
+        if (!o) continue;
+        uint32_t parent = *(uint32_t*)(o + 0x14);
+        if ((parent != 0xFFFFFFFFu) != turret) continue;
+        uint8_t* at = turret ? h2_object(parent) : o;
+        if (!at) continue;
+        const float* q = (const float*)(at + 0x64);
+        float dx = q[0] - p[0], dy = q[1] - p[1], dz = q[2] - p[2], d = dx * dx + dy * dy;
+        if (d < bd && dz > -2.0f && dz < 2.5f) { bd = d; best = h; }
+    }
+    return best;
+}
+
+// a bot on foot holding Use with a seat asked for (shared.h HB_SEAT_SHIFT): that seat of the nearest vehicle (or of
+// the gun on it: HB_BTN_TURRET) as its interaction
+static void h2_board(uint8_t* act, uint8_t* unit, uint32_t b) {
+    int seat = hb_seat(b);
+    if (!(b & HB_BTN_ACTION) || seat < 0 || *(uint32_t*)(unit + 0x14) != 0xFFFFFFFFu) return;
+    uint32_t veh = h2_near_vehicle(unit, (b & HB_BTN_TURRET) != 0);
+    if (veh == 0xFFFFFFFFu) return;
+    *(int16_t*)(act + 0x2C) = 5;
+    *(int16_t*)(act + 0x2E) = (int16_t)seat;
+    *(uint32_t*)(act + 0x30) = veh;
+}
+
 static int h2_free_slot() {
     for (int i = 0; i < HB_MAX_PLAYERS; i++) if (g_shm->bot_player_index[i] < 0) return i;
     return -1;
@@ -190,16 +233,22 @@ static void __fastcall h_update(uint8_t* actions) {
                 static uint32_t prev[HB_MAX_PLAYERS];
                 if (b & HB_BTN_JUMP) flags |= 0x6;
                 // fire: 0x008C0000 while held, 0x100 only on the press (the weapon fires on the
-                // press edge; a constant 0x100 fired once, verified with projectile counts)
-                if (b & HB_BTN_FIRE) flags |= 0x008C0000 | ((prev[i] & HB_BTN_FIRE) ? 0 : 0x100);
+                // press edge; a constant 0x100 fired once, verified with projectile counts). Seated, the two triggers
+                // are apart (a person's recorded play, Nov 7): left click +0x00 0x00040100 and +0x18 1.0, right click
+                // +0x00 0x00892000 and +0x1C 1.0, the second the Ghost's / Spectre's / Banshee's / Wraith's boost and
+                // the Scorpion driver's machine gun (HB_BTN_FIRE2); on foot fire pulls both (both guns dual-wielded)
+                bool seated = unit && *(uint32_t*)(unit + 0x14) != 0xFFFFFFFFu;
+                bool fire = (b & HB_BTN_FIRE) != 0, fire2 = seated ? (b & HB_BTN_FIRE2) != 0 : fire;
+                if (fire) flags |= (seated ? 0x00040000u : 0x008C0000u) | ((prev[i] & HB_BTN_FIRE) ? 0 : 0x100);
+                if (seated && fire2) flags |= 0x00892000u;
                 prev[i] = b;
                 *(uint32_t*)act = flags;
                 *(float*)(act + 0x08) = a.yaw;
                 *(float*)(act + 0x0C) = a.pitch;
                 *(float*)(act + 0x10) = a.forward;
                 *(float*)(act + 0x14) = a.strafe;
-                *(float*)(act + 0x18) = (b & HB_BTN_FIRE) ? 1.0f : 0.0f;
-                *(float*)(act + 0x1C) = (b & HB_BTN_FIRE) ? 1.0f : 0.0f;
+                *(float*)(act + 0x18) = fire ? 1.0f : 0.0f;
+                *(float*)(act + 0x1C) = fire2 ? 1.0f : 0.0f;
                 // action flags +0x20: a human's E is 0x301 on the press tick, 0x201 held, then
                 // 0x41FE03 once held long ("hold E to pick up"). The bot sends the long hold plus
                 // the weapon at its feet as interaction (type 1 = weapon pickup): verified, the bot
@@ -212,9 +261,13 @@ static void __fastcall h_update(uint8_t* actions) {
                     if (target != 0xFFFFFFFFu) {
                         *(int16_t*)(act + 0x2C) = 1;
                         *(uint32_t*)(act + 0x30) = target;
+                    } else if (unit) {
+                        h2_board(act, unit, b);
                     }
                 } else {
-                    *(uint32_t*)(act + 0x20) = w20 | 0x00400200u;
+                    // (seated, a person's idle flags are 0 (or 0x41FE00 after a hold), never 0x400200, Use held:
+                    // recorded Nov 7. With it every bot was put out of a Ghost 0.5 s after getting in)
+                    *(uint32_t*)(act + 0x20) = w20 | (seated ? 0u : 0x00400200u);
                 }
                 // reload: the player's R sets bits 0 and 21 here (tools/decode_buttons.py reload=r); bit 21 alone
                 // reloads nothing (tools/reload_probe.py h2: 0 of 7). Set natively, not through the button table: the

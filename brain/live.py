@@ -474,9 +474,15 @@ class LiveH2(Live):
         """The running map's scenario name (lockout, ...): the tag named scenarios\\multi\\..\\<n>\\<n>
         (tag order differs between loads: tag 0 is the scenario on one, globals on another)."""
         import re
-        names = s.g.read(s.g.u64(s.g.base + s.NAMES), 1 << 19) or b""
-        m = re.search(rb"scenarios\\multi\\(?:\w+\\)*(\w+)\\\1\x00", names)
-        return m.group(1).decode() if m else None
+        # (smaller reads where the whole one fails: a read past the end of the table's memory reads nothing, and on
+        # Containment 512 KB did, 256 KB not, so bots never started there: live Nov 7, "bots do not know the map 'h2_'")
+        at = s.g.u64(s.g.base + s.NAMES)
+        for n in (19, 18, 17, 16, 14):
+            names = s.g.read(at, 1 << n) or b""
+            m = re.search(rb"scenarios\\multi\\(?:\w+\\)*(\w+)\\\1\x00", names)
+            if m:
+                return m.group(1).decode()
+        return None
 
     VARIANT = 0xE71CD0     # the running game variant (same layout as halo2\game_variants\*.bin;
                            # the copy the engine code reads): +0x44 engine (1 CTF, 2 Slayer,

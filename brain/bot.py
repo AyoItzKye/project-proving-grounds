@@ -328,6 +328,10 @@ AIR_ROOF_M = 2.5     # u: an aircraft's middle stays this far under the map's ro
 FUELROD_R, FUELROD_EVERY, FUELROD_FIRE, FUELROD_SHOT, FUELROD_BACK = (10.0, 31.0), 15.0, 0.67, 0.15, 0.44
 RAM_ERR = {"average": 20.0, "strong": 12.0}   # a ram's heading error, degrees at most (guide 18 2.1; Easy never rams)
 BOOST_R, BOOST_CONE, BOOST_HOLD, BOOST_EVERY = 8.0, math.radians(20.0), 0.85, 3.0   # Bot.ram_boost (a skilled player's)
+# Halo 2's Scorpion machine gun (the driver's right click): its reach as vehicles.py gives a chaingun's (40 m = 13 u),
+# with a little more for a man standing still. INFERRED: the person's recording caught no machine-gun rounds
+SCORPION_MG_R = 15.0
+PUT_OUT_S = 1.5        # s: out of a seat this soon with no Use of its own, the vehicle put it out (Bot.put_out)
 FLEE_D, FLEE_PROGRESS, FLEE_REST = 8.0, 0.6, 5.0   # a boarder fled by open ground FLEE_D u on; under FLEE_PROGRESS u
                                                    # in a flee: none for FLEE_REST s (Bot.drive, open_way)
 BOARD_GIVE_UP, BOARD_BAN = 4.0, 20.0   # s pressing Use beside an enemy vehicle before it is left alone, and for how long
@@ -1266,10 +1270,13 @@ class Bot:
             s.spire_approach(me, act, snap)
             s.air_roof_guard(me, act, snap)
             s.fire_gate(now, me, act, snap)
+            if act.action:
+                s.seat_use_t = now                  # (put_out: a press of its own)
             return act
         # on foot: the next seat is a new one, in the same vehicle too (H2A Bloodline s133: out of a Warthog's gun with
         # nobody driving, back in at the wheel, it kept "gunner" and its old seat clock and was out again at once, 162
         # exits in 9 minutes)
+        s.put_out(now)
         s.seat_for = None
         if kind == "vehicle":
             v = next((v for v in snap.vehicles if v["handle"] == arg), None)
@@ -2279,6 +2286,15 @@ class Bot:
         """Vehicles nobody gets into lately (handle -> until), shared by every bot on the map (vehicles.DUD_S)."""
         return s.map.setdefault("_vehicle_duds", {})
 
+    def put_out(s, now):
+        """Out of the seat got PUT_OUT_S ago or less with no Use of its own: that vehicle took it in and put it out (live
+        Coagulation Nov 7, Halo 2: a Ghost on its side, its tilt not read there, took bot 4 in and out 30 times in 9 s,
+        0.0-0.5 s each). It is a dud for everyone vehicles.DUD_FOR s, as one nobody gets into (dud_check)."""
+        h = getattr(s, "seat_for", None)
+        if h is not None and now - s.seat_since < PUT_OUT_S and now - getattr(s, "seat_use_t", -9.0) > 1.0:
+            s.duds()[h] = now + vehicles.DUD_FOR
+            s.note("vehicle: it put me out at once, leaving it")
+
     def dud_check(s, now, dt, me, v):
         """Whether v may still be gone for: vehicles.usable, and the time this bot has stood within DUD_NEAR of it on the
         way in without getting in under DUD_S (then it is a dud for everyone DUD_FOR s)."""
@@ -3078,6 +3094,13 @@ class Bot:
                 s.strafe_dir, s.next_strafe_flip = -s.strafe_dir, now + s.rng.uniform(0.5, 1.4)
             if not passes:
                 act.fire = armed and (s.aim.on_target(me, aim_at) or dist(me.pos, b.pos) < 15)
+            if s.game == "h2" and kind == "scorpion":
+                # Halo 2's Scorpion driver also has a machine gun on his right click (a person's recorded play, Nov 7:
+                # holds 0.5-7 s, median 1.5): on a man on foot within its reach, with the shell (2.9 s a reload) when
+                # the shell fires (the same turret)
+                foe = snap.player(tid)
+                act.fire2 = (act.fire and foe is not None and foe.vehicle in (None, -1)
+                             and dist(me.pos, b.pos) < SCORPION_MG_R)
             if kind == "mantis":
                 s.mantis_weapons(now, me, v, snap, tid, b, aim_at, act)
         elif seen:                               # a gunner's vehicle: circle the fight in its range, side on
@@ -3436,9 +3459,11 @@ class Bot:
         never at Easy (ram_boost's rule). Dropped the moment the leg closes."""
         k = vehicles.kind_of(v["kind"])
         hg = vehicles.TRAVEL_BOOST.get(k)
-        # where the boost reaches the game: Reach (Bot.boost), Halo 3's ground boosters (its decoded fire2, ram_boost);
-        # elsewhere the second input is a Banshee's bomb, or nothing where it is not decoded
-        if hg is None or s.p.tier == "novice" or not (s.game == "reach" or (s.game == "h3" and k in vehicles.BOOSTS)):
+        # where the boost reaches the game: Reach (Bot.boost), Halo 3's ground boosters (its decoded fire2, ram_boost),
+        # Halo 2's right click (native/h2.cpp: seated, fire2 is the second trigger); elsewhere nothing where it is not
+        # decoded
+        if hg is None or s.p.tier == "novice" or not (s.game in ("reach", "h2")
+                                                      or (s.game == "h3" and k in vehicles.BOOSTS)):
             return
         holding = now < getattr(s, "tboost_until", 0.0)
         if not holding and now < getattr(s, "tboost_next", 0.0):
@@ -3486,7 +3511,8 @@ class Bot:
         Avalanche: 6 of 7 Chopper boosts with a man ahead, 4 under 6 u, held 0.6-1.2 s, median 0.83; his one Ghost boost
         from 9 u, a kill): inside BOOST_R and BOOST_CONE of the nose, held BOOST_HOLD, then not for BOOST_EVERY. Sent as
         the vehicle's second input (fire2): in Reach Bot.boost puts it out as +0x3C; Halo 3 through its decoded "fire2"
-        (maps/_inputs/h3.json, master 86f0e19); Halo 2 and the rest: noted, not sent where it is not decoded."""
+        (maps/_inputs/h3.json, master 86f0e19); Halo 2 natively (h2.cpp: seated, the second trigger); the rest: not sent
+        where it is not decoded."""
         k = vehicles.kind_of(v["kind"]) if v else None
         if k not in vehicles.BOOSTS or s.p.tier == "novice":
             return

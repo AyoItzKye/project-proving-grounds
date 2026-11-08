@@ -150,13 +150,18 @@ BASE_THREAT = {"banshee": 1.0, "sabre": 1.0, "seraph": 1.0, "hornet": 0.9, "falc
                "gungoose": 0.4, "mongoose": 0.3}
 TANKS = {"scorpion", "wraith", "mantis"}
 # boosted into a man close ahead (Bot.ram_boost), the Wraith's boosters are "mainly for splattering opponents"
-BOOSTS = {"ghost", "chopper", "revenant", "wraith"}
+BOOSTS = {"ghost", "chopper", "revenant", "wraith", "spectre"}   # (Halo 2's Spectre "has boost like the ghost")
 # Boosting to get somewhere (Bot.travel_boost, the Revenant's "for getting from a to b quicker", the Banshee; the
 # Wraith's "not too efficiently": none), held and let go as he did: his right-button holds on Forge World
 # (logs/tmp/key_holds.py), the median hold and the median gap after it, s. The Seraph as the Sabre; the Sabre's
 # whole tank lasted 15-16 s, three drains (2575-2637 s)
 TRAVEL_BOOST = {"ghost": (1.7, 3.6), "revenant": (3.2, 5.0), "banshee": (2.4, 3.9), "sabre": (2.45, 5.4),
                 "seraph": (2.45, 5.4)}
+# ... a game's own where its players boost otherwise (use_game). Halo 2 Classic, a person's right-click holds (Nov 7,
+# Coagulation / Containment): the Wraith "not constant, just short bursts", 1.0 s held then 5.3
+# s off (8% of its riding); the Banshee 5.3 / 4.6 s (51%); the Spectre 3.6 and 29.5 s, 62% (its gap not measured:
+# INFERRED 2 s). The Ghost: as above (the Zanzibar boosts, 29% of the drive; holds not recorded)
+GAME_BOOST = {"h2": {"wraith": (1.0, 5.3), "banshee": (5.3, 4.6), "spectre": (16.5, 2.0)}}
 # How far the player keeps an aircraft from anything it could hit (tools/vehicle_clearance.py over recorded Forge World
 # flights, maps/_vehicles/clearance_reach_forge.json; 10th percentiles while moving): near, the nearest solid thing
 # round it (u; his Falcon note at 727.5 s, came after passes 4.0 u off); ttc, the seconds of flight ahead he keeps open
@@ -302,7 +307,23 @@ REACH_SEATS = {"warthog": dict(passenger=(1,), turret=True), "rwarthog": dict(pa
                "revenant": dict(passenger=(1,)), "scorpion": dict(passenger=(1, 2, 3, 4), turret=True),
                "wraith": dict(turret=True), "falcon": dict(passenger=(1, 2, 3, 4, 5), turret=True),
                # ponytail: the seat by the driver only; the troop bed's three ride on the bed, a vehicle of its own
-               "thog": dict(passenger=(1,))}
+               "thog": dict(passenger=(1,)),
+               # Halo 2's Spectre (a person's recorded boardings, Nov 7): passengers 1 (left) and 2 (right), its plasma
+               # gun its own vehicle riding on it, seat 0
+               "spectre": dict(passenger=(1, 2), turret=True)}
+# Halo 2 Classic's own layout where it differs (a person's recorded play, Nov 7): the Scorpion's machine gun is the
+# driver's (his right click: Action.fire2) and its Wraith has no gunner, so no gunner seat on either. use_game() puts it
+# in for the game a brain plays (one game per brain)
+GAME_SEATS = {"h2": {"scorpion": dict(seats=("driver",), reach=dict()), "wraith": dict(seats=("driver",), reach=dict())}}
+
+
+def use_game(game):
+    """This game's own seats and boosts into VEHICLES / REACH_SEATS / TRAVEL_BOOST (GAME_SEATS, GAME_BOOST); the brain
+    plays one game."""
+    for k, o in GAME_SEATS.get(game, {}).items():
+        VEHICLES[k] = dict(VEHICLES[k], seats=o["seats"])
+        REACH_SEATS[k] = o["reach"]
+    TRAVEL_BOOST.update(GAME_BOOST.get(game, {}))
 # ... and its boarding seats (reach_seats.json: the seats flagged "boarding seat"), where a boarder of an enemy's vehicle
 # asks to go: live (Breakpoint 20261103-181702, bot 1) Use with the driver's seat asked 3 s beside an enemy Wraith never
 # took. The gun riding on a Warthog / Falcon has its own (seat 1 of the gun)

@@ -32,21 +32,10 @@ For everything that works, game by game, see the [bot status sheet](BOT_STATUS.p
 
 ## Halo 2
 
-**Not working yet**
-
-- **Warthog**: Bots can't get into vehicles in Halo 2 yet.
-- **Gauss Warthog**: Bots can't get into vehicles in Halo 2 yet.
-- **Ghost**: Bots can't get into vehicles in Halo 2 yet.
-- **Banshee**: Bots can't get into vehicles in Halo 2 yet; they walk right past them.
-- **Wraith**: Bots can't get into vehicles in Halo 2 yet.
-- **Scorpion**: Bots can't get into vehicles in Halo 2 yet.
-- **Spectre**: Bots can't get into vehicles in Halo 2 yet.
-- **Mounted turrets**: Bots can't use any seat in Halo 2 yet, turrets included.
-
 **Works, but buggy**
 
-- **Team Slayer**: Bots fight really well here (Halo 2 SWAT is my benchmark for Legendary), but they can't use vehicles yet.
 - **Capture the Flag**: Bots capture flags, but sometimes a carrier can't score or one team never goes for the flag.
+- **Mounted turrets**: Warthog guns are manned; stand-alone turrets not seen yet.
 
 ## Halo 2 Anniversary
 

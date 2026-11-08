@@ -7,7 +7,21 @@ Click a version to see what changed since the one before it.
 <details open>
 <summary><b>0.2.2 s181</b> (November 6, 2026): call bots into your vehicle, a smarter Spire attack and Banshee, careful grenades, Flood survivors that use their shotguns</summary>
 
-s181 was updated eight times, on November 6 and 7. Everything new and fixed since 0.2.2 s180 is below, the newest first.
+s181 was updated nine times, on November 6 and 7. Everything new and fixed since 0.2.2 s180 is below, the newest first.
+
+<!-- build: 20261107-1945 -->
+#### Ninth update (November 7, evening)
+
+**New**
+- **Halo 2 vehicles**: bots now get into vehicles in Halo 2. They drive Warthogs, Ghosts and Scorpions, fly Banshees, and man Warthog chainguns and gauss guns. Seen in real matches on Coagulation and Containment: bots drove for up to four minutes, fired Ghost and Banshee bolts and Scorpion shells, and got out on their own when they wanted to.
+- **Halo 2 boosts and the Scorpion's machine gun**: on the right click, as players use it. Ghosts, Spectres, Banshees and Wraiths boost on open stretches on the way somewhere (the Wraith in short bursts), and Ghosts and Wraiths also boost into a player close ahead; the Scorpion's driver uses its machine gun on players on foot close by.
+
+**Fixed**
+- **Bots never started on Halo 2 Containment**: the map's name could not be read there, so no bot played. Fixed.
+- **Capture the Flag on Halo 2 Containment**: the bots stopped on the first moment of the match. Fixed.
+- **A Ghost on its side**: it let a bot in and put it straight back out, again and again. Bots now leave a vehicle that does that alone for a while.
+
+**Not seen yet**: a bot driving a Halo 2 Wraith or Spectre (the maps tried had none). Getting in works the same way as for the others.
 
 <!-- build: 20261107-1530 -->
 #### Eighth update (November 7, afternoon)

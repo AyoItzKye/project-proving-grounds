@@ -316,6 +316,23 @@ def main():
     # tools/test_weapon_names.py, which runs the readers' real objects / weapon_name over fake memory. The check
     # that stood here ("a kind someone has held is never named from a spawn") was the bug: Halo 3 starting guns
     # never got a name (spec change, see the commit)
+    # a flag read as a team the map has no stand for (Halo 2 Containment: red's as team 7, on stand 1; the brain
+    # stopped on its first tick, KeyError 7): taken as the team whose stand it is on, kept when it moves
+    class Team7Live(FakeLive):
+        def __init__(s, at):
+            super().__init__()
+            s.at = at
+
+        def flags(s, players, stands=None):
+            return [dict(team=0, pos=(95.69, -159.45, -0.29), carrier=None),
+                    dict(team=7, pos=s.at, carrier=None)]
+    live_bots.MAP = get_map("bloodgulch")
+    live_bots.MAP.pop("flag_team_fix", None)
+    s7 = live_bots.snapshot(Team7Live((40.24, -79.12, -0.29)), 20.0, {}, {1})
+    assert set(s7.flags) == {0, 1} and s7.flags[1].state == "home", f"team 7 flag on stand 1: {s7.flags}"
+    s7b = live_bots.snapshot(Team7Live((60.0, -100.0, 0.1)), 21.0, {}, {1})
+    assert s7b.flags[1].state == "dropped", f"team 7 flag moved off: {s7b.flags}"
+    live_bots.MAP.pop("flag_team_fix", None)
     print("live_bots OK")
 
 

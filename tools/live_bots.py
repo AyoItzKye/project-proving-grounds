@@ -145,6 +145,21 @@ def snapshot(live, now, prev, bot_ids, crouch=(), person_crouch=False, person_ho
             rets.pop(t, None)
         rets.update(getattr(live, "live_returns", {}))
     for f in found:
+        if f.get("stand", f["team"]) not in MAP["flags"]:
+            # a flag of a team the map has no stand for (Halo 2 Containment Multi Flag: red's flag read as team 7, on
+            # stand 1, and the brain stopped on its first tick, live Nov 7): the team of the stand it is first seen on,
+            # kept for the match; none near a free stand: left out, the brain goes on
+            fix = MAP.setdefault("flag_team_fix", {})
+            if f["team"] not in fix:
+                taken = {g.get("stand", g["team"]) for g in found}
+                near = [t for t, q in MAP["flags"].items() if t not in taken and (Vec(*f["pos"]) - q).flat() < 2.0]
+                if near:
+                    fix[f["team"]] = near[0]
+                    print(f"{now:6.1f}s a flag read as team {f['team']} sits on team {near[0]}'s stand: taken as theirs",
+                          flush=True)
+            if f["team"] not in fix:
+                continue
+            f = dict(f, team=fix[f["team"]], stand=fix[f["team"]])
         home = MAP["flags"][f.get("stand", f["team"])]      # its own stand (One Flag: not its the player's side)
         pos = Vec(*f["pos"])
         state = "carried" if f["carrier"] is not None else ("home" if (pos - home).flat() < 1.0 else "dropped")
@@ -731,6 +746,7 @@ def main():
     ap.add_argument("--aim-loose", choices=("on", "off"), help="test: the looser trigger below Legendary on or off "
                     "for this match (brain/profiles.py LOOSE_AIM, the default)")
     o = ap.parse_args()
+    V.use_game(o.game)                       # this game's own vehicle seats (Halo 2's Scorpion and Wraith: no gunner)
     # Scaling difficulty (brain/scaling.py): one skill rating with no limit, set from the person's last Scaling games'
     # K/D; every bot on Scaling (its row on the BOTS list, else --tier) is made from it, both teams
     SCALE, SCALE_CFG = None, scaling.settings()
