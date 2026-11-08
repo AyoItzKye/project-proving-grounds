@@ -53,18 +53,19 @@ MODELS = [
     # Halo 3: ODST: the squad model, its characters by region (maps/_looks/odst.json "view"), with the silenced SMG (the
     # game's own Firefight gun) in both hands at low ready across the body, the muzzle toward the left knee as the other
     # games' rifles, tucked against the chest (the gun 2-3 mm off it): the left hand wrapped round the raked foregrip
-    # (gun x 0.055-0.068; at_l: its marker left the palm 0.026 u off the gun, at_l 0.045 behind the grip), turned 40
-    # degrees round it (spin_l) for a straight wrist, the elbow bent about 70-80 degrees and the forearm clear of the
-    # body. Before: the forearm through the body, the left arm locked straight, one-handed with the free arm stiff, the
-    # gun off to its right side, then held out in front (test_model_pose: arm_depth, gun_depth, ELBOW_BENT, palm_gaps)
+    # (gun x 0.055-0.068) high on it (at_l: its marker left the palm 0.026 u off the gun; at_l 0.045 / 0.054 sat low
+    # behind it), turned 40 degrees round it (spin_l) for a straight wrist, the elbow bent about 70-80 degrees and the
+    # forearm clear of the body. Before: the forearm through the body, the left arm locked straight, one-handed with the
+    # free arm stiff, the gun off to its right side, then held out in front (test_model_pose: arm_depth, gun_depth,
+    # ELBOW_BENT, palm_gaps)
     ("odst_spartan", "spartan", "odst", ODST, r"characters\odst\odst", r"smg_silenced\smg_silenced",
      ["--hold", "grip=0.12,0.04,0.10;barrel=0.4,0.8,-0.45;pole_r=0.0,-0.9,-0.4;pole_l=-0.4,0.8,-0.4;"
-      "spin_l=-40,0.05;at_l=0.054,-0.01,-0.01"]),
+      "spin_l=-40,0.05;at_l=0.062,-0.01,0.004"]),
     # Dare (ODST character 8): her own body, the ONI operative's (helmet, head, hair, beacon by region); the squad's
     # hold, the gun a little closer (her shorter arms)
     ("odst_dare", "spartan", "odst", ODST, r"characters\odst_oni_op\odst_oni_op", r"smg_silenced\smg_silenced",
      ["--hold", "grip=0.11,0.04,0.10;barrel=0.4,0.8,-0.45;pole_r=0.0,-0.9,-0.4;pole_l=-0.4,0.8,-0.4;"
-      "spin_l=-40,0.05;at_l=0.054,-0.01,-0.01"]),
+      "spin_l=-40,0.05;at_l=0.062,-0.01,0.004"]),
     # Halo 2: Anniversary's bots wear its three original sets (spartan_iv Mark VI, spartan_var2 Centurion, spartan_var3
     # Hoplite) and in Modern MCC's added pieces (Orion, Bioroid, Robot, Trooper, Breach, Panzer: its customization
     # table, maps/_looks/h2a.json, h2a_armory.json): pieces no bot wears (Halo 4's left in this model, the Flood's) out
