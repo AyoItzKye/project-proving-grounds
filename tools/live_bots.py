@@ -1327,6 +1327,12 @@ def main():
                 said = say_command(m, snap, directors, now)
                 if said and trace:                      # (the command, never the text: tools/say_report.py)
                     trace.write(json.dumps(dict(t=round(now, 3), say=said[0], team=said[1])) + chr(10))
+                for d in directors.values():            # (each roam pick and why: logs/tmp/roam_dig.py)
+                    ev = d.__dict__.get("roam_log") or []
+                    while ev:
+                        e = ev.pop(0)
+                        if trace:
+                            trace.write(json.dumps(dict(t=round(now, 3), roam=e, team=d.team)) + chr(10))
                 for d in directors.values():
                     if snap.infected != -1 and not TEAMS:   # Halo 3 Infection: one side each, survivors or infected
                         p = snap.player(next(iter(d.bots)))

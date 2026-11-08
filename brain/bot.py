@@ -176,6 +176,8 @@ GRAVITY = 4.1                       # u/s^2 in Reach (the player's fall onto a S
 ESCORT_TRAIL = 3.0                 # an escort's spot: this far behind the carrier, on the side away from home
 NO_PROGRESS_S = 8.0                # s moving toward one goal point with no metre gained: stuck (Bot.unstuck)
 ROAM_LEASH = 6.0                   # u a "roam" holder strays from its covered spot (keep_role)
+ROAM_HOME = 1.5                    # u off its spot a "roam" holder walks back while it fights (hold_spot)
+FOLLOW_TRIP_R = 6.0                # u from him a "follow me" escort's pickups and hunts may go (keep_role)
 GEN_FIGHT_R = 8.0                  # u from its post a guard still fights a man (nearer its generator than that)
 GEN_BACK = 3.2                     # a guard off its post: the way back outscores any fight but a man in its way
 LOCK_HOLD = 1.5                    # s a guard holds Use on a generator's lockdown switch
@@ -343,6 +345,7 @@ PUT_OUT_S = 1.5        # s: out of a seat this soon with no Use of its own, the 
 FLEE_D, FLEE_PROGRESS, FLEE_REST = 8.0, 0.6, 5.0   # a boarder fled by open ground FLEE_D u on; under FLEE_PROGRESS u
                                                    # in a flee: none for FLEE_REST s (Bot.drive, open_way)
 BOARD_GIVE_UP, BOARD_BAN = 4.0, 20.0   # s pressing Use beside an enemy vehicle before it is left alone, and for how long
+BOARD_REACH_S = 12.0                # s going for an enemy vehicle (board ticks in a row) before it is left alone BOARD_BAN s
 BOARD_TRY_R, BOARD_SPEED = 6.0, 3.0   # u, u/s: an enemy vehicle this near, not running at us faster, is boarded (board_check)
 # the player's Scorpion board (Boneyard 20261102-192517, 544-557 s, logs/tmp/board_detail.py): its driver fought a man
 # 36 u off the other way (its view 110-170 deg off the line to him), the tank under 1.5 u/s; he walked in from 11 u,
@@ -992,6 +995,10 @@ class Bot:
                 # a person's escort ("follow me", Firefight): a gun or a chase past the leash loses as on the Invasion
                 # core (live Boardwalk Nov 8: two of three wandered 10-22 u off for pickups and back, 48% within 6 u)
                 urgent = True
+            if o.said == "follow":
+                # "follow me": pickups and hunts only beside him (live Beachhead Firefight Nov 8: two of three fetched
+                # plasma pistols 8-11 u off, inside the leash, 35-40% within 6 u of him)
+                firm = lambda q: dist(q, c) > FOLLOW_TRIP_R
         elif o.role in ("mid", "escort") and o.point is not None and s.pressing(me, snap):
             # an attacker covering the territory from around it (director.invasion_slots: the overlooks, the escorts with
             # nobody to escort) keeps to its spot as the ones in it do: it had no leash, and items won its choices
@@ -1034,9 +1041,13 @@ class Bot:
         fresh_hit = snap.time - getattr(s.per, "attacker_t", -99.0) < 3.0
         fetch = getattr(s, "fetch", None)
         for key in list(scores):
-            if key in getattr(s, "mission_keys", ()) or (fetch is not None and key == ("item", fetch[0])):
+            if (key in getattr(s, "mission_keys", ()) or (fetch is not None and key == ("item", fetch[0]))) \
+                    and o.said not in ("follow", "roam"):
                 continue              # the Grenadier's anti-vehicle mission, a power weapon run: outrank its post
                                       # (an attacker on the clock is sent only for one on its way: director.press_fetch_ok)
+                                      # (not under the person's "follow me" / "roam": within its leash
+                                      # only. Live Beachhead Firefight Nov 8, a Wraith wave: the bots went 9-17 u off
+                                      # for plasma pistols, the Wraith and its seat; 61-72% within 6 u of the person)
             kind, arg = key
             if kind == "fight":
                 b = s.per.beliefs.get(arg)
@@ -1362,6 +1373,18 @@ class Bot:
                 s.next_decide = now
                 return act
             vp = s.seat_point(v, "driver")
+            # not got to it within BOARD_REACH_S of going for it (a run of board ticks): left alone BOARD_BAN s too (live
+            # Beachhead Firefight Nov 8: a Ghost parked 2.9 u under a ledge, the bot above it looking down 70 s, never
+            # in Use reach, so BOARD_GIVE_UP below never started)
+            w = getattr(s, "board_walk", None)
+            if w is None or w[0] != arg or now - w[2] > 1.0:
+                w = (arg, now, now)
+            s.board_walk = w = (arg, w[1], now)
+            if now - w[1] > BOARD_REACH_S:
+                s.__dict__.setdefault("board_ban", {})[arg] = now + BOARD_BAN
+                s.board_walk, s.board_try, s.next_decide = None, None, now
+                s.note(f"board: no way onto the {v['kind']}, leaving it")
+                return act
             f = v.get("fwd")
             if vehicles.kind_of(v["kind"]) in vehicles.TANKS and f and math.hypot(f[0], f[1]) > 0.1:
                 n = math.hypot(f[0], f[1])    # a tank from its front (the player's board, BOARD_FRONT)
@@ -1599,6 +1622,8 @@ class Bot:
                 h, m = walk.yaw + math.atan2(walk.strafe, walk.forward), min(1.0, math.hypot(walk.forward, walk.strafe))
                 act.forward, act.strafe, act.jump = m * math.cos(h - act.yaw), m * math.sin(h - act.yaw), act.jump or walk.jump
                 s.notes.append("invasion: shooting on the way")
+        else:
+            s.hold_spot(me, act, kind, arg, nav)
         s.generator_work(now, me, act, snap, kind, nav)   # Generator Defense: a guard's lockdown, a breaker's shots
         used = s.kit.act(s, now, dt, me, snap, act)       # equipment / ability, and steering clear of mines
         if used:
@@ -1868,6 +1893,26 @@ class Bot:
     GEN_REACH = 2.6           # u from a generator a guard presses its lockdown switch from
     GEN_ACT = 8.0             # u from it a guard goes in to lock it (a defender holds 3-8 u off its post)
     GEN_SHOOT = 20.0          # u a breaker shoots a generator from (Medium band and in, guide 11 6.3)
+
+    def hold_spot(s, me, act, kind, arg, nav=None):
+        """A "roam" holder fights from its spot, as an Invasion attacker shoots on its way:
+        the aim and trigger stay on the man (4+ u off), the walk goes back to its covered spot once
+        ROAM_HOME off it (live Beachhead Firefight Nov 8, roam: the spots fully covered, the bots 8-18 u off them in
+        fights 85% of the time, in the open). True when it walked back."""
+        o = s.order
+        if not (kind == "fight" and o.role == "defender" and o.said == "roam" and o.point is not None
+                and me.vehicle in (None, -1) and isinstance(arg, int) and arg in s.per.beliefs
+                and dist(me.pos, s.per.beliefs[arg].pos) > 4.0 and dist(me.pos, o.point) > ROAM_HOME):
+            return False
+        walk = Action(yaw=act.yaw, pitch=act.pitch)
+        if nav is not None:
+            s.move_to(me, o.point, walk, nav)
+        else:
+            walk.yaw, walk.forward = math.atan2(o.point.y - me.pos.y, o.point.x - me.pos.x), 1.0
+        h, m = walk.yaw + math.atan2(walk.strafe, walk.forward), min(1.0, math.hypot(walk.forward, walk.strafe))
+        act.forward, act.strafe, act.jump = m * math.cos(h - act.yaw), m * math.sin(h - act.yaw), act.jump or walk.jump
+        s.note("holding my spot: shooting on the way back")
+        return True
 
     def generator_work(s, now, me, act, snap, kind, nav=None):
         """Generator Defense (snap.ff["gens"], director.ff_gen_slots): the generator is the one at the order's point.
@@ -4451,16 +4496,21 @@ class Bot:
     def alt_post(s, now, banned, bans):
         """A walkable open spot within 8 u of the order's point, 3+ u from the banned one and not banned itself, kept 30 s
         (choose_goal: a post headway gave up on is swapped for one beside it). None: none found."""
+        # (an escort's point is its lead: one beside him, not 8 u off: live Beachhead Firefight Nov 8, a "follow me"
+        # escort's spot banned, the one it got 6.9 u from the person, kept 25 s)
+        r = ESCORT_TRAIL + 1.0 if s.order.role == "escort" else 8.0
         cur = getattr(s, "alt_at", None)
-        if (cur and now < cur[1] and dist(cur[0], banned) >= 3.0 and dist(cur[0], s.order.point) < 9.0
+        if (cur and now < cur[1] and dist(cur[0], banned) >= 3.0 and dist(cur[0], s.order.point) < r + 1.0
                 and bans.get(s._goal_key(("objective", cur[0])), 0) <= now):
             return cur[0]
         T = s.T()
         for _ in range(3):
-            p = T.open_spot(s.order.point, 8.0, s.rng)
+            p = T.open_spot(s.order.point, r, s.rng)
             if p is not None and dist(p, banned) >= 3.0 and bans.get(s._goal_key(("objective", p)), 0) <= now:
                 s.alt_at = (p, now + 30.0)
                 return p
+        if s.order.role == "escort" and bans.get(s._goal_key(("objective", s.order.point)), 0) <= now:
+            return s.order.point                # (nothing open beside its lead: the lead himself)
         return None
 
     @staticmethod
@@ -5231,7 +5281,9 @@ class Bot:
             d = dist(me.pos, goal_pt)
             if pr is None or dist(pr[0], goal_pt) > 1.0 or d < pr[1] - 1.0 or dist(me.pos, pr[3]) > 1.5:
                 s.progress = (goal_pt, d, now, me.pos)
-            elif now - pr[2] > NO_PROGRESS_S and d > 2.0:
+            # (past 4 u: a holder loitering 2-3 u off its spot is there, not stuck: live Beachhead Firefight Nov 8, a
+            # "roam" bot 1.2-2.6 u off its spot read stuck, wiggled off and its spot was swapped for one 5-7 u away)
+            elif now - pr[2] > NO_PROGRESS_S and d > 4.0:
                 s.progress = (goal_pt, d, now, me.pos)
                 s.stuck_pos, s.stuck_since = me.pos, now - 1.3
                 s.note(f"no way nearer its goal in {NO_PROGRESS_S:.0f} s: stuck")

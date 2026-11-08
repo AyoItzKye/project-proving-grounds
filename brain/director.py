@@ -736,8 +736,9 @@ class Director:
             return
         # Generator Defense: a guard keeps its generator through its death and the others' (live Beachhead Nov 8: the
         # posts re-dealt each pass by the living count, a death moved another guard onto its generator, posts swapped
-        # every 10-20 s and the guards were mostly on the walk between them)
-        held = [b for b in s.bots.values() if b.order.said == "gen" and b.order.role == "defender" and
+        # every 10-20 s and the guards were mostly on the walk between them). A "roam" holder keeps its spot the same way
+        # (live Beachhead Firefight Nov 8: a death re-dealt the spots, one bot's flipped 30 u back and forth five times)
+        held = [b for b in s.bots.values() if b.order.said in ("gen", "roam") and b.order.role == "defender" and
                 b.order.point is not None and
                 any(dist(b.order.point, g) < GEN_POST for _, g in getattr(s, "gen_guard", ()))]
         slots = s.role_slots(now, snap, len(alive) + sum(1 for b in held if b not in alive))
@@ -1557,6 +1558,9 @@ class Director:
         return out
 
     ROAM_KEEP = 30.0          # s a roam spot is held before the bots pick again
+    ROAM_STEP = 0.05          # exposure: roam spots this close in cover count as equal, the nearer first (say_slots)
+    ROAM_CLOSE = 15.0         # u: covered spots this near him are taken before any further off (say_slots; live Beachhead
+                              # Firefight Nov 8: a spot by him given up, the next as covered were 27-30 u off and 4 u down)
     ROAM_NEAR = 45.0          # u: roam spots are chosen within this of the team (no trek across the map)
     ROAM_OPEN = 0.15          # exposure (Director.exposure) a roam spot may have at most (Boardwalk's median cell 0.19)
 
@@ -1585,21 +1589,34 @@ class Director:
         mine = [p.pos for p in snap.players if p.team == s.team and p.alive and p.name != "ai"]
         if not mine:
             return None
-        c = Vec(sum(q.x for q in mine) / len(mine), sum(q.y for q in mine) / len(mine), sum(q.z for q in mine) / len(mine))
+        # round him while he is up (the team's middle drifted after the bots on their far spots, each pick 30 s on further
+        # off: live Beachhead Firefight Nov 8, spots 26-42 u from him and 8 u down)
+        c = person.pos if person is not None else Vec(sum(q.x for q in mine) / len(mine), sum(q.y for q in mine) / len(mine),
+                                                      sum(q.z for q in mine) / len(mine))
         picks = getattr(s, "roam_picks", None)
         if not picks or now >= getattr(s, "roam_until", 0.0) or len(picks) < n:
             from .modes import holds, pick_holds, HOLD_APART
             T = s.terrain()
             near = [h for h in holds(T, s.map["name"]) if dist(h["pos"], c) <= s.ROAM_NEAR]
             # out of the open: the fewest sight lines from outside (a room's shape alone let a 0.31 spot in, more open
-            # than the map's median cell 0.19, live Boardwalk Nov 8), the holds' own order breaking ties
+            # than the map's median cell 0.19, live Boardwalk Nov 8), the nearer one breaking a tie (by the holds' own
+            # order a fully covered room 26-31 u off and 4 u down won over covered ones by the team: the bot crossed the
+            # Firefight waves to it and back, 23 u off it a median, live Beachhead Nov 8)
             seen = {id(h): s.exposure(T, h["pos"]) for h in near}
-            near = [h for h in sorted(near, key=lambda h: seen[id(h)]) if seen[id(h)] <= s.ROAM_OPEN]
+            near = [h for h in sorted(near, key=lambda h: (dist(h["pos"], c) > s.ROAM_CLOSE, round(seen[id(h)] / s.ROAM_STEP),
+                                                         dist(h["pos"], c)))
+                    if seen[id(h)] <= s.ROAM_OPEN]
             picked = [h["pos"] for h in pick_holds(near, n, apart=HOLD_APART / 2)]
             if not picked:                  # (the holds still being found: spread round the team for now)
                 return [("defender", s.spread(c, k, 3.0), "camping") for k in range(n)]
+            why = ("new" if not picks else "time up" if now >= getattr(s, "roam_until", 0.0) else
+                   "more bots")
+            r1 = lambda p: [round(p.x, 1), round(p.y, 1), round(p.z, 1)]
+            s.__dict__.setdefault("roam_log", []).append(      # (the trace: live_bots)
+                dict(why=why, c=r1(c), picks=[r1(p) for p in picked]))
             s.roam_picks, s.roam_until = picked, now + s.ROAM_KEEP
             picks = picked
+        s.gen_guard = [(k, picks[k % len(picks)]) for k in range(n)]   # (assign_roles: each keeps its spot, as a guard)
         return [("defender", picks[k % len(picks)], "camping") for k in range(n)]
 
     def role_slots(s, now, snap, n):

@@ -109,6 +109,18 @@ def main():
     front = A + Vec(4.0, 0.0, 0.0) + Vec(0.0, 2.0, 0.0)          # its facing +y, BOARD_FRONT ahead
     if (pos - front).flat() > 1.0:
         fails.append(f"going to board a tank: ended {(pos - front).flat():.1f} u from its front (want under 1)")
+    # 3b. never in Use reach (a ledge over it: live Beachhead Firefight Nov 8, 70 s over a Ghost 2.9 u under it): left
+    #     alone after BOARD_REACH_S, banned BOARD_BAN s
+    from brain.bot import BOARD_REACH_S
+    b = bot()
+    b.goal, b.next_decide = ("board", 31), 1e9
+    stay = PlayerState(1, 0, "b", A + Vec(4.0, 0.0, 3.0))       # (held 3 u over it: it never gets there)
+    for k in range(int((BOARD_REACH_S + 2.0) * 30)):
+        t = 60.0 + k / 30
+        b.think(t, 1 / 30, Snapshot(t, [stay, drv], vehicles=[v], mode="slayer"), T.los, T.nav, [])
+        b.goal, b.next_decide = (("board", 31), 1e9) if getattr(b, "board_ban", {}).get(31, 0.0) <= t else (b.goal, 1e9)
+    if getattr(b, "board_ban", {}).get(31, 0.0) <= 60.0 + BOARD_REACH_S:
+        fails.append(f"boarding a vehicle it cannot reach: not given up after {BOARD_REACH_S + 2.0:.0f} s")
     # 4. aboard theirs (it boarded: board_try names the vehicle)
     b = bot()
     b.board_try = (31, 49.0)

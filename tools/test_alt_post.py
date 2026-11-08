@@ -37,6 +37,21 @@ def main():
         if not ok:
             fails.append(f"{tier}: banned post -> {g1}, then {g2}, objective spots scored {alts} (want one 3-9 u from "
                          f"{post}, kept, no roam)")
+    # 2. a person's escort with its spot banned: the spot beside him, not 8 u off (live Beachhead Firefight Nov 8: a
+    #    "follow me" escort held a spot 6.9 u from the person 25 s)
+    BH = get_map("reach_ff50_park")
+    b = Bot(3, 0, make_profile("top", "camper", random.Random(3)), BH, random.Random(3))
+    b._terrain = terrain(BH)
+    lead = Vec(-162.82, 60.07, -33.5)
+    b.order = Order("escort", lead, target=0, said="follow")
+    far = []
+    for k in range(8):
+        b.alt_at = None
+        p = b.alt_post(10.0 + 31.0 * k, lead + Vec(2.0, -2.0, 0.0), {})
+        if p is None or dist(p, lead) > 4.5:
+            far.append(p)
+    if far:
+        fails.append(f"2. an escort's banned spot: alternatives {far} (want each within 4.5 u of the person {lead})")
     # 3. headway never gives up a zone the bot is to stand in (live Spire 20261105-005649: attackers took alt posts 3-9 u
     #    off phase 2's territory for half their decisions); a plain post 7 s without progress still goes
     for mode, want_ban in (("invasion", False), ("slayer", True)):
