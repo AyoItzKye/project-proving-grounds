@@ -3324,13 +3324,21 @@ class Bot:
 
     @staticmethod
     def gun_origin(me, v):
-        """Where a gunner's shot leaves (Aim.step's origin): over the place the game reads for him (his vehicle's) by
-        the gun's height (vehicles.gun_height), along the vehicle by its mount (vehicles.gun_forward: Reach's Warthog
-        chaingun 0.536 u behind its origin). None: neither measured (the eye, as before)."""
+        """Where a gunner's shot leaves (Aim.step's origin): from the place the game reads for him (his vehicle's), up the
+        vehicle by the gun's height (vehicles.gun_height) and along it by its mount (vehicles.gun_forward: Reach's
+        Warthog chaingun 0.536 u behind its origin), in the vehicle's own tilted frame where its forward and up are read,
+        else by world up and its flat heading. None: neither measured (the eye, as before)."""
         h = vehicles.gun_height(me.turret, vehicles.kind_of(v["kind"]) if v is not None else None)
-        origin = me.pos + Vec(0, 0, h) if h is not None else None
         back = vehicles.gun_forward(me.turret, vehicles.kind_of(v["kind"]) if v is not None else None)
-        f = (v or {}).get("fwd")
+        f, up = (v or {}).get("fwd"), (v or {}).get("up")
+        if h is not None and f and up:
+            # the vehicle's own frame: the gun rides on it, tilted with it (Halo 2 Coagulation, live Nov 7: on its
+            # slopes the gun stood 0.30 u, median, from the place over the origin by world up; gunners' shots went
+            # to one side of men on the left and the other of men on the right)
+            fv, uv = Vec(*f), Vec(*up)
+            if fv.length() > 0.5 and uv.length() > 0.5:
+                return me.pos + uv * (h / uv.length()) + fv * ((back or 0.0) / fv.length())
+        origin = me.pos + Vec(0, 0, h) if h is not None else None
         if back and f and math.hypot(f[0], f[1]) > 0.1:
             n = math.hypot(f[0], f[1])
             origin = (origin or me.pos) + Vec(f[0] / n * back, f[1] / n * back, 0.0)

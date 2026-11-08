@@ -87,6 +87,18 @@ def main():
     b.travel_boost(10.0, me, v, a, False)
     if not a.fire2:
         fails.append("Halo 2 Ghost on an open straight: no boost on the way")
+    # 6. a Warthog gunner aims from its gun (0.50 u behind the Warthog's origin, 0.94 up, measured live), not from the
+    #    Warthog's middle: Halo 2 gunners missed (Nov 7), as Reach's did before its gun was placed
+    #    ... in the Warthog's own tilted frame (on a slope the gun leans with it: live Coagulation, 0.30 u off by world up)
+    s20, c20 = math.sin(math.radians(20)), math.cos(math.radians(20))
+    for f, up, want in (((1.0, 0.0, 0.0), None, Vec(-0.5, 0.0, 0.94)), ((0.0, 1.0, 0.0), None, Vec(0.0, -0.5, 0.94)),
+                        ((c20, 0.0, s20), (-s20, 0.0, c20), Vec(-0.5 * c20 - 0.94 * s20, 0.0, -0.5 * s20 + 0.94 * c20))):
+        gm = PlayerState(1, 0, "g", A, vehicle=5)
+        gm.turret = "chaingun"
+        o = Bot.gun_origin(gm, dict(handle=5, kind="warthog", pos=(A.x, A.y, A.z), fwd=f, up=up))
+        if o is None or (o - A - want).length() > 0.01:
+            fails.append(f"Halo 2 chaingun gunner, Warthog facing {f}: aims from {None if o is None else o - A} "
+                         f"(want {want} off its origin)")
     # 5. a vehicle that puts its rider out at once with no Use of his (a Ghost on its side) is left alone (put_out)
     for since, used, want in ((10.0, None, True), (10.0, 10.3, False), (5.0, None, False)):
         p = Bot(1, 0, make_profile("top", "rusher", random.Random(8)), M, random.Random(8))

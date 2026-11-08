@@ -391,6 +391,10 @@ class LiveH2(Live):
             return -1, -1
         return max(0, reserve) + max(0, mag), max(0, mag)
     PARENT_AT = 0x14       # object +0x14 parent (Halo 3 +0x10)
+    # object +0x64 position, its forward +0x70 and up +0x7C after it (tools/live_bots.vehicle_fwd): live Nov 7, Coagulation,
+    # every vehicle's two unit vectors square to each other, a Warthog on its side read up z -0.39. Until then Halo 2's
+    # vehicles had no facing: a gunner aimed from its Warthog's middle (Bot.gun_origin), none read as on its side
+    POS_AT = 0x64
     SLOTS_AT = 0x22C       # unit +0x22C 4 weapon handles (as flags() reads them)
 
     def ground_weapons(s):

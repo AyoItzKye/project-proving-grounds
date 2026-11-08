@@ -73,6 +73,7 @@ def main():
                                  wall_z0=-10.0, wall_bin=1.0)
     flat._ij = types.MethodType(Terrain._ij, flat)
     flat._wall_bit = types.MethodType(Terrain._wall_bit, flat)
+    flat._ray_low = types.MethodType(Terrain._ray_low, flat)     # (aim_hit reads the ground through it since ray_low)
     past = Terrain.aim_hit(flat, Vec(5.0, 5.0, 3.0), 0.0, -math.atan2(3.0, 8.0))
     inside = Terrain.aim_hit(flat, Vec(5.0, 5.0, 3.0), 0.0, -math.atan2(3.0, 4.0))
     if past is not None or inside is None or abs(inside.x - 9.0) > 0.3:

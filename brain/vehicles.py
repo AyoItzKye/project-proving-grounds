@@ -315,15 +315,23 @@ REACH_SEATS = {"warthog": dict(passenger=(1,), turret=True), "rwarthog": dict(pa
 # driver's (his right click: Action.fire2) and its Wraith has no gunner, so no gunner seat on either. use_game() puts it
 # in for the game a brain plays (one game per brain)
 GAME_SEATS = {"h2": {"scorpion": dict(seats=("driver",), reach=dict()), "wraith": dict(seats=("driver",), reach=dict())}}
+# ... and where its guns sit (GUN_HEIGHT / GUN_FORWARD by the gun's name, Halo 2's "chaingun" / "gauss"): live Nov 7,
+# Coagulation, the chaingun object's own world centre (+0x30) 0.94 u over its Warthog's origin and 0.50 u behind it, on
+# its centre line (logs/tmp/h2_gun_world.py; Reach's is 0.92 / 0.536). The gauss rides on the same mount (its object's
+# offset is the chaingun's, -0.5 0 0.02)
+GAME_GUNS = {"h2": dict(height={"chaingun": 0.94, "gauss": 0.94}, forward={"chaingun": -0.5, "gauss": -0.5})}
 
 
 def use_game(game):
-    """This game's own seats and boosts into VEHICLES / REACH_SEATS / TRAVEL_BOOST (GAME_SEATS, GAME_BOOST); the brain
-    plays one game."""
+    """This game's own seats, boosts and gun mounts into VEHICLES / REACH_SEATS / TRAVEL_BOOST / GUN_HEIGHT /
+    GUN_FORWARD (GAME_SEATS, GAME_BOOST, GAME_GUNS); the brain plays one game."""
     for k, o in GAME_SEATS.get(game, {}).items():
         VEHICLES[k] = dict(VEHICLES[k], seats=o["seats"])
         REACH_SEATS[k] = o["reach"]
     TRAVEL_BOOST.update(GAME_BOOST.get(game, {}))
+    guns = GAME_GUNS.get(game, {})
+    GUN_HEIGHT.update(guns.get("height", {}))
+    GUN_FORWARD.update(guns.get("forward", {}))
 # ... and its boarding seats (reach_seats.json: the seats flagged "boarding seat"), where a boarder of an enemy's vehicle
 # asks to go: live (Breakpoint 20261103-181702, bot 1) Use with the driver's seat asked 3 s beside an enemy Wraith never
 # took. The gun riding on a Warthog / Falcon has its own (seat 1 of the gun)

@@ -28,7 +28,7 @@ Click a version to see what it added and fixed.
 ### - Fixed
 - <!-- build: 20261107-2115 --> **The update notes**: each version is now one list of what was added and one of what was fixed, here, on the Releases page and in the launcher's What's new, instead of a separate dated note for every update.
 - <!-- build: 20261107-1945 --> **Halo 2 Containment**: bots never started there (the map's name could not be read), and in Capture the Flag the bots stopped on the first moment of the match.
-- <!-- build: 20261107-1945 --> **A Ghost on its side**: it let a bot in and put it straight back out, again and again. Bots now leave a vehicle that does that alone for a while.
+- <!-- build: 20261107-2145 --> **Halo 2 vehicles on their side**: bots now see when a Halo 2 vehicle is on its side or roof and leave it alone, and a vehicle that lets a bot in and puts it straight back out is left alone for a while too.
 - <!-- build: 20261107-1530 --> **Halo 3 and Halo 4 Banshees** no longer press the second trigger as if it were the bomb.
 - <!-- build: 20261107-1200 --> **Theater with bots in Halo 4**: films of bot matches play with their bots instead of crashing as the bots join (a 12-minute Forge Island film matched its match's score at every point checked). Theater with bots now works in Reach and Halo 4.
 - <!-- build: 20261107-0230 --> **Halo: Reach Invasion**:
@@ -45,7 +45,7 @@ Click a version to see what it added and fixed.
 - <!-- build: 20261107-0100 --> **Snipers and reloads**: bots no longer trade a sniper rifle that still has rounds for another gun, and reload magazines they had only seen part empty.
 - <!-- build: 20261107-0100 --> **Breakpoint**: bots on the bridge see, and shoot at, players on the tower ledge.
 - <!-- build: 20261107-0100 --> **Bots joining**: all the bots you asked for join even if you open the pause menu while they do (Halo 3: ODST Firefight had one of three).
-- <!-- build: 20261106-2300 --> **Warthog gunners** aim from the gun itself, so their shots no longer drift to one side of the target. A bot mans your Warthog's gun when you drive.
+- <!-- build: 20261107-2145 --> **Warthog gunners** aim from the gun itself, in Halo 2 too and on slopes in every game, so their shots no longer drift to one side of the target or over it (Halo 2 gunners hit with 43% of their firing instead of 26% in matches on Coagulation). A bot mans your Warthog's gun when you drive.
 - <!-- build: 20261106-2300 --> **Grenades**: bots no longer throw a grenade where a teammate (or you) is standing or about to walk.
 - <!-- build: 20261106-2300 --> **Bug reports**: a report saves where you were when you pressed Save, and reports no longer fail to file now and then.
 - <!-- build: 20261106-2300 --> **Halo 4 Flood and Infection**:
