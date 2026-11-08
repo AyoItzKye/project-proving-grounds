@@ -60,6 +60,10 @@ def arm():
     return mp.Skeleton(bones)
 
 
+ARM_IN = 0.02                # u a Spartan's forearm may sink into its torso and legs (its packed models: 0-13 mm; the
+                             # ODST silenced SMG hold with the elbow in, 37-38 mm, "the left arm is inside the body").
+                             # Two-handed Spartan holds only: a hanging arm reads 25-90 mm by the bulky armour (the
+                             # approved H2 / H3 Elites 27-49 mm, the ODST squad's free arm at its side)
 HANDY = ("hand", "finger", "index", "middle", "ring", "pinky", "thumb", "grip", "wrist", "palm")
 
 
@@ -119,6 +123,129 @@ def head_pitch(S):
     slope = lambda f: np.degrees(np.arctan2(f[2], np.hypot(f[0], f[1])))
     sgn = np.sign(R0[axis][0])
     return float(slope(sgn * R1[axis]) - slope(sgn * R0[axis]))
+
+
+def arm_depth(S, body):
+    """How far each arm sinks into the torso and legs of the body's default pieces (u), {"l": d, "r": d}: its posed
+    forearm (its upper arm meets the body at the shoulder) against the nearest body vertex's normal.
+    The player: "the left arm is inside the body" (ODST with the silenced SMG, Nov 8: the left elbow pulled in to
+    straighten its wrist passed every check here)."""
+    from scipy.spatial import cKDTree
+    pos, nrm, _, faces = mp.read_obj(body, (), mp.instance_owners(body + ".regions.json"))
+    bones, idx, w = mp.read_skin(body + ".skin")
+    regions = {}
+    for (region, pi, perm, mat) in faces:
+        regions.setdefault(region, set()).add((pi, perm))
+    keep = []
+    for region, perms in regions.items():
+        pick = next((p for p in perms if p[1] in ("default", "base")), min(perms))
+        keep += [faces[k] for k in faces if k[0] == region and (k[1], k[2]) == pick and faces[k]]
+    vi = np.unique(np.concatenate([np.asarray(f, np.int64) for f in keep]))
+    names = [n for n, _, _ in bones]
+    dom = idx[vi, np.argmax(w[vi], axis=1)]
+    handy = np.array([any(t in n for t in HANDY + ("upperarm", "forearm", "elbow", "clav", "shoulder")) for n in names])
+    torso = vi[~handy[dom]]
+    P, N = S.skin(pos[torso], nrm[torso], idx[torso], w[torso])
+    tree, out = cKDTree(P), {}
+    for side in ("l", "r"):
+        arm = vi[np.array([f"{side}_forearm" in names[d] for d in dom])]
+        if not len(arm):
+            continue
+        A, _ = S.skin(pos[arm], nrm[arm], idx[arm], w[arm])
+        A = A[np.linalg.norm(A - S.pos(f"{side}_upperarm"), axis=1) > 0.08]
+        dist, j = tree.query(A)
+        s = np.einsum("ij,ij->i", A - P[j], N[j])
+        inside = (dist < 0.15) & (s < 0)
+        out[side] = float(-s[inside].min()) if inside.any() else 0.0
+    return out
+
+
+def check_model(weapon, species, game, opts, base):
+    """One packed model's hold checks (make_models.MODELS entry, its own --hold over the species' base): the
+    failures, or None when it is not exported on this machine."""
+    fails = []
+    import make_models
+    body = make_models.body_obj(os.path.join(ROOT, "maps", "_models", game), weapon, species, game)
+    held = os.path.join(ROOT, "maps", "_models", game, weapon + "_weapon.obj")
+    if not all(os.path.exists(p) for p in (body + ".skin", body + ".markers.json", held + ".markers.json")):
+        return None
+    mp.HOLDS = {k: dict(v) for k, v in base.items()}
+    if "--hold" in opts:
+        mp.apply_hold(species, opts[opts.index("--hold") + 1])
+    two = "--one-hand" not in opts
+    bones = mp.read_skin(body + ".skin")[0]
+    S, B = mp.Skeleton(bones), mp.Skeleton(bones)
+    bm = mp.read_markers(body + ".markers.json")
+    W, origin, out = mp.pose_hold(S, species, bm, mp.gun_markers(held), two)
+    if two and "left" not in out:
+        fails.append(f"{weapon}: two-handed, but the left hand is not on the gun")
+    for hand, (b, sh) in out.items():
+        if sh > 0.005 or b > 45:
+            fails.append(f"{weapon}: {hand} hand {sh:.3f} u short of the gun, wrist turned {b:.0f} degrees")
+    for side in ("r", "l"):                                # each elbow on its own hinge
+        a, e, c = (S.pos(f"{side}_{n}") for n in ("upperarm", "forearm", "hand"))
+        n = np.cross(e - a, c - e)
+        h = S.hinge(f"{side}_upperarm", f"{side}_forearm", f"{side}_hand") @ S.pose[S.i(f"{side}_upperarm")][:3, :3]
+        if np.linalg.norm(n) > 1e-6 and np.dot(h, n) / np.linalg.norm(h) / np.linalg.norm(n) < 0.95:
+            fails.append(f"{weapon}: the {side} elbow bends off its own hinge ({np.dot(h, n) / np.linalg.norm(h) / np.linalg.norm(n):+.2f})")
+    rh = mp.hand_hold(S, bm, "right", species)             # in the palm: past halfway to the knuckles
+    kn = [k for k, nm in enumerate(S.names) if nm.endswith(("r_index1", "r_index_low", "r_middle1", "r_middle_low"))]
+    if kn:
+        Hb = S.bind[S.i("r_hand")]
+        reach = np.linalg.norm((S.bind[kn[0]][3, :3] - Hb[3, :3]) @ Hb[:3, :3].T)
+        if np.linalg.norm(rh[1]) < 0.5 * reach:
+            fails.append(f"{weapon}: the gun held {np.linalg.norm(rh[1]):.3f} u from the wrist joint, the knuckles "
+                         f"{reach:.3f} (want in the palm)")
+    dp = gun_depth(S, body, held, W, origin)
+    for side, d in (arm_depth(S, body) if species == "spartan" and two else {}).items():   # (forearms out of the torso)
+        if os.environ.get("ARM_DEPTH_PRINT"):
+            print(f"{weapon}: {side} arm {d * 1000:.0f} mm into the body")
+        if d > ARM_IN:
+            fails.append(f"{weapon}: the {side} arm {d * 1000:.0f} mm into the body (want {ARM_IN * 1000:.0f} or less)")
+    if dp > 0.009:
+        fails.append(f"{weapon}: the gun {dp * 1000:.0f} mm into the body")
+    if two:                                                # both palms on the gun (the player: "Halo reach
+        for side, gap in palm_gaps(S, bm, species, held, W, origin).items():   # spartan not holding gun with left
+            if gap > 0.035:                                # hand": its wrist marker read as a palm put it 0.042 off)
+                fails.append(f"{weapon}: the {side} palm {gap:.3f} u from the gun (want on it, within 0.035)")
+    feet = min(m[3, 2] for m in S.pose)
+    k = (S.pos("head")[2] - feet) / 0.61                  # a Spartan's units (its head 0.61 over its feet)
+    pel = S.pos("pelvis")
+    span = lambda Sk, n: float(np.linalg.norm((Sk.pos("l_" + n) - Sk.pos("r_" + n))[:2]))
+    fwd = mp.FWD @ mp.rot(mp.UP, mp.HOLDS[species]["yaw"])
+    if species == "spartan":
+        for side in ("r", "l"):
+            drop = (S.pos(f"{side}_upperarm")[2] - S.pos(f"{side}_forearm")[2]) / k
+            if drop < 0.045:
+                fails.append(f"{weapon}: the {side} elbow only {drop:+.2f} u below its shoulder (flared out)")
+        ahead = (S.pos("r_hand") - pel) @ fwd / k
+        if ahead > 0.15 or W[0][2] > -0.3:
+            fails.append(f"{weapon}: the grip hand {ahead:.2f} u in front of the pelvis (want within 0.15), the "
+                         f"muzzle's slope {W[0][2]:+.2f} (want down, -0.3 or steeper)")
+        if span(S, "calf") > 1.15 * span(B, "calf") or span(S, "foot") > 1.25 * span(B, "foot"):
+            fails.append(f"{weapon}: bow legged: knees {span(S, 'calf'):.3f} u apart (its own {span(B, 'calf'):.3f}), "
+                         f"feet {span(S, 'foot'):.3f} (its own {span(B, 'foot'):.3f})")
+        # a stance, not stiff legs: the easy knee at least 12 degrees, both bending forward
+        bends = []
+        for side in ("l", "r"):
+            a, kn, c = (S.pos(f"{side}_{n}") for n in ("thigh", "calf", "foot"))
+            u, v = (kn - a) / np.linalg.norm(kn - a), (c - kn) / np.linalg.norm(c - kn)
+            bends.append(np.degrees(np.arccos(np.clip(u @ v, -1, 1))))
+            if (kn - c) @ fwd < 0:
+                fails.append(f"{weapon}: the {side} knee behind its ankle (bent backward)")
+        if max(bends) < 12:
+            fails.append(f"{weapon}: stiff legs: knees bent {bends[0]:.0f} / {bends[1]:.0f} degrees (want the easy one 12+)")
+    else:
+        neck = next(n for n in ("neck", "neck0") if n in S.names or "b_" + n in S.names)
+        v = S.pos(neck) - pel
+        lean = np.degrees(np.arctan2(v @ fwd, v[2]))
+        hp = head_pitch(S)
+        if span(S, "foot") > 1.3 * span(B, "foot") or not 12.0 <= lean <= 22.0 or not -25.0 <= hp <= -2.0:
+            fails.append(f"{weapon}: feet {span(S, 'foot'):.3f} u apart (its own {span(B, 'foot'):.3f}), torso "
+                         f"{lean:.0f} degrees forward (want 12-22), face {hp:+.0f} degrees from its rest (want 2-25 "
+                         f"down)")
+    mp.HOLDS = base
+    return fails
 
 
 def main():
@@ -204,81 +331,11 @@ def main():
     # 5. the real models, where exported (make_models' list, with each model's own hold)
     seen, base = 0, {k: dict(v) for k, v in mp.HOLDS.items()}
     for weapon, species, game, _, _, _, opts in make_models.MODELS:
-        body = make_models.body_obj(os.path.join(ROOT, "maps", "_models", game), weapon, species, game)
-        held = os.path.join(ROOT, "maps", "_models", game, weapon + "_weapon.obj")
-        if not all(os.path.exists(p) for p in (body + ".skin", body + ".markers.json", held + ".markers.json")):
+        got = check_model(weapon, species, game, opts, base)
+        if got is None:
             continue
         seen += 1
-        mp.HOLDS = {k: dict(v) for k, v in base.items()}
-        if "--hold" in opts:
-            mp.apply_hold(species, opts[opts.index("--hold") + 1])
-        two = "--one-hand" not in opts
-        bones = mp.read_skin(body + ".skin")[0]
-        S, B = mp.Skeleton(bones), mp.Skeleton(bones)
-        bm = mp.read_markers(body + ".markers.json")
-        W, origin, out = mp.pose_hold(S, species, bm, mp.gun_markers(held), two)
-        if two and "left" not in out:
-            fails.append(f"{weapon}: two-handed, but the left hand is not on the gun")
-        for hand, (b, sh) in out.items():
-            if sh > 0.005 or b > 45:
-                fails.append(f"{weapon}: {hand} hand {sh:.3f} u short of the gun, wrist turned {b:.0f} degrees")
-        for side in ("r", "l"):                                # each elbow on its own hinge
-            a, e, c = (S.pos(f"{side}_{n}") for n in ("upperarm", "forearm", "hand"))
-            n = np.cross(e - a, c - e)
-            h = S.hinge(f"{side}_upperarm", f"{side}_forearm", f"{side}_hand") @ S.pose[S.i(f"{side}_upperarm")][:3, :3]
-            if np.linalg.norm(n) > 1e-6 and np.dot(h, n) / np.linalg.norm(h) / np.linalg.norm(n) < 0.95:
-                fails.append(f"{weapon}: the {side} elbow bends off its own hinge ({np.dot(h, n) / np.linalg.norm(h) / np.linalg.norm(n):+.2f})")
-        rh = mp.hand_hold(S, bm, "right", species)             # in the palm: past halfway to the knuckles
-        kn = [k for k, nm in enumerate(S.names) if nm.endswith(("r_index1", "r_index_low", "r_middle1", "r_middle_low"))]
-        if kn:
-            Hb = S.bind[S.i("r_hand")]
-            reach = np.linalg.norm((S.bind[kn[0]][3, :3] - Hb[3, :3]) @ Hb[:3, :3].T)
-            if np.linalg.norm(rh[1]) < 0.5 * reach:
-                fails.append(f"{weapon}: the gun held {np.linalg.norm(rh[1]):.3f} u from the wrist joint, the knuckles "
-                             f"{reach:.3f} (want in the palm)")
-        dp = gun_depth(S, body, held, W, origin)
-        if dp > 0.009:
-            fails.append(f"{weapon}: the gun {dp * 1000:.0f} mm into the body")
-        if two:                                                # both palms on the gun (the player: "Halo reach
-            for side, gap in palm_gaps(S, bm, species, held, W, origin).items():   # spartan not holding gun with left
-                if gap > 0.035:                                # hand": its wrist marker read as a palm put it 0.042 off)
-                    fails.append(f"{weapon}: the {side} palm {gap:.3f} u from the gun (want on it, within 0.035)")
-        feet = min(m[3, 2] for m in S.pose)
-        k = (S.pos("head")[2] - feet) / 0.61                  # a Spartan's units (its head 0.61 over its feet)
-        pel = S.pos("pelvis")
-        span = lambda Sk, n: float(np.linalg.norm((Sk.pos("l_" + n) - Sk.pos("r_" + n))[:2]))
-        fwd = mp.FWD @ mp.rot(mp.UP, mp.HOLDS[species]["yaw"])
-        if species == "spartan":
-            for side in ("r", "l"):
-                drop = (S.pos(f"{side}_upperarm")[2] - S.pos(f"{side}_forearm")[2]) / k
-                if drop < 0.045:
-                    fails.append(f"{weapon}: the {side} elbow only {drop:+.2f} u below its shoulder (flared out)")
-            ahead = (S.pos("r_hand") - pel) @ fwd / k
-            if ahead > 0.15 or W[0][2] > -0.3:
-                fails.append(f"{weapon}: the grip hand {ahead:.2f} u in front of the pelvis (want within 0.15), the "
-                             f"muzzle's slope {W[0][2]:+.2f} (want down, -0.3 or steeper)")
-            if span(S, "calf") > 1.15 * span(B, "calf") or span(S, "foot") > 1.25 * span(B, "foot"):
-                fails.append(f"{weapon}: bow legged: knees {span(S, 'calf'):.3f} u apart (its own {span(B, 'calf'):.3f}), "
-                             f"feet {span(S, 'foot'):.3f} (its own {span(B, 'foot'):.3f})")
-            # a stance, not stiff legs: the easy knee at least 12 degrees, both bending forward
-            bends = []
-            for side in ("l", "r"):
-                a, kn, c = (S.pos(f"{side}_{n}") for n in ("thigh", "calf", "foot"))
-                u, v = (kn - a) / np.linalg.norm(kn - a), (c - kn) / np.linalg.norm(c - kn)
-                bends.append(np.degrees(np.arccos(np.clip(u @ v, -1, 1))))
-                if (kn - c) @ fwd < 0:
-                    fails.append(f"{weapon}: the {side} knee behind its ankle (bent backward)")
-            if max(bends) < 12:
-                fails.append(f"{weapon}: stiff legs: knees bent {bends[0]:.0f} / {bends[1]:.0f} degrees (want the easy one 12+)")
-        else:
-            neck = next(n for n in ("neck", "neck0") if n in S.names or "b_" + n in S.names)
-            v = S.pos(neck) - pel
-            lean = np.degrees(np.arctan2(v @ fwd, v[2]))
-            hp = head_pitch(S)
-            if span(S, "foot") > 1.3 * span(B, "foot") or not 12.0 <= lean <= 22.0 or not -25.0 <= hp <= -2.0:
-                fails.append(f"{weapon}: feet {span(S, 'foot'):.3f} u apart (its own {span(B, 'foot'):.3f}), torso "
-                             f"{lean:.0f} degrees forward (want 12-22), face {hp:+.0f} degrees from its rest (want 2-25 "
-                             f"down)")
+        fails += got
     mp.HOLDS = base
     # 6. Halo 3's packed Spartan wears every backpack its customization table lists (the player: "the backpacks dont
     #    appear on the avatars"), each at the torso: centred 0.05-0.40 u from the chest pieces (against the back, not in it or off in the air)

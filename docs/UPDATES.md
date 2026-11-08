@@ -37,6 +37,7 @@ Click a version to see what it added and fixed.
 - **Flight heights from the map**: aircraft pick their attack and travel heights from the ground under them; painting airspace is optional.
 
 ### - Fixed
+- <!-- build: 20261108-1320 --> **ODST bots in the editor**: they hold the silenced SMG in the right hand with the left arm at their side; the left arm went through the chest in the last update.
 - <!-- build: 20261108-0930 --> **Follow me and roam hold up in Firefight**: after **follow me** your bots stay beside you through Covenant waves instead of running off for plasma pistols or to chase a Wraith, and one never parks a few metres off when its spot beside you is blocked. After **roam** each bot fights from its own covered spot instead of stepping into the open, keeps that spot when a teammate dies, and picks covered spots close to you instead of rooms across the map.
 - <!-- build: 20261108-0930 --> **Bots stuck boarding**: a bot that cannot get to an enemy vehicle (one parked below a ledge, say) gives up on it after a few seconds instead of standing over it.
 - <!-- build: 20261108-0645 --> **Generator Defense guards stay on their generator**: each Spartan bot now keeps its own generator for the whole match (they used to swap generators every time one died), comes back at the respawn spot nearest its generator and walks straight to it, and locks a generator down every time it is needed (only the first lock of a match went through before).

@@ -51,14 +51,17 @@ MODELS = [
      ["--one-hand", "--hold", "grip=0.09,-0.21,-0.05;barrel=0.45,-0.3,-0.84;pole_r=-0.6,-0.6,-0.4;rest=0.1,0.21,-0.05;"
       "upright=-10;chin=8"]),
     # Halo 3: ODST: the squad model, its characters by region (maps/_looks/odst.json "view"), with the silenced SMG (the
-    # game's own Firefight gun): low ready, the barrel more forward, the left elbow in (its front grip: 80 degrees of left wrist
-    # at the rifle's hold)
+    # game's own Firefight gun) in the right hand at low ready, the left arm down at its side. Two-handed, its vertical
+    # front grip turned the left wrist 80 degrees, and pulling the elbow in to straighten it put the forearm through the
+    # chest (the player: "the left arm is inside the body"; test_model_pose arm_depth)
     ("odst_spartan", "spartan", "odst", ODST, r"characters\odst\odst", r"smg_silenced\smg_silenced",
-     ["--hold", "grip=0.14,-0.02,0.06;barrel=0.4,0.8,-0.3;pole_r=-0.3,-0.8,-0.5;pole_l=-0.5,-0.6,-0.6"]),
+     ["--one-hand", "--hold", "grip=0.14,-0.02,0.06;barrel=0.25,0.9,-0.45;pole_r=-0.3,-0.8,-0.5;rest=0.02,0.30,-0.25;"
+      "curl_l=30"]),
     # Dare (ODST character 8): her own body, the ONI operative's (helmet, head, hair, beacon by region); the squad's
-    # hold with the gun closer (her shorter arms: the left hand 0.023 u short at the squad's grip)
+    # hold, the gun closer and her left hand nearer her side (her shorter arms)
     ("odst_dare", "spartan", "odst", ODST, r"characters\odst_oni_op\odst_oni_op", r"smg_silenced\smg_silenced",
-     ["--hold", "grip=0.10,0.0,0.07;barrel=0.4,0.8,-0.3;pole_r=-0.3,-0.8,-0.5;pole_l=-0.5,-0.6,-0.6"]),
+     ["--one-hand", "--hold", "grip=0.10,0.0,0.07;barrel=0.25,0.9,-0.45;pole_r=-0.3,-0.8,-0.5;rest=0.02,0.24,-0.12;"
+      "curl_l=30"]),
     # Halo 2: Anniversary's bots wear its three original sets (spartan_iv Mark VI, spartan_var2 Centurion, spartan_var3
     # Hoplite) and in Modern MCC's added pieces (Orion, Bioroid, Robot, Trooper, Breach, Panzer: its customization
     # table, maps/_looks/h2a.json, h2a_armory.json): pieces no bot wears (Halo 4's left in this model, the Flood's) out
