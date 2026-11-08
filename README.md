@@ -15,10 +15,11 @@ Reach and ODST Firefight (bots fill your team). Up to 15 bots: the game holds 16
 
 ## Status, updates and bugs
 
-Everything about where the mod stands is in three places:
+Everything about where the mod stands is in four places:
 
 | | |
 |---|---|
+| **[Release](https://github.com/AyoItzKye/project-proving-grounds/releases/latest)** | Version **0.2.2**, last updated **November 8, 2026**. Download it from the Releases page. <!-- release --> |
 | **[Updates](docs/UPDATES.md)** | What changed in each version (new, fixed, changed, known problems), newest first. |
 | **[Known bugs](docs/KNOWN_BUGS.md)** | Everything known to be broken, by game, and every bug reported on GitHub with its status. |
 | **[Bot status sheet (PDF)](docs/BOT_STATUS.pdf)** | An honest rating of every game, mode and vehicle, from green (good to go) to red (not working yet). |
