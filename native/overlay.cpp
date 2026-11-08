@@ -14,6 +14,7 @@
 #include "model_view.h"
 #include "bots_panel.h"
 #include "ui_layout.h"
+#include "input_gate.h"
 #include "third_party/minhook/include/MinHook.h"
 #include "third_party/imgui/imgui.h"
 #include "third_party/imgui/imgui_impl_win32.h"
@@ -661,6 +662,10 @@ static HRESULT __stdcall h_present(IDXGISwapChain* sc, UINT sync, UINT flags) {
             bool bug = match && (pause || g_bug_open);
             g_bug_ui = bug;
             if (!bug) g_bug_hover = false;
+            // ImGui hears the window's input under our UI only (wndproc): keys it had down when that stopped are
+            // forgotten as it starts again (a release lost over the match ran the panel on as if Right were held)
+            static hb_input_gate gate;
+            gate.frame(g_show_tile || bug, ImGui::GetIO());
             if (g_show_tile || notice || bug) {
                 ImGuiIO& gio = ImGui::GetIO();
                 if (bug && g_bug_open && !g_bug_was_open) {          // F9 opened the window: nothing typed before is its text

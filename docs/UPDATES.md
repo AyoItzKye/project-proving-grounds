@@ -37,6 +37,7 @@ Click a version to see what it added and fixed.
 - **Flight heights from the map**: aircraft pick their attack and travel heights from the ground under them; painting airspace is optional.
 
 ### - Fixed
+- <!-- build: 20261108-1639 --> **BOTS panel moving on its own**: after a match the panel could run through its options by itself as if an arrow key were held down; a key let go while the match was ending is no longer taken as still held.
 - <!-- build: 20261108-1610 --> **ODST bots' left hand on the SMG**: in the editor the left hand now sits higher and fully on the SMG's foregrip.
 - <!-- build: 20261108-1540 --> **ODST bots in the editor hold the SMG tucked in**: the silenced SMG sits against the chest instead of out in front, and the left hand wraps the foregrip instead of sitting just behind it.
 - <!-- build: 20261108-1445 --> **ODST bots in the editor hold the silenced SMG in both hands**: across the body like the other games' bots, the muzzle down toward the left knee, the left hand round the gun's front grip with the elbow bent; the last update had them holding it in one hand.
