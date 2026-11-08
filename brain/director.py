@@ -59,6 +59,7 @@ PRONG_NAV_DETOUR = 2.5     # a prong's way by the nav at most this many times th
 # an Invasion push's flanks (push_lanes): LANE_R u out from the territory, LANE_ANGLE off the team's line in, kept
 # LANE_KEEP_S per territory; attackers with posts within LANE_NEAR of it take them in turn
 LANE_R, LANE_ANGLE, LANE_KEEP_S, LANE_NEAR = 14.0, math.radians(60.0), 30.0, 15.0
+GEN_POST = 4.0      # u: an order point this near a guard post's generator holds that post (Generator Defense)
 LANE_PHASES = (2,)          # the Invasion phases whose push takes the flanks (assign_roles: phase 1 rushes straight)
 BLITZ_MODES = ("ctf", "assault", "stockpile", "king", "headhunter")    # (+ Invasion attacking; desperate says why not others)
 AIR_CALL = 2.5               # a transport aircraft calls riders from this many CALL_R (rider_calls; Bot.crew_coming waits)
@@ -733,8 +734,23 @@ class Director:
             if blitzing:                         # (the whole team in the blitz: its vehicles still get their crews)
                 s.vehicle_orders(now, snap, blitzing)
             return
-        slots = s.role_slots(now, snap, len(alive))
+        # Generator Defense: a guard keeps its generator through its death and the others' (live Beachhead Nov 8: the
+        # posts re-dealt each pass by the living count, a death moved another guard onto its generator, posts swapped
+        # every 10-20 s and the guards were mostly on the walk between them)
+        held = [b for b in s.bots.values() if b.order.said == "gen" and b.order.role == "defender" and
+                b.order.point is not None and
+                any(dist(b.order.point, g) < GEN_POST for _, g in getattr(s, "gen_guard", ()))]
+        slots = s.role_slots(now, snap, len(alive) + sum(1 for b in held if b not in alive))
         free = list(alive)
+        for j, g in s.gen_guard:
+            b = next((b for b in held if dist(b.order.point, g) < GEN_POST), None)
+            if b is not None:                    # (its post: its order stands, dead or alive)
+                held.remove(b)
+                slots[j] = None
+                if b in free:
+                    free.remove(b)
+                    s.roles[b.id] = "defender"
+        slots = [sl for sl in slots if sl is not None]
         carrier = next((b for b in alive if snap.player(b.id).has_flag), None)
         if carrier:   # the carrier always runs home; no rogue moments with the flag
             free.remove(carrier)
@@ -1476,6 +1492,7 @@ class Director:
                 if r == "generator_guard":
                     g = gens[k % len(gens)]                 # (one each, the generators in a fixed order: guards stay)
                     k += 1
+                    s.gen_guard.append((j, g["pos"]))       # (assign_roles: a guard keeps its generator)
                     out.append(("defender", s.spread(g["pos"], j, s.GUARD_RING), "camping"))
                 elif r == "rotator":
                     out.append(("defender", s.spread(hot["pos"], j, s.GUARD_RING), "aggression"))
@@ -1588,6 +1605,7 @@ class Director:
     def role_slots(s, now, snap, n):
         """Ordered list of (role, point, preferred trait)."""
         s.slot_said = ""            # (Generator Defense's jobs: "gen", a firm leash and no vehicle trips)
+        s.gen_guard = []            # (ff_gen_slots: (slot, generator place) of each guard post)
         said = s.say_slots(now, snap, n)
         if said is not None:
             return said

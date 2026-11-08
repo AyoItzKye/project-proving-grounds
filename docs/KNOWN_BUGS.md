@@ -93,7 +93,7 @@ For everything that works, game by game, see the [bot status sheet](BOT_STATUS.p
 
 **Works, but buggy**
 
-- **Generator Defense**: Spartan bots guard the generators and lock them down, and Elite bots attack the open ones. The Spartans still lose generators often: a guard that dies respawns far away, and it locks one only when it is beside it at the time.
+- **Generator Defense**: Spartan bots guard the generators, each its own for the whole match, come back at the respawn spot nearest it and lock one down whenever it is needed. Outnumbered by four Elite players and the Covenant, they still lose the generators in most matches.
 - **Invasion on Boneyard**: The attackers loiter in the Tier 2 spawn area instead of pushing the objectives aggressively.
 - **Capture the Flag**: Bots capture flags and it plays well, but in big games the bot teams don't push the enemy flag enough.
 - **Assault**: Bots pick up and carry the bomb, but I haven't seen them score a plant in a real match yet.

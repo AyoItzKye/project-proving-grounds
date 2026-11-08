@@ -176,9 +176,11 @@ GRAVITY = 4.1                       # u/s^2 in Reach (the player's fall onto a S
 ESCORT_TRAIL = 3.0                 # an escort's spot: this far behind the carrier, on the side away from home
 NO_PROGRESS_S = 8.0                # s moving toward one goal point with no metre gained: stuck (Bot.unstuck)
 ROAM_LEASH = 6.0                   # u a "roam" holder strays from its covered spot (keep_role)
-GEN_LEASH = 4.0                    # u a Generator Defense guard strays from its spot beside the generator (keep_role)
+GEN_FIGHT_R = 8.0                  # u from its post a guard still fights a man (nearer its generator than that)
+GEN_BACK = 3.2                     # a guard off its post: the way back outscores any fight but a man in its way
 LOCK_HOLD = 1.5                    # s a guard holds Use on a generator's lockdown switch
 LOCK_WALK = 6.0                    # s more it has to walk in to the switch first
+LOCK_CLAIM = {}                    # team -> snap.time its last lock was started (the game shows it 0.5 s on, live_bots)
 RUN_DETOUR = 8.0                    # a CTF runner's side trip (a fight, an item) past this many units off its line: strays
 PRESS_COVER_R = 12.0                # u: an Invasion attacker covering the territory strays past this off its spot (keep_role)
 STAGE_D, STAGE_WAIT = 18.0, 6.0     # a CTF runner this near their flag with no teammate within 8 u waits this long for one
@@ -948,7 +950,9 @@ class Bot:
             if o.said == "gen":
                 # a Generator Defense guard (director.ff_gen_slots): in reach of its generator's lockdown switch, as on
                 # the core (live Beachhead Nov 8: guards in reach 5-10% of the time, never there when a lock was due)
-                r, urgent = GEN_LEASH, True
+                # Fights: a man in its way (within 4 u: urgent's arm's length) or one near the generator (GEN_FIGHT_R of
+                # its post); anything further off loses; off its post (half that) it heads back first (GEN_BACK)
+                r, urgent = GEN_FIGHT_R, True
             if o.said == "roam":
                 # the person's "roam": its own covered spot, kept (live Boardwalk Nov 8: 29% of the decisions went to
                 # pickups, one bot a median 16.7 u off its spot); guns and hunts past ROAM_LEASH u lose as on the core
@@ -1040,7 +1044,11 @@ class Bot:
                 # post's 1.72, and it walked to the post with the Flood 4 u off, never shooting him: a Blood Cavern
                 # Flood playtest, Nov 6 16:48)
                 here = arg in seen or snap.time - s.per.last_seen.get(arg, -9.0) < GLIMPSE_S
-                if b is None or (arg == att and fresh_hit) or (here and dist(me.pos, b.pos) < (4.0 if urgent else 8)):
+                guard = o.said == "gen" and o.role == "defender" and o.point is not None and b is not None
+                if guard and (dist(me.pos, b.pos) < 4.0 or dist(b.pos, o.point) <= GEN_FIGHT_R):
+                    continue          # a guard: a man in its way, or one at its generator
+                if not guard and (b is None or (arg == att and fresh_hit) or
+                                  (here and dist(me.pos, b.pos) < (4.0 if urgent else 8))):
                     continue          # on us, or right here: fight back wherever (the core at stake: only at arm's length)
                 q = b.pos
             elif kind in ("hunt", "item", "hold") and isinstance(arg, Vec):
@@ -1072,7 +1080,11 @@ class Bot:
                 scores[key] *= 0.15 if urgent else 1.0 - 0.7 * k
         if away:
             pt = goal_pt or s.live_point(me, snap) or s.objective_point(me)
-            scores[("objective", pt)] = max(scores.get(("objective", pt), 0.0), 1.2 + 0.6 * k)
+            # (a Generator Defense guard off its post, after a respawn above all: straight back over any fight it is not
+            # blocked by (guide rule, Nov 8); live: guards beside their generator 3-13% of the time)
+            blocked = any(dist(me.pos, s.per.beliefs[q].pos) < 4.0 for q in seen if q in s.per.beliefs)   # (in its way)
+            back = GEN_BACK if o.said == "gen" and o.role == "defender" and not blocked else 1.2 + 0.6 * k
+            scores[("objective", pt)] = max(scores.get(("objective", pt), 0.0), back)
 
     @staticmethod
     def urgent(me, snap):
@@ -1186,7 +1198,9 @@ class Bot:
         # a new life picks its route again (the director's pick_route, which steers off where the team keeps dying):
         # kept, a runner took the lane it first drew every life of the match (the director keeps a live runner's route),
         # one lane all game on the three-lane maps (Lockout, Island, Guardian)
-        s.order = Order(s.order.role, s.order.point, s.order.target)
+        # (the person's command or a generator job stays: dropped here, a dead guard was no guard to its respawn pick,
+        # live Beachhead Nov 8, every guard_skip "not a guard order")
+        s.order = Order(s.order.role, s.order.point, s.order.target, said=s.order.said)
         s.via_left, s.prong_passed = [], False      # (a blitz's prong again from the respawn: director.prong_via)
         s.per = Perception(s.p, s.rng)
         s.aim = Aim(s.p, s.rng)
@@ -1881,10 +1895,14 @@ class Bot:
                                elite_near_still=any(p.vel.flat() <= 0.5 for p in elites),
                                tier=5 if s.p.tactics >= 0.6 else 3, wave_left=ff.get("left"),
                                overlaps_cooldown=cooling, enemy_near=bool(close), sudden_death=False)
-            if lock and snap.time - ff.get("lock_t", -99.0) >= FF.LOCK_GAP:
+            # (the team's claim too: the game's lock shows 0.5 s on, two guards started theirs 0.5 s apart, live Nov 8)
+            claim = LOCK_CLAIM.get(me.team, -99.0)
+            last = max(ff.get("lock_t", -99.0), claim if claim <= snap.time else -99.0)   # (a new match: void)
+            if lock and snap.time - last >= FF.LOCK_GAP:
                 why = "hit" if g["hit"] else "elite" if elites else "squad"
                 if getattr(s, "lock_hold", None) is None or s.lock_hold[0] != g["i"] or now >= s.lock_hold[1]:
                     s.lock_hold = (g["i"], now + LOCK_WALK + LOCK_HOLD, why)
+                    LOCK_CLAIM[me.team] = snap.time
             held = getattr(s, "lock_hold", None)
             if held is not None and held[0] == g["i"] and now < held[1]:
                 act.yaw, act.pitch = angles_to(me.pos + Vec(0, 0, 0.6), g["pos"] + Vec(0, 0, 0.5))

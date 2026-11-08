@@ -1967,6 +1967,11 @@ class Terrain:
         l, j, i = s._node(a)
         return bool(np.isfinite(s._field(b, jump, human)[l, j, i]))
 
+    def walk_cost(s, a, b):
+        """The nav's walk cost from a to b (its cost field, the one nav walks down), inf with no way."""
+        l, j, i = s._node(a)
+        return float(s._field(b, False, False)[l, j, i])
+
     RISKY_DROP = 8.0     # a person's jump down more than this is costed like a wall for a carrier (safe=True)
 
     def _risky(s, graph, tele=False):

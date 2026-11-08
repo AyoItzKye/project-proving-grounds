@@ -1646,6 +1646,27 @@ class LiveReach(LiveH3):
         except Exception:
             return None
 
+    def ff_zones(s):
+        """Firefight's respawn zones (firefight_respawn_zone scenery: the places a person picks on the death screen),
+        [(x, y, z)], read once a map."""
+        key = s.map_name()
+        if getattr(s, "_ff_zones", (None,))[0] != key:
+            from .forge import _tag_names
+            names = _tag_names(s) or []
+            ents, mx, _ = s._array(0x10)
+            b = s.g.read(ents, mx * 0x18)
+            out = []
+            for i in range(mx):
+                if not struct.unpack_from("<H", b, i * 0x18)[0] or b[i * 0x18 + 4] != 6:
+                    continue
+                o = struct.unpack_from("<Q", b, i * 0x18 + 0x10)[0]
+                u = s.g.read(o, 0x50)
+                t = struct.unpack_from("<I", u, 0)[0] & 0xFFFF
+                if t < len(names) and names[t].endswith("firefight_respawn_zone"):
+                    out.append(struct.unpack_from("<3f", u, 0x44))
+            s._ff_zones = (key, out)
+        return s._ff_zones[1]
+
     def ff_generators(s):
         """Generator Defense's generators (live Beachhead Nov 8, logs/tmp/gen_watch.py): each generator_x_large machine
         with its shield / body damage (+0x124 / +0x128, as a unit's), health 1 full .. 0 gone, and its three switches

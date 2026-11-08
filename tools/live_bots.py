@@ -134,7 +134,7 @@ def say_command(m, snap, directors, now):
     return word, person.team
 
 
-def ff_state(live, players):
+def ff_state(live, players, now):
     """Firefight's state for the brain (brain/firefight.py): versus (players on both sides: Versus or Generator
     Defense), the Spartans' lives, each team's side {team: 1 Spartans or 7 Elites} (they swap each turn), the enemies
     of the Spartans left, the heat for the Spartans and its zone (guide 11 section 2.4)."""
@@ -156,7 +156,9 @@ def ff_state(live, players):
                 power_weapon=any(p.alive and p.team in spartans and p.weapon in FF.POWER
                                  for p in players))
     out = dict(versus=versus, lives=lives, side=side, left=len(npcs), heat=h, zone=FF.heat_zone(h))
-    out.update(gen_state(live, snap_time=time.time()))
+    # (the match clock, as snap.time: a wall clock here put lock_t ~1.8e9 s ahead of the bots' snap.time, so after
+    # the first lock the 10 s gap never passed again, one lock a match, live Beachhead Nov 8)
+    out.update(gen_state(live, snap_time=now))
     if any(g["hit"] for g in out["gens"]):          # (a generator taking damage: the heat's +0.10 term)
         out["heat"] = min(1.0, h + 0.10)
         out["zone"] = FF.heat_zone(out["heat"])
@@ -415,7 +417,7 @@ def snapshot(live, now, prev, bot_ids, crouch=(), person_crouch=False, person_ho
                                        math.atan2(fy, fx), math.atan2(fz, math.hypot(fx, fy)), True,
                                        d["shield"], d["health"], d["weapon"], rank=d.get("rank") or ""))
         snap.mode = "firefight"
-        snap.ff = ff_state(live, players)
+        snap.ff = ff_state(live, players, now)
     if engine == 4:                              # King of the Hill
         h = live.king_hill() or HILL.get("last")
         # (a King game always has a hill: a read that misses keeps the last one. Halo 3's comes from the host's HUD
@@ -669,6 +671,77 @@ def spawn_check(send, bots, snap, now, state, spawns, watch, rng, T, trace=None)
         taken.append(new["pos"])
         st.update(pick=new, phase=snap.inv_phase, t=now)
     watch.placed = {index for index, st in state.items() if st.get("pick")}
+
+
+GUARD_ZONE_CLEAR = 8.0      # u: no enemy this near a respawn zone a guard is sent to
+GUARD_NEAR, GUARD_SLOW_S, GUARD_SLOW_COST = 8.0, 12.0, 30.0   # u at its post; s alive to get there; the slow zone's cost
+GUARD_SLOW = []             # (zone, post): a guard sent there was not at its post in GUARD_SLOW_S alive (this match)
+
+
+def guard_spawn_check(send, bots, snap, zones, state, rng, T, now, trace=None):
+    """Generator Defense (guide rule, Nov 8: guards go straight back to their generator after a
+    respawn): a dead guard (a Spartan bot on a Generator Defense defender order, director.ff_gen_slots) respawns at the
+    Firefight respawn zone nearest its generator with no enemy within GUARD_ZONE_CLEAR u, as a person picks one on the
+    death screen; a clear spot within 2 u of it, sent once a death (botctl.spawn_at: botcore moves its new unit there).
+    Live Beachhead: from the Spartan spawn the walk back took 20-30 s of every life."""
+    taken = [st["at"] for st in state.values() if st.get("at")]
+    for index, b in bots.items():
+        me = snap.player(index)
+        if not me:
+            continue
+        st = state.setdefault(index, {})
+        if me.alive:
+            # (judged by its walk from the zone: live Beachhead Nov 8, a guard sent onto a ledge over generator 1 its
+            # nav walks off, wedged at a rail 10 u from it 7 s while the generator went down, sent there again)
+            if st.get("zone") is not None:
+                st.setdefault("up", now)
+                if (me.pos - st["post"]).flat() <= GUARD_NEAR:
+                    st.clear()
+                elif now - st["up"] > GUARD_SLOW_S:
+                    GUARD_SLOW.append((st["zone"], st["post"]))
+                    if trace:
+                        trace.write(json.dumps(dict(t=round(now, 3), id=index, spawn="guard_slow",
+                                                    zone=[round(st["zone"].x, 2), round(st["zone"].y, 2)])) + chr(10))
+                    st.clear()
+            else:
+                st.clear()
+            continue
+        if st.get("up") is not None:                    # (died on its way: a new death, no verdict)
+            st.clear()
+        o = b.order
+        if st.get("at") is not None:
+            continue
+        why = ("not a guard order" if o.said != "gen" or o.role != "defender" or o.point is None else
+               f"side {me.side}" if me.side != FF.SPARTAN else None)
+        foes = [p.pos for p in snap.players if p.alive and p.team != me.team]
+        ok = [Vec(*z) for z in zones if all((q - Vec(*z)).flat() >= GUARD_ZONE_CLEAR for q in foes)]
+        why = why or (None if ok else f"no clear zone of {len(zones)}")
+        if why:
+            if trace and st.get("why") != why:            # (once a death and reason: tools/gen_report.py)
+                trace.write(json.dumps(dict(t=round(now, 3), id=index, spawn="guard_skip", why=why)) + chr(10))
+            st["why"] = why
+            continue
+        def cost(z):                                    # the nav's walk (its learned stuck spots in), not the crow's
+            w = T.walk_cost(z, o.point) if hasattr(T, "walk_cost") else math.inf
+            w = w if math.isfinite(w) else 2.0 * (z - o.point).flat()   # (a zone off the nav: the floor is still there)
+            slow = any((z - zs).flat() < 0.5 and (o.point - p).flat() < GUARD_NEAR / 2 for zs, p in GUARD_SLOW)
+            return w + (GUARD_SLOW_COST if slow else 0.0)
+        c = min(ok, key=cost)
+        spot = c
+        for k in range(16):
+            r, a = (0.0, 0.0) if k == 0 else (rng.uniform(0.5, 2.0), rng.uniform(0.0, 2 * math.pi))
+            p = Vec(c.x + r * math.cos(a), c.y + r * math.sin(a), c.z)
+            if (T.ground_ok(p.x, p.y, p.z + 0.4, drop=1.0) and T.los(c, p)
+                    and all((q - p).flat() >= SPAWN_CLEAR for q in taken)):
+                spot = p
+                break
+        yaw = math.atan2(o.point.y - spot.y, o.point.x - spot.x)          # facing its generator
+        send(index, spot.x, spot.y, spot.z, yaw)
+        st.update(at=spot, zone=c, post=o.point)
+        taken.append(spot)
+        if trace:
+            trace.write(json.dumps(dict(t=round(now, 3), id=index, spawn="guard", at=[round(spot.x, 2), round(spot.y, 2),
+                                        round(spot.z, 2)], gen=[round(o.point.x, 2), round(o.point.y, 2)])) + chr(10))
 
 
 def zone_spawn_check(send, bots, snap, zone_of, state, rng, T, now, trace=None):
@@ -1026,6 +1099,7 @@ def main():
         inv_layout["map"] = MAP["name"]           # (its phase rules by map: brain/invasion.py phase_link_gates)
     inv_watch, inv_check, inv_unread = [None], [-9.0], [False]
     zone_check, zone_state = [-9.0], {}           # Invasion with no setup of its own: the game's zones (zone_spawn_check)
+    guard_check, guard_state = [-9.0], {}         # Generator Defense guards' respawn zones (guard_spawn_check)
     # a map variant's pieces that come and go (brain/forge.py PieceWatch): walls while they stand
     piece_watch, piece_check = None, [-9.0, 0]
     if MAP.get("variant") and not FIREFIGHT:
@@ -1278,8 +1352,9 @@ def main():
                                  if not (isinstance(t, tuple) and t[0] == "bot")},
                         blitz=blitz_rows(directors),
                         crouch=[p.id for p in snap.players if p.crouching],   # (who reads crouched: aim heights)
-                        # Generator Defense (tools/gen_report.py): [i, state, health] each generator
-                        gens=[[g["i"], g["state"], round(g["health"], 2)] for g in (snap.ff or {}).get("gens", [])] or None,
+                        # Generator Defense (tools/gen_report.py): [i, state, health, x, y] each generator
+                        gens=[[g["i"], g["state"], round(g["health"], 2), round(g["pos"].x, 2), round(g["pos"].y, 2)]
+                              for g in (snap.ff or {}).get("gens", [])] or None,
                         world=everyone.rows(now, snap.players, bot_set, T.los, aims),   # + still, formed up, in sights,
                         # people's crosshairs and rides
                         deployed=[[d["kind"], round(d["pos"].x, 2), round(d["pos"].y, 2), round(d["pos"].z, 2), d["team"]]
@@ -1311,6 +1386,14 @@ def main():
                     save_learned(MAP)
                     # (on a thread: the merge and write of a big map's lidar.json froze every bot for a few ticks)
                     threading.Thread(target=save_lidar, daemon=True).start()
+                if FIREFIGHT and (snap.ff or {}).get("gens") and now - guard_check[0] > 0.5:
+                    guard_check[0] = now
+                    try:
+                        guard_spawn_check(lambda i, *a: botctl.spawn_at(m, i, *a), bots, snap, live.ff_zones(),
+                                          guard_state, rng, T, now, trace)
+                    except Exception as e:           # (never the whole tick: guards then spawn where the game puts them)
+                        guard_check[0] = float("inf")
+                        print(f"{now:6.1f}s guard spawns off ({type(e).__name__}: {e})", flush=True)
                 if now - last_items > 0.5:
                     last_items = now
                     item_check(live, directors, bots, snap, now)

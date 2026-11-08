@@ -33,6 +33,7 @@ Click a version to see what it added and fixed.
 - **Flight heights from the map**: aircraft pick their attack and travel heights from the ground under them; painting airspace is optional.
 
 ### - Fixed
+- <!-- build: 20261108-0645 --> **Generator Defense guards stay on their generator**: each Spartan bot now keeps its own generator for the whole match (they used to swap generators every time one died), comes back at the respawn spot nearest its generator and walks straight to it, and locks a generator down every time it is needed (only the first lock of a match went through before).
 - <!-- build: 20261108-0430 --> **Bots stuck by a step**: a bot rocking back and forth at one spot on its way somewhere now counts as stuck and works its way out.
 - <!-- build: 20261108-0230 --> **Firefight respawns on the Elite side** ([#12](https://github.com/AyoItzKye/project-proving-grounds/issues/12)): bots on the Elite side never came back after dying; they now respawn after the Elites' longer wait, at the Elites' spawn, and after a turn swap each bot respawns on its new side.
 - <!-- build: 20261107-2240 --> **The BOTS panel**: opening a bot's profile no longer stops the game with an error box; a controller's stick resting a little off centre no longer scrolls the panel's lists by itself (only a real push moves them); closing it with Esc no longer backs you out of the lobby, and the BOTS tile no longer shows on top of the post-game scoreboard.
