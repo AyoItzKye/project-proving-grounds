@@ -37,6 +37,7 @@ Click a version to see what it added and fixed.
 - **Flight heights from the map**: aircraft pick their attack and travel heights from the ground under them; painting airspace is optional.
 
 ### - Fixed
+- <!-- build: 20261108-1540 --> **ODST bots in the editor hold the SMG tucked in**: the silenced SMG sits against the chest instead of out in front, and the left hand wraps the foregrip instead of sitting just behind it.
 - <!-- build: 20261108-1445 --> **ODST bots in the editor hold the silenced SMG in both hands**: across the body like the other games' bots, the muzzle down toward the left knee, the left hand round the gun's front grip with the elbow bent; the last update had them holding it in one hand.
 - <!-- build: 20261108-1320 --> **ODST bots in the editor**: they hold the silenced SMG in the right hand with the left arm at their side; the left arm went through the chest in the last update.
 - <!-- build: 20261108-0930 --> **Follow me and roam hold up in Firefight**: after **follow me** your bots stay beside you through Covenant waves instead of running off for plasma pistols or to chase a Wraith, and one never parks a few metres off when its spot beside you is blocked. After **roam** each bot fights from its own covered spot instead of stepping into the open, keeps that spot when a teammate dies, and picks covered spots close to you instead of rooms across the map.
