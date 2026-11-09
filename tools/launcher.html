@@ -328,6 +328,9 @@
       <li class="stat" id="st-mods" data-level="wait"><svg class="i" aria-hidden="true"><use href="#i-wait"/></svg>
         <span class="stat-label">Other mods</span><span class="stat-value" id="r-mods">Checking ...</span>
         <span class="stat-detail" id="r-mods-detail"></span></li>
+      <li class="stat" id="st-linux" data-level="wait" hidden><svg class="i" aria-hidden="true"><use href="#i-wait"/></svg>
+        <span class="stat-label">Bots in MCC</span><span class="stat-value" id="r-linux">Checking ...</span>
+        <span class="stat-detail" id="r-linux-detail"></span></li>
     </ul>
     <div class="play-wrap">
     <div class="play-row">
@@ -515,6 +518,16 @@ function render(s) {
   } else {
     setStatus("mods", "ok", "None that clash", s.workshop ? `${plural(s.workshop, "Workshop item", "Workshop items")}, loaded only when MCC starts with mods.` : "");
     $("clean-wrap").hidden = true;
+  }
+  // Linux / Steam Deck: whether Steam's launch option has loaded the bots (the mod never runs without it)
+  const lp = s.linux_play;
+  $("st-linux").hidden = !lp;
+  if (lp) {
+    const paste = "In Steam: MCC > Properties > General > Launch Options, paste " + (lp.option || "the line install.sh printed")
+                  + ". Then press Play and choose the anti-cheat off option.";
+    if (lp.ready) setStatus("linux", "ok", "Loaded at the last start", "");
+    else if (lp.started) setStatus("linux", "warn", "Did not load at the last start", `${lp.last} (logs/linux_play.txt)`);
+    else setStatus("linux", "warn", "Not loaded yet", paste);
   }
   $("r-lidar").textContent = `${s.lidar.mapped} of ${s.lidar.total} maps mapped`;
   $("lidar-bar").style.width = (s.lidar.total ? 100 * s.lidar.mapped / s.lidar.total : 0) + "%";

@@ -3142,14 +3142,18 @@ def view(o):
     hub.view_src = src                               # (the page's label: SIMULATOR SCAN; the window reopened shows it too)
     srv = serve(hub, getattr(o, "port", PORT))       # (--port: a second view beside a running one)
     url = f"http://127.0.0.1:{getattr(o, 'port', PORT)}/"
-    if o.open:
-        appwindow.open_window(url)
+    win = appwindow.open_window(url) if o.open else None
     if srv is None:
         return                                       # the live view is up: opened it
+    closed = threading.Event()
+    appwindow.when_closed(win, closed.set)           # (its window closed: the view ends with it)
     print(f"showing {name}; Ctrl+C to stop", flush=True)
     try:
         while True:
             time.sleep(1)
+            if closed.is_set():
+                srv.shutdown()
+                return
             if getattr(hub, "yielded", False):
                 print("A LiDAR match took over the 3D view (same address, the page now shows it live). "
                       "This window can close.", flush=True)

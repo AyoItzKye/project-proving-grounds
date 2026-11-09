@@ -323,7 +323,7 @@ def main():
         return
     print("Paint the nav:", url, flush=True)
     if "--open" in sys.argv:
-        appwindow.open_window(url)
+        appwindow.when_closed(appwindow.open_window(url), srv.shutdown)   # (it ends with its window)
     srv.serve_forever()
 
 

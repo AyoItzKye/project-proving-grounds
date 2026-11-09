@@ -605,9 +605,10 @@ def main():
     switch.current = Hub(Recorder((names or every)[0], count_run=False, path=idle if not names else None), "sim")
     switch.current.note = "Pick a map to simulate (Simulator panel)"
     srv = lidar.serve(switch, o.port)
+    win = None
     if o.open:
         import appwindow
-        appwindow.open_window(f"http://127.0.0.1:{o.port}/")
+        win = appwindow.open_window(f"http://127.0.0.1:{o.port}/")
     if srv is None:                                   # another simulator holds its address: two would
         print("Another LiDAR simulator is already running: its window shows it. Not starting a second "
               "one (both would save the same maps).", flush=True)
@@ -621,6 +622,14 @@ def main():
                   f"(kill zones out) | {100 * TARGET:.0f}% at |\n|" + "---|" * 15 + "\n")
         k = 0
         switch.last_seen = time.time()
+
+        def window_closed():                          # the map on (saved as it stops), no more after it: the tool
+            with ctl.lock:                            # ends with its window, never simulating on unseen
+                ctl.queue.clear()
+                ctl.stop_now = True
+            switch.last_seen = 0.0
+        if win is not None:
+            appwindow.when_closed(win, window_closed)
         while True:
             name = ctl.next_map()
             if name is None:

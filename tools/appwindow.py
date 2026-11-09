@@ -32,18 +32,29 @@ def command(url, size=(1400, 900), title=None):
 
 
 def open_window(url, size=(1400, 900), title=None):
-    """Opens url in the app window (the default browser without it). Returns at once. Under Wine (Linux, Steam Deck)
-    there is no WebView2: the Linux launcher script and the launcher's page open the pages in the system's browser."""
+    """Opens url in the app window (the default browser without it). Returns at once: the window's process, or None
+    in a browser. Under Wine (Linux, Steam Deck) there is no WebView2: the Linux launcher script and the launcher's page
+    open the pages in the system's browser."""
     sys.path.insert(0, ROOT)
     from brain import paths
     if paths.wine():
         print(f"open {url} in your browser", flush=True)
-        return
+        return None
     cmd = command(url, size, title)
     if cmd:
-        subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    else:
-        webbrowser.open(url)
+        return subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    webbrowser.open(url)
+    return None
+
+
+def when_closed(proc, stop):
+    """Calls stop() once the app window proc (open_window's) closes, from a thread of its own: a tool ends with its
+    window instead of serving on unseen (the LiDAR view ran on for hours after its window was closed, Nov 8). Nothing in a
+    browser (proc None): a closed tab cannot be told from a hidden one."""
+    if proc is None:
+        return
+    import threading
+    threading.Thread(target=lambda: (proc.wait(), stop()), daemon=True).start()
 
 
 def remove_old_edge_profile():

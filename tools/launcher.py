@@ -170,6 +170,24 @@ def choose_mcc(body):
     return ok, said
 
 
+def linux_play():
+    """Linux / Steam Deck: what the last start through Steam's launch option did (logs/linux_play.txt, written by
+    installer/linux/ppg-run.sh), None elsewhere: dict(started, ready, last, option). Never started: Steam started MCC
+    without the launch option (not pasted, or the anti-cheat on choice), so the mod never loaded and nothing said so (a
+    Deck player saw no BOTS tile in any game, Nov 8). option: the line to paste into Steam."""
+    if not paths.wine():
+        return None
+    f = os.path.join(ROOT, "logs", "linux_play.txt")
+    lines = open(f, encoding="utf-8", errors="replace").read().splitlines() if os.path.exists(f) else []
+    starts = [i for i, ln in enumerate(lines) if ln.startswith("starting MCC with the bots")]
+    last = lines[starts[-1]:] if starts else []
+    run = os.path.join(ROOT, "installer", "linux", "ppg-run.sh")
+    unix = run.replace("\\", "/")[2:] if run[:2].upper() == "Z:" else None     # (Wine's Z: is the Linux root)
+    return dict(started=bool(starts), ready=any(ln.startswith("Bots are ready") for ln in last),
+                last=next((ln.strip() for ln in reversed(last) if ln.strip()), ""),
+                option=f'"{unix}" %command%' if unix else None)
+
+
 def status():
     found = conflicts.scan()
     mapped, total = lidar_counts()
@@ -182,7 +200,7 @@ def status():
                 setup=setup.status()[1:], map_tools=bool(paths.map_tool("model2obj")),
                 lidar=dict(mapped=mapped, total=total), workshop=conflicts.workshop_count(),
                 conflicts=[dict(file=os.path.relpath(p, paths.mcc()), why=w) for p, w in found],
-                running={t: p.poll() is None for t, p in procs.items()})
+                running={t: p.poll() is None for t, p in procs.items()}, linux_play=linux_play())
 
 
 def start(task, clean=False):
@@ -191,7 +209,7 @@ def start(task, clean=False):
         return False, "unknown task"
     if task in procs and procs[task].poll() is None:
         port = TASKS[task][2]
-        if port:                                     # a tool keeps serving after its window closes: open it again
+        if port:                                     # (still running: its window again; a tool ends with its window)
             appwindow.open_window(f"http://127.0.0.1:{port}/")
         return True, "already running"
     if task == "play" and clean:

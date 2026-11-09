@@ -686,7 +686,7 @@ def serve(port, open_browser):
     recording.register()                                # (the other copies' Observers list this copy's games)
     print(f"Observer: {url}  (Ctrl+C to stop)", flush=True)
     if open_browser:
-        appwindow.open_window(url)
+        appwindow.when_closed(appwindow.open_window(url), srv.shutdown)   # (it ends with its window)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

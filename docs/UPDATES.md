@@ -8,6 +8,7 @@ Click a version to see what it added and fixed.
 <summary><b>0.2.2</b> (November 6 to 8, 2026): Halo 2 vehicles, the Halo 4 Mantis and Banshee bombs, call bots into your vehicle, follow me and roam chat commands, Firefight bots that follow and respawn, Reach Firefight Versus and Generator Defense with Spartan and Elite bots, ODST characters for bots, an Invasion rework</summary>
 
 ### + Added
+- <!-- build: 20261108-2028 --> **Linux and Steam Deck: whether the bots loaded**: the launcher shows if the last start through Steam's launch option loaded the bots, why not if it didn't, and the exact launch option to paste when the bots have never loaded.
 - <!-- build: 20261108-1250 --> **ODST bots in the editor hold the silenced SMG**: the 3D view of your ODST bots, Dare too, shows them with ODST's silenced SMG instead of the assault rifle.
 - <!-- build: 20261108-1120 --> **Dare in Halo 3: ODST**: bots can play as Dare, with her helmet on or off, in Firefight, as the other ODST characters do. Pick her in the bot editor, whose 3D view shows her own model. Bots no longer take on your character either: while you played Dare, every bot became Dare too.
 - <!-- build: 20261108-1120 --> **8 players in ODST Firefight**: your ODST list holds up to 7 bots, all on your team.
@@ -37,6 +38,7 @@ Click a version to see what it added and fixed.
 - **Flight heights from the map**: aircraft pick their attack and travel heights from the ground under them; painting airspace is optional.
 
 ### - Fixed
+- <!-- build: 20261108-2028 --> **Tool windows close their tool**: closing the LiDAR Viewer, LiDAR Simulator, Observer or Paint the nav window now ends that tool instead of leaving it running unseen (the Simulator saves the map it was on first).
 - <!-- build: 20261108-1955 --> **Theater with bots in Halo 3, ODST, Halo 2 Anniversary and Halo 4**: films of bot matches play with the bots in them instead of crashing or stopping; the bots weren't added into the film by mistake any more.
 - <!-- build: 20261108-1639 --> **BOTS panel moving on its own**: after a match the panel could run through its options by itself as if an arrow key were held down; a key let go while the match was ending is no longer taken as still held.
 - <!-- build: 20261108-1610 --> **ODST bots' left hand on the SMG**: in the editor the left hand now sits higher and fully on the SMG's foregrip.
