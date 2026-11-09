@@ -1637,7 +1637,7 @@ class Terrain:
                     wts.append(cost)
                 continue
             w = math.hypot(b.x - a.x, b.y - a.y) * 1.5 + 1.0
-            if b.z - a.z >= 10.0:
+            if b.z - a.z >= 10.0 or (k.get("ride") and math.hypot(b.x - a.x, b.y - a.y) >= 10.0):   # (and one across)
                 # a launch up (a man cannon, a lift): its time aloft at a run's 2.25 u/s, not 1.5 x its flat length
                 # (Spire, live match 230700: the mini base cannon's 24 u flight cost 38 and a bot by its pad walked
                 # on to the middle lift, "just missed man cannon"; the middle lift's 6 s ride cost 5)

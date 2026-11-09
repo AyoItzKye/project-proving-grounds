@@ -38,6 +38,7 @@ Click a version to see what it added and fixed.
 - **Flight heights from the map**: aircraft pick their attack and travel heights from the ground under them; painting airspace is optional.
 
 ### - Fixed
+- <!-- build: 20261108-2217 --> **Bots ride man cannons and lifts**: bots take a man cannon that throws them across the map (Narrows) when it's the quick way to where they're going, from both bases, and they ride every lift and man cannon, flag carriers too, even when an enemy watches the exit; they still never walk into the exit end of a one-way lift.
 - <!-- build: 20261108-2028 --> **Tool windows close their tool**: closing the LiDAR Viewer, LiDAR Simulator, Observer or Paint the nav window now ends that tool instead of leaving it running unseen (the Simulator saves the map it was on first).
 - <!-- build: 20261108-1955 --> **Theater with bots in Halo 3, ODST, Halo 2 Anniversary and Halo 4**: films of bot matches play with the bots in them instead of crashing or stopping; the bots weren't added into the film by mistake any more.
 - <!-- build: 20261108-1639 --> **BOTS panel moving on its own**: after a match the panel could run through its options by itself as if an arrow key were held down; a key let go while the match was ending is no longer taken as still held.

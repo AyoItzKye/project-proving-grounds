@@ -5723,9 +5723,9 @@ class Bot:
         return w[0]
 
     def exit_held(s, me, j, point):
-        """Map brain INTER-LIFT-01, INTER-CANNON-02, MOVE-01/02: never ride a lift, a man cannon or a big drop (jump j,
-        from nav) into an enemy known at its exit: seen, heard, on radar or felt in the last 4 s (a callout names a
-        zone, not a man: not counted) within 8 m of a lift's top or 10 m of another landing (2.6 / 3.3 units), or with a
+        """Map brain MOVE-01/02: never take a big drop or a long hop (jump j, from nav) into an enemy known at its exit
+        (lifts and man cannons, INTER-LIFT-01 / INTER-CANNON-02, are always ridden: below): seen, heard, on radar or
+        felt in the last 4 s (a callout names a zone, not a man: not counted) within 10 m (3.3 units), or with a
         sightline onto it from within 25 u (exit_watched). "round": walk the way round (no more than 2.5 times as long)
         for 10 s while the goal stays put; "wait": there is none, stand at the take-off, 6 s at most, then go; "" take
         it. A hop over a gap commits to nothing and passes; Easy never plans a detour and rides. Nor does an Invasion
@@ -5734,10 +5734,14 @@ class Bot:
         if s.p.tier == "novice" or getattr(s, "assaulting", False):
             return ""
         up, xy = j.z - me.pos.z, math.hypot(j.x - j.sx, j.y - j.sy)
-        lift = s.lift_base(j, me) is not None
-        if not (lift or abs(up) > 2.0 or xy > 6.0):
+        # a lift or a man cannon is always ridden, a carrier too: no bot is kept off one (Nov 8); only a one-way lift's
+        # exit end is never entered, one way in the nav (jump_ways). A held exit holds back a big drop or a long hop only
+        if s.lift_base(j, me) is not None or any((src - Vec(j.sx, j.sy, src.z)).flat() < 1.5 and abs(src.z - me.pos.z) < 3.0
+                                                for src, _, _ in s.launches()):
             return ""
-        now, r = getattr(s, "now", 0.0), 2.6 if lift else 3.3
+        if not (abs(up) > 2.0 or xy > 6.0):
+            return ""
+        now, r = getattr(s, "now", 0.0), 3.3
         if not s.exit_watched(now, j, r):
             return ""
         key = (round(j.sx, 1), round(j.sy, 1))

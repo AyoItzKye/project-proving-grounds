@@ -216,7 +216,13 @@ def anchor_launches(links, features):
     if not pads:
         return list(links)
     flat = lambda a, b: math.hypot(a[0] - b[0], a[1] - b[1])
-    rides = [k for k in links if k.get("take_off") and k.get("land") and k["land"][2] - k["take_off"][2] >= LAUNCH_RISE]
+    cannons = [f["pos"] for f in features if f.get("kind") == "launcher"]
+    # a launch: up LAUNCH_RISE+, or LAUNCH_RISE+ across from a man cannon (Narrows' throw people over the gap level, 28 u
+    # in 4.2 s: costed as a 28 u jump, about the walk, bots walked round and never took it; flagged Nov 8)
+    rides = [k for k in links if k.get("take_off") and k.get("land")
+             and (k["land"][2] - k["take_off"][2] >= LAUNCH_RISE
+                  or (flat(k["land"], k["take_off"]) >= LAUNCH_RISE
+                      and any(flat(p, k["take_off"]) < LAUNCH_SNAP and abs(p[2] - k["take_off"][2]) < 3.0 for p in cannons)))]
     trigger = {}
     for i, p in enumerate(pads):
         starts = [k["take_off"] for k in rides if flat(k["take_off"], p) < PAD_TRIGGER and abs(k["take_off"][2] - p[2]) < 3.0]
@@ -234,6 +240,23 @@ def anchor_launches(links, features):
               and any(flat(p, to) < LIFT_COLUMN and abs(p[2] - to[2]) < 3.0 for p in lifts)):
             k = dict(k, ride=1)             # a low lift's ride: one way (jump_ways), from where it was taken
         out.append(k)
+    # a man cannon nobody has ridden yet takes its twin's ride (the same cannon by name, ridden), turned half round about
+    # the point between them: two-base maps are built that way (Narrows: only the red base's cannon was ridden, so only
+    # red bots ever took one, flagged Nov 8). Terrain keeps it only on floor at both ends. ponytail: a half turn, not a
+    # mirror; a map with its twins mirrored across a line lands the copy off to the side, then dropped by Terrain
+    ridden = lambda p: [k for k in out if k.get("ride") and flat(k["take_off"], p) < LAUNCH_SNAP and abs(k["take_off"][2] - p[2]) < 3.0]
+    named = [f for f in features if f.get("kind") == "launcher"]
+    for f in named:
+        if ridden(f["pos"]):
+            continue
+        twin = next((g for g in named if g is not f and g.get("name") == f.get("name") and ridden(g["pos"])), None)
+        if twin is None:
+            continue
+        p, q = f["pos"], twin["pos"]
+        mx, my, dz = (p[0] + q[0]) / 2, (p[1] + q[1]) / 2, p[2] - q[2]
+        turn = lambda a: [2 * mx - a[0], 2 * my - a[1], a[2] + dz] + list(a[3:])
+        for k in ridden(q):                 # (both ends turned: the marker itself sits in the cannon's body, off the floor)
+            out.append(dict(k, take_off=turn(k["take_off"]), land=turn(k["land"]), ride=1, twin=1, path=None))
     return out
 
 
