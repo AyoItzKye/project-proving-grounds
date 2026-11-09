@@ -4737,7 +4737,8 @@ class Bot:
     LEARN_IN_FIGHT = False          # stuck pushes during a fight teach spots (A/B: tools/sim_variant.py)
 
     REDIRECT_D = 0.55                   # a wall closer than this along the way we walk: step around it
-    RUNUP_GIVE_UP = 5.0                 # s: a person's run-up not reached by then, the take-off within 2.5 u: from there
+    CANNON_JAM = 4                      # others in a man cannon's lane that send a bot the way round (cannon_jammed)
+    RUNUP_GIVE_UP = 5.0                # s: a person's run-up not reached by then, the take-off within 2.5 u: from there
 
     def redirect(s, now, me, act):
         """The 'crosshair distance' (Terrain.clearance) along the way this bot walks: a wall right ahead turns the
@@ -5388,7 +5389,9 @@ class Bot:
             # people's way runs on 3.5 u and slides down the spire's side). Gravity about 4 u/s^2
             land = getattr(s, "jump_land", None)
             drop = max(0.0, me.pos.z - land.z) if land is not None else 0.0
-            s.jump_until = now + 1.2 + math.sqrt(2.0 * drop / 4.0)
+            # (a man cannon's ride: its whole time aloft, cannon_run. At 1.9 s, 2 s into Narrows' 4.2 s throw "air steer
+            # back" and "edge brake" pulled riders back at the cannon and they dropped into the gap, live Nov 8)
+            s.jump_until = max(now + 1.2 + math.sqrt(2.0 * drop / 4.0), getattr(s, "ride_until", 0.0))
         land = getattr(s, "jump_land", None)
         if (now < getattr(s, "jump_until", 0.0) and not getattr(s, "planned_jump", False) and land is not None
                 and abs(me.pos.z - land.z) < 0.35 and (me.pos - land).flat() < 1.0
@@ -5404,7 +5407,8 @@ class Bot:
             # still offered the jump, would steer back to the take-off. Over the void with a long way down: onto it, not
             # past it (fall_steer)
             land = getattr(s, "jump_land", None)
-            if land is not None and over and me.pos.z - land.z > 3.0:
+            if land is not None and over and me.pos.z - land.z > 3.0 and now >= getattr(s, "ride_until", 0.0):
+                # (thrown by a man cannon: on at the landing, the throw carries it; a fall's braking stalled it mid-gap)
                 s.fall_steer(me, land, act)
             elif land is not None and (over or (me.pos - land).flat() > 0.3):
                 s.steer(me, land, act, True, arrive=0.05)
@@ -5736,8 +5740,16 @@ class Bot:
         up, xy = j.z - me.pos.z, math.hypot(j.x - j.sx, j.y - j.sy)
         # a lift or a man cannon is always ridden, a carrier too: no bot is kept off one (Nov 8); only a one-way lift's
         # exit end is never entered, one way in the nav (jump_ways). A held exit holds back a big drop or a long hop only
-        if s.lift_base(j, me) is not None or any((src - Vec(j.sx, j.sy, src.z)).flat() < 1.5 and abs(src.z - me.pos.z) < 3.0
-                                                for src, _, _ in s.launches()):
+        cannon = any((src - Vec(j.sx, j.sy, src.z)).flat() < 1.5 and abs(src.z - me.pos.z) < 3.0 for src, _, _ in s.launches())
+        if cannon and getattr(j, "air", 0.0) and s.cannon_jammed(me, j):
+            # unless the way into a man cannon is jammed (CANNON_JAM others in its lane, teammates or men seen this
+            # second): the walk round for 5 s, when there is one (Narrows' cannons cross the map in 4 s, the walk ~20 s)
+            T, now = s.T(), getattr(s, "now", 0.0)
+            if float(T._field(point, False, False, me.has_flag)[T._node(me.pos)]) < T.BARRIER_COST:
+                s.round_until, s.round_goal = now + 5.0, point
+                s.note("man cannon jammed: the way round")
+                return "round"
+        if s.lift_base(j, me) is not None or cannon:
             return ""
         if not (abs(up) > 2.0 or xy > 6.0):
             return ""
@@ -5763,6 +5775,16 @@ class Bot:
             s.note("exit held: waiting")
             return "wait"
         return ""
+
+    def cannon_jammed(s, me, j):
+        """CANNON_JAM or more others (teammates, men known in the last second) within 1 u of a man cannon ride j's lane, its
+        entrance (run-up) to its trigger, on its floor: too many in the way to queue in."""
+        now = getattr(s, "now", 0.0)
+        a = Vec(j.rx, j.ry, me.pos.z) if not math.isnan(j.rx) else Vec(j.sx, j.sy, me.pos.z)
+        lane = (a, (a + Vec(j.sx, j.sy, me.pos.z)) * 0.5, Vec(j.sx, j.sy, me.pos.z))
+        others = list(getattr(s, "mates_now", ())) + [b.pos for k, b in s.per.beliefs.items()
+                                                      if isinstance(k, int) and now - b.t <= 1.0]
+        return sum(1 for q in others if abs(q.z - me.pos.z) < 1.5 and min((q - p).flat() for p in lane) < 1.0) >= s.CANNON_JAM
 
     def exit_watched(s, now, ex, r):
         """Whether an exit (a lift's top, a landing, a teleporter's exit) is held: a man known in the last 4 s (seen,
@@ -5854,6 +5876,28 @@ class Bot:
             s.note("teleporter exit held: waiting")
             return True
         return False
+
+    def cannon_run(s, me, j, act):
+        """Run through a man cannon (ride j, its entrance the run-up): at a point on its lane 1 u ahead of us, from the
+        entrance through the trigger and on, at speed, no jump; walking in throws you. Onto the lane's line on the way
+        in, so the fins either side are missed. Stopping at the entrance and again at the trigger to jump (a person's
+        jump's run-up), bots stood at the cannon's foot hopping, flagged Nov 8. Judged once down (judge_jump)."""
+        now = getattr(s, "now", 0.0)
+        r = Vec(j.rx, j.ry, me.pos.z)
+        lane = Vec(j.sx - j.rx, j.sy - j.ry, 0.0)
+        n = max(lane.flat(), 1e-6)
+        rel = me.pos - r
+        along = (rel.x * lane.x + rel.y * lane.y) / n
+        side = abs(rel.x * lane.y - rel.y * lane.x) / n
+        s.final_step_until = s.exact_until = now + 0.3          # (the edge guard trusts it, as a person's run-up)
+        s.steer(me, r + lane * ((max(along, 0.0) + 1.0) / n), act, True, arrive=0.02)
+        s.nav_cmd = (act.forward, act.strafe)
+        if along > -0.3 and side < 0.35:
+            # in the lane, on its line: committed. (Not before: the edge guard's jump window steers at the landing, from
+            # beside the entrance through a fin)
+            s.planned_jump, s.jump_land = True, Vec(j.x, j.y, j.z)
+            s.ride_until = now + j.air + 0.5                    # (edge_guard's jump window: the whole throw)
+            s.jump_try = ((round(j.sx, 1), round(j.sy, 1)), Vec(j.x, j.y, j.z), now + j.air)
 
     def carrier_take_off(s, start, land):
         """A carrier's take-off for a jump: up to 0.6 u (and no more than 30% of the way) nearer the landing than the
@@ -6197,6 +6241,9 @@ class Bot:
                 s.lift_from = (me.pos.z, (round(nxt.sx, 1), round(nxt.sy, 1)))   # (ride_lift: stalled at the rim)
                 s.ride_lift(me, act)
                 return
+            if nxt.air and not math.isnan(nxt.rx):   # a man cannon's ride: run through it from its entrance
+                s.cannon_run(me, nxt, act)
+                return
             start = Vec(nxt.sx, nxt.sy, me.pos.z)
             if me.has_flag:                      # carrying: its jump falls short, so it goes later, nearer the landing
                 start = s.carrier_take_off(start, nxt)
@@ -6233,7 +6280,8 @@ class Bot:
                     # phase 3, attackers going back 2.8 u to the person's run-up on the narrow walkway to the drop at
                     # (265.67, 89.63), giving way to each other, 5.5 s a pass, 1,250+ rows a match there; replay_think)
                     s.runup_done = True              # (a carrier: passing it within 0.35 u, not circling back to it)
-                if not s.runup_done and now - s.runup_t0 > s.RUNUP_GIVE_UP and (me.pos - start).flat() < 2.5:
+                if not s.runup_done and now - s.runup_t0 > s.RUNUP_GIVE_UP and (me.pos - start).flat() < 2.5 and not nxt.air:
+                    # (a man cannon never: its entrance is the only way in, the walk graph's way to it below)
                     # not at the run-up in RUNUP_GIVE_UP s, the take-off this near on its level: from here (live
                     # Boneyard 20261105-033712 / 035632, the drop to the core: 3-6 attackers at a time bunched on the
                     # way to the person's run-up 2.8 u behind the take-off, queued on each other, 17,000-24,000 rows of
@@ -6256,7 +6304,9 @@ class Bot:
                 return
             act.jump = True
             s.planned_jump = True                # a gap on purpose: the edge guard lets it pass
-            s.jump_try = ((round(nxt.sx, 1), round(nxt.sy, 1)), Vec(nxt.x, nxt.y, nxt.z), getattr(s, "now", 0.0))   # (judge_jump)
+            # (judge_jump; a man cannon's ride judged once down: at 1.5 s, 2 s into Narrows' 4.2 s throw, every ride read
+            # short, twice and the cannon was barred 60 s, live Nov 8)
+            s.jump_try = ((round(nxt.sx, 1), round(nxt.sy, 1)), Vec(nxt.x, nxt.y, nxt.z), getattr(s, "now", 0.0) + nxt.air)
             nxt = Vec(nxt.x, nxt.y, nxt.z)
             s.jump_land = nxt
         elif not s.segment_ok(me, nxt):

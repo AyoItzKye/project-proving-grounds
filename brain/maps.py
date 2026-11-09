@@ -197,6 +197,10 @@ def path_rises(zs, h=0.15):
 LAUNCH_SNAP = 5.0    # u: a ride up starting this near a man cannon or gravity lift starts on it
 LAUNCH_RISE = 10.0   # u: a link rising this much is a launch (no jump gets a person 10 u up)
 PAD_TRIGGER = 1.2    # u: a ride people started this near a launch's marker starts at its trigger
+# u: a man cannon is gone into from behind, along its throw: its entrance (the ride's run-up) this far back from the
+# trigger. Narrows' cannons are a 1 u lane between two fins, the far end a drop: bots on the walkways beside the fins
+# steered at the trigger through a fin (flagged Nov 8); people stood 1.4-1.5 u back and walked in
+CANNON_ENTRY = 1.5
 # a climb of LIFT_RISE+ from within LIFT_COLUMN of a gravity lift's base (Bot.lift_near's radius) is the lift's ride, one
 # way, however low: Blood Cavern's back lift rises 2.8 u, read as a jump back down, and the nav sent bots into its top,
 # where it pushes up (flagged Nov 6 16:50: bots kept trying to enter its exit end); Lockout's and Ivory Tower's low
@@ -213,6 +217,7 @@ def anchor_launches(links, features):
     where im standing, if I go forward it will shoot me up", 0.4 u from such a ride's start and 1.2 u from the marker; a
     bot dithered 2 u off the Elites' cannon). With none that near, the marker. Copies; the rest as they are."""
     pads = [f["pos"] for f in features if f.get("kind") in ("launcher", "lift")]
+    kinds = [f.get("kind") for f in features if f.get("kind") in ("launcher", "lift")]
     if not pads:
         return list(links)
     flat = lambda a, b: math.hypot(a[0] - b[0], a[1] - b[1])
@@ -236,6 +241,10 @@ def anchor_launches(links, features):
             if flat(pads[i], to) < LAUNCH_SNAP and abs(pads[i][2] - to[2]) < 3.0:
                 k = dict(k, take_off=trigger[i] + list(to[3:]), ride=1)
                 k.pop("runup", None)
+                t0, n = k["take_off"], flat(k["land"], k["take_off"])
+                if kinds[i] == "launcher" and n >= 3.0:     # a man cannon: in from behind, its entrance (CANNON_ENTRY)
+                    k["runup"] = [t0[0] - (k["land"][0] - t0[0]) * CANNON_ENTRY / n,
+                                  t0[1] - (k["land"][1] - t0[1]) * CANNON_ENTRY / n, t0[2]]
         elif (to and k.get("land") and not k.get("ride") and k["land"][2] - to[2] >= LIFT_RISE
               and any(flat(p, to) < LIFT_COLUMN and abs(p[2] - to[2]) < 3.0 for p in lifts)):
             k = dict(k, ride=1)             # a low lift's ride: one way (jump_ways), from where it was taken
@@ -256,7 +265,8 @@ def anchor_launches(links, features):
         mx, my, dz = (p[0] + q[0]) / 2, (p[1] + q[1]) / 2, p[2] - q[2]
         turn = lambda a: [2 * mx - a[0], 2 * my - a[1], a[2] + dz] + list(a[3:])
         for k in ridden(q):                 # (both ends turned: the marker itself sits in the cannon's body, off the floor)
-            out.append(dict(k, take_off=turn(k["take_off"]), land=turn(k["land"]), ride=1, twin=1, path=None))
+            out.append(dict(k, take_off=turn(k["take_off"]), land=turn(k["land"]), ride=1, twin=1, path=None,
+                            **({"runup": turn(k["runup"])} if k.get("runup") else {})))
     return out
 
 

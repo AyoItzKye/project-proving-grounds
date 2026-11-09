@@ -51,11 +51,13 @@ JUMP_UP_REACH = 1.25   # how far out a ledge you jump up onto may be
 @dataclass(frozen=True)
 class JumpVec(Vec):
     """A waypoint across a jump: run to (sx, sy), jump, land at the point itself. A jump a person
-    made also has his run-up spot (rx, ry): get there first, then run through the take-off."""
+    made also has his run-up spot (rx, ry): get there first, then run through the take-off. A man cannon's ride has its
+    seconds aloft (air; 0 a jump) and its entrance as the run-up."""
     sx: float = 0.0
     sy: float = 0.0
     rx: float = math.nan
     ry: float = math.nan
+    air: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -1642,6 +1644,15 @@ class Terrain:
                 # (Spire, live match 230700: the mini base cannon's 24 u flight cost 38 and a bot by its pad walked
                 # on to the middle lift, "just missed man cannon"; the middle lift's 6 s ride cost 5)
                 w = float(k.get("air_s") or math.hypot(b.x - a.x, b.y - a.y) / 3.5) * 2.25 + 1.0
+            run = k.get("runup") if k.get("ride") else None
+            if run:
+                # a man cannon's way in is its entrance, behind it (maps.CANNON_ENTRY): the path search walks bots there,
+                # not to the trigger from the walkways beside its fins. Off this floor: from the trigger, as before
+                rn = s._node(Vec(*run[:3])) if s.inside(run[0], run[1]) else None
+                if rn is not None and rn != dst and s.lwalk[rn] and abs(s.lz[rn] - a.z) < 0.5:
+                    src = rn
+                else:
+                    k = {q: v for q, v in k.items() if q != "runup"}
             ways = [(src, dst, k)]
             if jump_ways(k, s, getattr(s, "jump_apex", 0.8)) == "two-way":
                 ways.append((dst, src, reverse_jump(k)))     # usable back the other way too
@@ -2222,23 +2233,39 @@ class Terrain:
         human = (human or jump) and bool(getattr(s, "hjumps", None) or getattr(s, "hroutes", None))
         cost = s._field(b, jump, human, safe, no_tele=no_tele, hazards=hazards)
         l, j, i = s._node(a)
-        if human and np.isfinite(cost[l, j, i]):
+        here = np.isfinite(cost[l, j, i])
+        if human:
             # a person's jump (or crouch path) is a way in, never a detour: take it only when it is
             # the cheapest way from its start to where THIS bot is going (the path search's best
             # route uses exactly that edge) and its start is not behind us. Before this a bot that
             # passed near a jump took it whenever the landing was a little closer to its goal
-            # ("possessed by a jump it never meant to do").
+            # ("possessed by a jump it never meant to do"). On a man cannon's pad, past its entrance (cells the
+            # walk graph has no way out of, here False): its ride if it is the best way from its entrance
             def way_in(src, dst, w):
                 return (np.isfinite(cost[dst]) and cost[dst] + w <= cost[src] + 1e-3
-                        and cost[src] <= cost[l, j, i] + 0.5)
-            for src, dst, k, w in s.hjumps:
+                        and (not here or cost[src] <= cost[l, j, i] + 0.5))
+            for src, dst, k, w in s.hjumps if here else [h for h in s.hjumps if h[2].get("ride") and h[2].get("runup")]:
                 to = k["take_off"]
                 if safe and to[2] - k["land"][2] > s.RISKY_DROP and cost[l, j, i] < s.BARRIER_COST:
                     continue      # a carrier with another way down does not take a big drop
-                if math.hypot(to[0] - a.x, to[1] - a.y) < 1.6 and abs(to[2] - a.z) < 0.8 and way_in(src, dst, w):
-                    run = k.get("runup") or (math.nan, math.nan)
-                    return JumpVec(k["land"][0], k["land"][1], k["land"][2], to[0], to[1], run[0], run[1])
-            for src, dst, path, w in getattr(s, "hroutes", ()):
+                run = k.get("runup") or (math.nan, math.nan)
+                if k.get("ride") and k.get("runup"):
+                    # a man cannon's ride from 0.9 u of its entrance, behind its fins, or in its lane (0.6 u of the line
+                    # on to the trigger and past it: one in it runs on through, flagged Nov 8: bots hopped at the foot
+                    # and walked back out). From 1.6 u of the trigger, bots on the walkways beside Narrows' fins got the
+                    # ride and pushed through a fin at it; at 1.2 u of the entrance one got it at a fin's back corner
+                    lx, ly = to[0] - run[0], to[1] - run[1]
+                    l2 = max(lx * lx + ly * ly, 1e-9)
+                    u = ((a.x - run[0]) * lx + (a.y - run[1]) * ly) / l2
+                    near = (math.hypot(run[0] - a.x, run[1] - a.y) < 0.9
+                            or (0.0 <= u <= 1.0 + 1.0 / math.sqrt(l2)                     # (to 1 u past the trigger)
+                                and math.hypot(a.x - run[0] - u * lx, a.y - run[1] - u * ly) < 0.6))
+                else:
+                    near = math.hypot(to[0] - a.x, to[1] - a.y) < 1.6
+                if near and abs(to[2] - a.z) < 0.8 and way_in(src, dst, w):
+                    air = float(k.get("air_s") or 2.0) if k.get("ride") else 0.0
+                    return JumpVec(k["land"][0], k["land"][1], k["land"][2], to[0], to[1], run[0], run[1], air)
+            for src, dst, path, w in getattr(s, "hroutes", ()) if here else ():
                 p0 = path[0]
                 # (within 1.6 u, as a jump's take-off: at 1.0 a bot at a climb's foot stood 1.03-1.1 u off its run-up
                 # and pushed at the lip beside it 10-12 s a time, live Boneyard 20261105-041255)

@@ -52,9 +52,13 @@ def main():
     hop = dict(take_off=[-162.0, -384.7, -58.4], land=[-163.0, -386.0, -57.9])
     far = dict(take_off=[-150.0, -370.0, -56.0], land=[-160.0, -380.0, -24.3])
     a, h, f = anchor_launches([ride, hop, far], pad)
-    if (math.hypot(a["take_off"][0] - MID_PAD[0], a["take_off"][1] - MID_PAD[1]) > 0.01 or not a.get("ride")
-            or "runup" in a or ride["take_off"][0] != -162.0):
-        fails.append(f"the ride 4.1 u off the pad: {a} (want it on the pad, a ride, the original left alone)")
+    # (its run-up the cannon's entrance, 1.5 u back along the throw, not the person's 4.1 u off: brain/maps CANNON_ENTRY)
+    to, ld, ru = a["take_off"], a["land"], a.get("runup") or [math.nan, math.nan]
+    back = ((ru[0] - to[0]) * (ld[0] - to[0]) + (ru[1] - to[1]) * (ld[1] - to[1])) / math.hypot(ld[0] - to[0], ld[1] - to[1])
+    if (math.hypot(to[0] - MID_PAD[0], to[1] - MID_PAD[1]) > 0.01 or not a.get("ride")
+            or not -1.55 < back < -1.45 or ride["take_off"][0] != -162.0):
+        fails.append(f"the ride 4.1 u off the pad: {a} (want it on the pad, a ride, from its entrance 1.5 u back, the "
+                     f"original left alone)")
     if h != hop or f != far:
         fails.append(f"a hop by the pad {h} or a ride 13 u off it {f}: changed (want as they were)")
     # (match 230700: the marker sits up to 1.2 u into the cannon; the trigger is where people's rides start, so with
