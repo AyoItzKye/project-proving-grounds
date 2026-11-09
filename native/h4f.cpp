@@ -28,9 +28,12 @@ extern uint32_t g_playback;                    // botcore.cpp: a Theater film is
 // (the game and map variants, from +0x274, TLS +0x40's block: the same bytes all match long and in its film, other in
 // another match: the film key). Halo 4 from dumps of matches and a film (logs/tmp/h4_film, Nov 7: +0x1D074 0 / 1, ticks
 // 1976 at 0:33 of the film; the bytes before +0x234 were the same on Ragnarok and Forge Island, so not the key). H2A
-// not found yet (0: no film handling)
+// the same (a Lockdown match and its film, Nov 8: +0x1D074 0 / 1, +0x1D078 1 / 0, ticks 60 a second). The key ends at
+// +0x2B8, a heap pointer that changed between that match and its film (it would have found no recording, and the film
+// no bots); before it the match's random seed (+0x29C, 12 bytes), the same in both
 struct f_film_at { size_t slot, play, ticks, key_at, key_len; };
-static const f_film_at F_FILM[2] = { { 0, 0, 0, 0, 0 }, { 0xE8, 0x1D074, 0x2DE10, 0x274, 0x1D000 - 0x274 } };   // H2A, H4
+static const f_film_at F_FILM[2] = { { 0xE8, 0x1D074, 0x2DE10, 0x274, 0x2B8 - 0x274 },
+                                     { 0xE8, 0x1D074, 0x2DE10, 0x274, 0x2B8 - 0x274 } };   // H2A, H4
 static uint32_t g_film_tick;                   // this tick's count while a live match records (f_command), else ~0
 void logf(const char* fmt, ...);
 void report_note_bot(int index, const wchar_t* name, const wchar_t* tag, int team, const wchar_t* clan,

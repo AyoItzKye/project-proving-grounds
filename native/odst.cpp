@@ -15,6 +15,7 @@
 #include <wchar.h>
 #include <intrin.h>
 #include "shared.h"
+#include "film.h"
 #include "third_party/minhook/include/MinHook.h"
 
 extern hb_shared* g_shm;
@@ -93,29 +94,46 @@ static int64_t od_add_bot(uint8_t* tls, int arg) {
     return (int64_t)h;
 }
 
+static void od_run_command(uint8_t* tls) {     // commands marked for ODST (cmd_arg bit 27)
+    if (g_shm->cmd_seq == g_shm->cmd_done_seq || !(g_shm->cmd_arg & (1 << 27))) return;
+    g_shm->cmd_fault = 0;
+    __try {
+        g_shm->cmd_result = g_shm->cmd == HB_CMD_ADD_BOT ? od_add_bot(tls, g_shm->cmd_arg) : -1;
+    } __except (EXCEPTION_EXECUTE_HANDLER) { g_shm->cmd_fault = 1; g_shm->cmd_result = -1; }
+    g_shm->cmd_done_seq = g_shm->cmd_seq;
+}
+
+extern uint32_t g_playback;                     // botcore.cpp: a Theater film is running (no brain)
+// game globals (TLS +0x40), Halo 3's layout (h3.cpp): +0x160 1 while a Theater film plays (+0x161 1 while a match
+// records), the options from +0x10 to it the film key (the same in a Crater (Night) match and its film, Nov 8),
+// +0x10144 the game ticks
+static const size_t OD_GG_PLAYBACK = 0x160, OD_GG_KEY = 0x10, OD_GG_TICKS = 0x10144;
+
 static void __fastcall h_od_update(uint8_t* actions) {
     if (g_shm) {
         g_shm->game_tick++;
-        g_shm->game = 5;
         __try {
             uint8_t* tls = od_tls();
-            if (tls) {
-                if (g_shm->cmd_seq != g_shm->cmd_done_seq && (g_shm->cmd_arg & (1 << 27))) {
-                    g_shm->cmd_fault = 0;
-                    __try {
-                        g_shm->cmd_result = g_shm->cmd == HB_CMD_ADD_BOT ? od_add_bot(tls, g_shm->cmd_arg) : -1;
-                    } __except (EXCEPTION_EXECUTE_HANDLER) { g_shm->cmd_fault = 1; g_shm->cmd_result = -1; }
-                    g_shm->cmd_done_seq = g_shm->cmd_seq;
-                }
+            uint8_t* gg = tls ? *(uint8_t**)(tls + 0x40) : nullptr;
+            const film_frame* fr = nullptr;
+            uint32_t tick = gg ? *(uint32_t*)(gg + OD_GG_TICKS) : 0;
+            if (gg) {                                       // (the film first: the game id starts the brain)
+                g_playback = gg[OD_GG_PLAYBACK] != 0;
+                fr = film_tick(film_hash(gg + OD_GG_KEY, OD_GG_PLAYBACK - OD_GG_KEY), tick, g_playback != 0, 1u << 27);
+            }
+            g_shm->game = 5;
+            if (tls && fr) {
+                od_run_command(tls);
+                while (film_more(tick)) od_run_command(tls);   // a film: this tick's other commands
                 if (*(uint32_t*)(actions + 8) & 1) {          // the player's action, for decoding
                     memcpy(g_shm->dbg_action, actions + 0x10, 0x100);
                     memcpy(g_shm->dbg_big, actions + 0x10, OD_ACTION);
                     g_shm->dbg_seq++;
                 }
                 for (int i = 0; i < HB_MAX_PLAYERS; i++) {
-                    int index = g_shm->bot_player_index[i];
+                    int index = fr->index[i];               // this tick's input, frozen (film.cpp: a film replays it)
                     if (index >= 0 && od_live(tls, index)) *(uint32_t*)(od_player(tls, index) + 4) |= 1;
-                    const hb_action& a = g_shm->actions[i];
+                    const hb_action& a = fr->act[i];
                     if (index < 0 || !a.seq || !od_live(tls, index)) continue;
                     uint8_t* act = actions + 0x10 + (size_t)index * OD_ACTION;
                     *(uint32_t*)(actions + 8) |= 1u << index;

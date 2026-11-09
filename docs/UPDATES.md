@@ -37,6 +37,7 @@ Click a version to see what it added and fixed.
 - **Flight heights from the map**: aircraft pick their attack and travel heights from the ground under them; painting airspace is optional.
 
 ### - Fixed
+- <!-- build: 20261108-1955 --> **Theater with bots in Halo 3, ODST, Halo 2 Anniversary and Halo 4**: films of bot matches play with the bots in them instead of crashing or stopping; the bots weren't added into the film by mistake any more.
 - <!-- build: 20261108-1639 --> **BOTS panel moving on its own**: after a match the panel could run through its options by itself as if an arrow key were held down; a key let go while the match was ending is no longer taken as still held.
 - <!-- build: 20261108-1610 --> **ODST bots' left hand on the SMG**: in the editor the left hand now sits higher and fully on the SMG's foregrip.
 - <!-- build: 20261108-1540 --> **ODST bots in the editor hold the SMG tucked in**: the silenced SMG sits against the chest instead of out in front, and the left hand wraps the foregrip instead of sitting just behind it.

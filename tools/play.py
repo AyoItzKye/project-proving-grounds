@@ -7,6 +7,7 @@ usage: python -I play.py [--red N] [--blue N] [--tier T[,T..]] [--minutes M]
 Stop with Ctrl+C. Bots stay in the game, standing still, until the match ends.
 """
 import argparse
+import faulthandler
 import glob
 import os
 import struct
@@ -113,6 +114,7 @@ def add_bot(m, machine, team, name, game):
     takes commands on the game's thread: none in the pause menu). Prints the outcome; True when the game made it. A
     timeout read as ok before, and the next add overwrote the one not yet taken: of 3 bots asked for in ODST Firefight
     (Nov 7, 00:07, the player in the pause menu saving a bug report) only the last one joined."""
+    faulthandler.cancel_dump_traceback_later()       # (a bot asked for: the brain is not stuck before its adds)
     r = botctl.add_bot(m, machine, team, name, game, look=looks.look(name, game), clan=looks.clan_of(name),
                        emblem=looks.emblem_of(name))
     if r.get("timeout"):
@@ -160,6 +162,9 @@ def main():
     ap.add_argument("--roster", help="botcore.ini with the BOTS panel's list: exactly those bots join (names, "
                     "teams, difficulty, play style); --red / --blue fill teams only when there is no list")
     o = ap.parse_args()
+    # a brain that asked for no bot within its wait and a minute prints where it is (logs\brain.txt; Halo 3, Nov 8:
+    # "game h3", "map ..." and nothing more while the match ran)
+    faulthandler.dump_traceback_later(o.wait + 60)
     override = os.path.join(ROOT, "logs", "test_override.json")
     if os.path.exists(override):     # Claude's test games: these settings instead of the BOTS panel's,
         import json                  # so the player's botcore.ini and panel are never touched (logs\ is not in git)

@@ -21,7 +21,7 @@ For everything that works, game by game, see the [bot status sheet](BOT_STATUS.p
 - **Destroyed vehicles in Halo 2 and ODST**: bots skip wrecks in Halo 2 Anniversary, Halo 3, Reach and Halo 4; in Halo 2 Classic and ODST this is not checked in a real match yet, so a bot may still try to get into a wreck.
 - **Flying vehicles need reworking**: how bots fly and fight in the air is being redone.
 - **Bots lack urgency on offense**: when the objective means attacking (taking the flag, planting the bomb, pushing in Invasion), they're too slow and cautious about it.
-- **Theater mode only works with bots in Halo: Reach and Halo 4.** Films of bot matches in the other games (Halo: CE, Halo 2, Halo 2 Anniversary, Halo 3 and ODST) load, then stop with "an error occurred" as they start.
+- **Theater with bots in Halo: CE and Halo 2 Classic.** Films of bot matches in those two games load, then stop with "an error occurred" as they start (Reach, Halo 2 Anniversary, Halo 3, ODST and Halo 4 play them with the bots). In Halo 2 Anniversary a film can drift from its match after a while (a kill in the match missing from the film).
 
 ## Halo: CE
 

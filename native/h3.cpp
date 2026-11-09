@@ -16,6 +16,7 @@
 #include <wchar.h>
 #include <intrin.h>
 #include "shared.h"
+#include "film.h"
 #include "third_party/minhook/include/MinHook.h"
 
 extern hb_shared* g_shm;
@@ -228,25 +229,40 @@ static void h3_run_command(uint8_t* tls) {
     g_shm->cmd_done_seq = g_shm->cmd_seq;
 }
 
+extern uint32_t g_playback;                     // botcore.cpp: a Theater film is running (no brain)
+// game globals (TLS +0x48), as Reach's (reach.cpp): +0x160 is 1 while a Theater film plays (0 in a match, whose +0x161
+// is 1: recording); the options from +0x10 to it (the map's path, the match's random seed at +0x18) are the same in a
+// match and its film (dumps of a Construct match and its film, logs/tmp/gg_dump.py, Nov 8): the film key; +0x101B4
+// the game ticks. Without it the brain added its bots into a film and MCC dropped it
+static const size_t H3_GG_PLAYBACK = 0x160, H3_GG_KEY = 0x10, H3_GG_TICKS = 0x101B4;
+
 static void __fastcall h_h3_update(uint8_t* actions) {
     if (g_shm) {
         g_shm->game_tick++;
-        g_shm->game = 3;
         __try {
             uint8_t* tls = h3_tls();
-            if (tls) {
+            uint8_t* gg = tls ? *(uint8_t**)(tls + 0x48) : nullptr;
+            const film_frame* fr = nullptr;
+            uint32_t tick = gg ? *(uint32_t*)(gg + H3_GG_TICKS) : 0;
+            if (gg) {                                       // (the film first: the game id starts the brain)
+                g_playback = gg[H3_GG_PLAYBACK] != 0;
+                fr = film_tick(film_hash(gg + H3_GG_KEY, H3_GG_PLAYBACK - H3_GG_KEY), tick, g_playback != 0, 1u << 25);
+            }
+            g_shm->game = 3;
+            if (tls && fr) {
                 h3_run_command(tls);
+                while (film_more(tick)) h3_run_command(tls);   // a film: this tick's other commands
                 if (*(uint32_t*)(actions + 8) & 1) {        // player 0's action, for decoding
                     memcpy(g_shm->dbg_action, actions + 0x10, H3_ACTION);
                     g_shm->dbg_seq++;
                 }
                 for (int i = 0; i < HB_MAX_PLAYERS; i++) {
-                    int index = g_shm->bot_player_index[i];
+                    int index = fr->index[i];               // this tick's input, frozen (film.cpp: a film replays it)
                     // flags bit 0 every tick: the players update spawns (and respawns) a player
                     // without a unit only while it is set (FUN_1800e444c's spawn loop), and the
                     // session clears it for a player of no known machine between ticks
                     if (index >= 0 && h3_live(tls, index)) *(uint32_t*)(h3_player(tls, index) + 4) |= 1;
-                    const hb_action& a = g_shm->actions[i];
+                    const hb_action& a = fr->act[i];
                     if (index < 0 || !a.seq || !h3_live(tls, index)) continue;
                     uint8_t* act = actions + 0x10 + (size_t)index * H3_ACTION;
                     // no action for a bot waiting to respawn (no unit): while one was dead, every other bot's
