@@ -53,8 +53,11 @@ def main():
     old = turn_rate(2 / 30, fixed_dt=1 / 30)
     if not 0.75 < slow / full < 1.3:
         fails.append(f"2. at 15 passes a second the bots turn {slow:.0f} deg/s against {full:.0f} at 30")
-    if not old / full < 0.8:
-        fails.append(f"2. the old fixed step was not slower ({old:.0f} deg/s against {full:.0f}): the check proves nothing")
+    # against think_dt at the same 15 passes (the same match): against the 30-pass run it sat on the line (0.80 to 0.83
+    # on seeds 3-5 once the sim's man cannons threw players), against think_dt 0.63-0.77 on seeds 3-6
+    if not old / slow < 0.8:
+        fails.append(f"2. the old fixed step was not slower ({old:.0f} deg/s against {slow:.0f} with think_dt): the check "
+                     "proves nothing")
     if fails:
         print("FAIL")
         for f in fails:

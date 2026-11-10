@@ -47,7 +47,7 @@ def main():
                                                                                        for i in v022["items"]])
     stamps = [i["build"] for i in v022["items"] if i["build"]]
     assert max(stamps) == NEWEST and "20261106-1440" in stamps and any(not i["build"] for i in v022["items"]), stamps
-    assert v022["title"].startswith("(November 6 to 8, 2026)"), v022["title"]
+    assert v022["title"].startswith("(November 6 to 10, 2026)"), v022["title"]
 
     n = updater.news(MD, "0.2.2-s181", "20261106-1840")                 # updates behind: the items since, by list
     t = texts(n)

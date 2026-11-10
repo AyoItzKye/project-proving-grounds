@@ -287,9 +287,11 @@ class Oob:
         # (Spire 20261105-201917 at 342.8 s, from the spire's top: "... flies it into the fucking soft kill boundary
         # it should be fucking detecting ...", the Falcon): a soft wall 4 u round the core's stand. The spots learned
         # there before, deaths and flags, are dropped.
-        # ponytail: base maps (scenario + BSP kill zones) still learn; drop it there too once one shows the same
-        layout = "/" in map_name.replace("\\", "/")
-        s.learn = not (layout and os.path.exists(os.path.join(ROOT, map_name, "killzones.json")))
+        # A base map with its kill zones read from its scenario and structure design data (killzones.json) the same:
+        # Narrows' two learned spots were deaths 1.4 u from red's flag and 2.3 u from blue's, each a soft wall R round
+        # it, so the nav moved every runner's goal 2-4 u off the stand and they stood there (sim with Nov 9's
+        # cannons: attackers 124 s within 3 u of it, 4 pickups; live, runners 2 u off it for 3-5 s)
+        s.learn = not os.path.exists(os.path.join(ROOT, map_name, "killzones.json"))
         if not s.learn and (s.spots or s.candidates):
             s.spots, s.candidates = [], []
             s.version += 1                     # (saved so, at the brain's next save)

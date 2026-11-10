@@ -671,7 +671,7 @@ class Recorder:
             if getattr(s, "director", None) is not None and s.director.history:   # this run's coverage, what is left
                 out["coverage"] = s.director.report()
             os.makedirs(os.path.dirname(s.path), exist_ok=True)
-            tmp = s.path + ".tmp"
+            tmp = f"{s.path}.{os.getpid()}.{id(s)}.tmp"   # (its own: two writers on one .tmp interleaved, Nov 9 rides.json)
             with open(tmp, "w") as f:
                 json.dump(out, f)
             os.replace(tmp, s.path)
@@ -1294,7 +1294,7 @@ class ShotRec:
         data = load(s.path) if os.path.exists(s.path) else []
         data = data if isinstance(data, list) else []
         data.append(recipe)
-        tmp = s.path + ".tmp"
+        tmp = f"{s.path}.{os.getpid()}.{id(s)}.tmp"   # (its own: two writers on one .tmp interleaved, Nov 9 rides.json)
         json.dump(data, open(tmp, "w"), indent=0)
         os.replace(tmp, s.path)
         if s.rec is not None:
@@ -2441,7 +2441,7 @@ class RideWatch:
         for k in ("takeoff", "landing", "turnback"):
             out[k] = (d.get(k, []) + new[k])[-2000:]
         os.makedirs(os.path.dirname(s.path), exist_ok=True)
-        tmp = s.path + ".tmp"
+        tmp = f"{s.path}.{os.getpid()}.{id(s)}.tmp"   # (its own: two writers on one .tmp interleaved, Nov 9 rides.json)
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(out, f)
         os.replace(tmp, s.path)

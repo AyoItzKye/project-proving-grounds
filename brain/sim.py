@@ -21,6 +21,9 @@ from .equipment import game_of
 from .simgear import Gear
 
 SPEED = 2.3          # world units/s (UNVERIFIED for CE, tune in-game)
+# man cannons (Sim.cannons): onto the pad this near its ride's take-off; rides from this near the launcher; Narrows' 28 u in
+# 4.2 s live (anchor_launches); the arc's height over the straight line
+CANNON_PAD_R, CANNON_LINK_R, CANNON_SPEED, CANNON_ARC = 1.0, 2.0, 6.7, 6.0
 BODY_DMG = {"pistol": 0.45, "assault_rifle": 0.09, "sniper": 1.1, "rockets": 2.5, "fuelrod": 1.5,
             "plasma_pistol": 0.12, "plasma_rifle": 0.08, "needler": 0.07, "shotgun": 0.9, "flamethrower": 0.05}
 HIT_SIZE = {"rockets": 3.0, "fuelrod": 2.0}   # splash: a near miss still hits
@@ -160,6 +163,19 @@ class Sim:
             p.yaw, p.pitch = wrap(a.yaw), max(-1.4, min(1.4, a.pitch))
             p.crouching = a.crouch
             mult, can_move, can_shoot = s.gear.tick_player(p, a, st)   # armor lock, sprint, dashes...
+            fl = st.get("flight")
+            if fl is not None:
+                # thrown by a man cannon (cannons()): along the ride's line, an arc over it, the ride's time; no
+                # steering, no shooting, seen and shot as anyone in the open
+                a0, b0, t0, t1 = fl
+                k = min(1.0, (s.now - t0) / (t1 - t0))
+                p.pos = Vec(a0.x + (b0.x - a0.x) * k, a0.y + (b0.y - a0.y) * k,
+                            a0.z + (b0.z - a0.z) * k + CANNON_ARC * math.sin(math.pi * k))
+                p.vel = (b0 - a0) * (1.0 / (t1 - t0))
+                if k >= 1.0:
+                    st["flight"] = None
+                    p.pos = b0
+                continue
             sp = SPEED * (0.5 if a.crouch else 1.0) * mult
             fx, fy = math.cos(p.yaw), math.sin(p.yaw)
             vx = (fx * a.forward - fy * a.strafe) * sp if can_move else 0.0
@@ -278,7 +294,31 @@ class Sim:
                     p.pos = Vec(b.x, b.y, s.T.nav_z(b.x, b.y, b.z))
                     s.state[p.id]["tele_from"] = p.pos      # no ping-pong with a pad by the exit
                     break
+            for a, b in s.cannons():                      # into a man cannon: thrown across (the flight above)
+                if (p.pos - a).flat() < CANNON_PAD_R and -1.6 <= p.pos.z - a.z <= 1.0:
+                    s.state[p.id]["flight"] = (p.pos, b, s.now, s.now + dist(p.pos, b) / CANNON_SPEED)
+                    break
             return
+
+    def cannons(s):
+        """Man cannons (map "launcher" features) as one-way pads: each to where people's ride from beside it landed
+        (LiDAR links from within CANNON_LINK_R of it, landing 8+ u off): Narrows' throw base to base, 28 u in 4.2 s live.
+        The sim had none: bots that run through a cannon (live) walked into it and stood (Nov 9)."""
+        if getattr(s, "_cannons", None) is None:
+            s._cannons = []
+            for f in s.m.get("features", []):
+                if f.get("kind") != "launcher":
+                    continue
+                base = Vec(*f["pos"])
+                rides = [k for src, dst, k, w in getattr(s.T, "hjumps", [])
+                         if math.hypot(k["take_off"][0] - base.x, k["take_off"][1] - base.y) < CANNON_LINK_R
+                         and abs(k["take_off"][2] - base.z) < 3.0
+                         and math.hypot(k["land"][0] - k["take_off"][0], k["land"][1] - k["take_off"][1]) >= 8.0]
+                if rides:
+                    k = rides[0]
+                    pad = Vec(*k["take_off"])
+                    s._cannons.append((pad, s.T._center(*s.T._node(Vec(*k["land"])))))
+        return s._cannons
 
     def lifts(s):
         """Gravity lifts as one-way pads (the sim has no lift physics): each map "lift" feature to where people's ride
@@ -378,7 +418,7 @@ class Sim:
 
     def kill(s, e, src):
         e.alive = False
-        s.state[e.id]["respawn_at"] = s.now + 5.0
+        s.state[e.id]["respawn_at"], s.state[e.id]["flight"] = s.now + 5.0, None
         s.stats[e.id]["deaths"] += 1
         s.stats[src.id]["kills"] += 1
         if s.mode == "slayer":

@@ -23,6 +23,10 @@ SPOT_KINDS = {"koth_hill": "hills", "oddball_ball": "balls", "terr_object": "ter
               "inf_haven": "havens", "as_bomb": "bombs", "as_goal": "bomb_goals", "stp_flag": "stockpile_flags",
               "stp_goal": "stockpile_goals"}
 H3_TYPES = {"oddball_ball_spawn_point": "oddball_ball", "koth_hill_static": "koth_hill", "territory_static": "terr_object"}
+# a map variant's .mvar file replaces the scenario's labelled places; these the scenario keeps where the file has none of that
+# kind (Stockpile's flags, Assault's bombs and plates, Territories, Headhunter, Infection havens, King, Oddball)
+MVAR_KEEP = ("stp_flag", "stp_goal", "as_bomb", "as_goal", "terr_object", "hh_drop_point", "inf_haven", "koth_hill",
+             "oddball_ball")
 
 
 def load_map(name):
@@ -44,7 +48,11 @@ def load_map(name):
         mo = read_json(mv)              # and vehicles replace the scenario's; the scenario's CTF stands stay where the
         ctf = [f for f in objs["netgame_flags"] if f["type"] in ("ctf - flag", "CTF flag return")]   # file has none
         has = {f["id"] for f in mo["netgame_flags"] if f["type"] == "ctf - flag"} >= {0, 1}
-        objs = dict(objs, netgame_flags=mo["netgame_flags"] + ([] if has else ctf), mvar=mo.get("source"),
+        # (and any other mode's places the file has none of: Boardwalk's built-in .mvar labels Stockpile's goals and
+        # respawn zones but no stp_flag, and live Stockpile Nov 10 read no flag in 516 s, 0-0)
+        kinds = {f["type"] for f in mo["netgame_flags"]}
+        keep = [f for f in objs["netgame_flags"] if f["type"] in MVAR_KEEP and f["type"] not in kinds]
+        objs = dict(objs, netgame_flags=mo["netgame_flags"] + ([] if has else ctf) + keep, mvar=mo.get("source"),
                     **{k: mo[k] for k in ("spawns", "equipment", "vehicles") if mo.get(k)})
     for f in objs["netgame_flags"]:     # Halo 3's names for Reach's (Construct Team Oddball: no ball spots,
         f["type"] = H3_TYPES.get(f["type"], f["type"])    # so the ball was never found and the match ran as Slayer)
@@ -321,6 +329,20 @@ def air_heights(hist):
     return low, min(max(q(0.75), low + 3.0), 30.0)
 
 
+def read_learned(path, empty=()):
+    """A learned file's data (what bots or people taught the map), or empty when there is none or it is unreadable:
+    a broken one is set aside as .bad, not the match stopped (live Boardwalk Nov 10: a walls_learned.json of two saves
+    stopped the next match loading the map; Valhalla's rides.json Nov 9)."""
+    if not os.path.exists(path):
+        return empty
+    try:
+        return read_json(path, tries=3)
+    except ValueError:
+        os.replace(path, path + ".bad")
+        print(f"maps: {path} unreadable, moved to {os.path.basename(path)}.bad")
+        return empty
+
+
 def rides_layers(names, T, files=None):
     """What people and bots drove and flew on these maps (maps/<name>/rides.json, tools/lidar.py RideWatch), for
     Terrain.add_rides: (drive cells [(x, y, z)], air {"low"|"high": {half-unit cell: floor z}}, heights (strafing,
@@ -332,7 +354,7 @@ def rides_layers(names, T, files=None):
     if T is not None:
         T.people_drive = []                      # (filled below, file by file: called again on every rides save)
     for f in files or [os.path.join(ROOT, nm, "rides.json") for nm in names]:
-        d = read_json(f) if os.path.exists(f) else {}
+        d = read_learned(f, {})
         drive += [tuple(r[:3]) for r in d.get("drive", []) if r[3] >= 1 or r[4] >= 2]
         if T is not None:                         # people's own driving lines: the vehicles' roads (Terrain._build_vnav)
             T.people_drive = getattr(T, "people_drive", []) + [tuple(r[:3]) for r in d.get("drive", []) if r[3] >= 1]
@@ -490,13 +512,11 @@ def _build(m, window):
             z.center = snap(c)           # and on ground players reach (Sidewinder's Mid sat in rock)
     T.people_walked = people_walked(names)   # cells anyone stood on: never a learned wall (Terrain.learn_stuck)
     for nm in names:                     # (a built-in map's variant: the base's learned spots too)
-        learned = os.path.join(ROOT, nm, "los_learned.json")
-        if os.path.exists(learned):
-            T.blocked = set(getattr(T, "blocked", set())) | {tuple(k) for k in read_json(learned)}
-        learned = os.path.join(ROOT, nm, "nav_learned.json")
-        if os.path.exists(learned):
-            for x, y, z in read_json(learned):
-                T.learn_stuck(Vec(x, y, z), sure=True)
+        los = read_learned(os.path.join(ROOT, nm, "los_learned.json"))
+        if los:
+            T.blocked = set(getattr(T, "blocked", set())) | {tuple(k) for k in los}
+        for x, y, z in read_learned(os.path.join(ROOT, nm, "nav_learned.json")):
+            T.learn_stuck(Vec(x, y, z), sure=True)
     kinds = {}                           # windows and fences (tools/lidar_walls.py): walls you see through, fences you
     for nm in names:                     # shoot through too (Terrain.set_wall_kinds, sees, shot_los)
         wk = os.path.join(ROOT, nm, "wall_kinds.json")
@@ -507,8 +527,7 @@ def _build(m, window):
     pk = piece_wall_kinds(blocks)
     learned = []                         # and spots rounds went through (Terrain.learn_shot_through): fences
     for nm in names:
-        lf = os.path.join(ROOT, nm, "walls_learned.json")
-        learned += read_json(lf) if os.path.exists(lf) else []
+        learned += list(read_learned(os.path.join(ROOT, nm, "walls_learned.json")))
     pk["fence"] += [c[:4] for c in learned if not c[4]]
     pk["fence_floor"] += [c[:4] for c in learned if c[4]]
     if any(pk.values()):
@@ -594,9 +613,13 @@ def save_learned(m):
     for name, data in (("los_learned.json", T.blocked), ("nav_learned.json", T.stuck),
                        ("walls_learned.json", [tuple(c) for c in getattr(T, "walls_learned", [])])):
         if data:
-            tmp = os.path.join(ROOT, m["name"], name + ".tmp")
-            json.dump(sorted(data), open(tmp, "w"))
-            os.replace(tmp, tmp[:-4])
+            # (its own temp file, closed before the move: one shared .tmp, left open, held two brains' writes run
+            # together; live Boardwalk Nov 10, walls_learned.json of two saves, the next match died loading the map)
+            path = os.path.join(ROOT, m["name"], name)
+            tmp = f"{path}.{os.getpid()}.tmp"
+            with open(tmp, "w") as f:
+                json.dump(sorted(data), f)
+            os.replace(tmp, path)
 
 
 def get_map(name):

@@ -5,7 +5,7 @@ What changed in each version. Download the newest one from the [Releases page](h
 Click a version to see what it added and fixed.
 
 <details open>
-<summary><b>0.2.2</b> (November 6 to 8, 2026): Halo 2 vehicles, the Halo 4 Mantis and Banshee bombs, call bots into your vehicle, follow me and roam chat commands, Firefight bots that follow and respawn, Reach Firefight Versus and Generator Defense with Spartan and Elite bots, ODST characters for bots, an Invasion rework</summary>
+<summary><b>0.2.2</b> (November 6 to 10, 2026): Halo 2 vehicles, the Halo 4 Mantis and Banshee bombs, call bots into your vehicle, follow me and roam chat commands, Firefight bots that follow and respawn, Reach Firefight Versus and Generator Defense with Spartan and Elite bots, ODST characters for bots, an Invasion rework</summary>
 
 ### + Added
 - <!-- build: 20261108-2028 --> **Linux and Steam Deck: whether the bots loaded**: the launcher shows if the last start through Steam's launch option loaded the bots, why not if it didn't, and the exact launch option to paste when the bots have never loaded.
@@ -38,6 +38,9 @@ Click a version to see what it added and fixed.
 - **Flight heights from the map**: aircraft pick their attack and travel heights from the ground under them; painting airspace is optional.
 
 ### - Fixed
+- <!-- build: 20261110-0940 --> **Bots reach the flag and the hill**: on Narrows and seven other maps, spots the bots had learned as out of bounds next to a flag stand or hill kept them a few steps short of it, so they never picked up the flag. On maps whose deadly falls the bots already know, those learned spots are gone and no new ones are learned.
+- <!-- build: 20261110-0940 --> **Reach Stockpile on Boardwalk**: bots now see the flags and where to take them (they saw none, and matches ended 0-0). The same goes for any Reach map variant whose file leaves out a mode's places.
+- <!-- build: 20261110-0940 --> **Broken map files**: two saves at the same moment no longer leave a map's learned file broken, and a broken one no longer stops the next match from starting (it's set aside and learned again).
 - <!-- build: 20261108-2338 --> **Man cannons: in from the back, straight through**: bots go into a man cannon only through its entrance at the back (Narrows' cannons are a short lane between two fins) instead of pushing at a fin from the walkways beside it, run straight through without stopping or hopping at the foot, fly on toward the landing for the whole throw instead of braking halfway across, and keep using the cannon after a ride (a ride counted as a missed jump and kept them off it for a minute). Flag carriers take it too; bots walk the long way round only when the lane is jammed with players.
 - <!-- build: 20261108-2217 --> **Bots ride man cannons and lifts**: bots take a man cannon that throws them across the map (Narrows) when it's the quick way to where they're going, from both bases, and they ride every lift and man cannon, flag carriers too, even when an enemy watches the exit; they still never walk into the exit end of a one-way lift.
 - <!-- build: 20261108-2028 --> **Tool windows close their tool**: closing the LiDAR Viewer, LiDAR Simulator, Observer or Paint the nav window now ends that tool instead of leaving it running unseen (the Simulator saves the map it was on first).
