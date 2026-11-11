@@ -280,9 +280,11 @@
     <div class="field">
       <label class="flabel" for="sim-game">Every map runs</label>
       <select id="sim-game"><option value="">All games</option></select>
+      <button id="sim-fresh" hidden title="Start the Every map run again from its first map (maps already scanned keep their scans)">Start over from the first map</button>
     </div>
     <div class="acts">
       <button id="sim-pause">Pause</button>
+      <button id="sim-skip" title="End this map, save what was mapped, and go on to the next one">Skip to next map</button>
       <button id="sim-stop" title="Stop and save what was mapped">Stop and save</button>
     </div>
     <div class="field">
@@ -598,6 +600,8 @@ function renderSim() {
     : "Pick a map to simulate.";
   $("sim-pause").textContent = s.paused ? "Resume" : "Pause";
   $("sim-pause").disabled = $("sim-stop").disabled = !running;
+  $("sim-skip").disabled = !running || !s.queue;
+  allLabel();
   $("sim-rate").textContent = running && !s.paused && s.actual
     ? "Running at " + s.actual.toFixed(1) + "x" + (s.speed && s.actual < s.speed * 0.8 ? " (this PC's limit with 16 bots and 8 aircraft)" : s.speed ? "" : " (full speed)") : "";
   const marked = s.spots.filter(p => !p.label), objs = s.spots.filter(p => p.label);   // (label: a gametype objective)
@@ -622,16 +626,33 @@ function setCover(on) {
   coverMode = on; $("sim-cover").setAttribute("aria-pressed", on); document.body.classList.toggle("cover", on); renderSim();
 }
 $("sim-pick").onclick = () => { pickMode = true; showMaps(true); };
-$("sim-game").onchange = () => {
-  const g = $("sim-game").value;
-  $("sim-all").textContent = g ? "Every " + gameName(g) + " map" : "Every map";
-};
-$("sim-all").onclick = async () => {
-  const g = $("sim-game").value, which = g ? "every " + gameName(g) + " map" : "every map";
-  if (!confirm("Simulate " + which + " in turn, each with its Forge layouts? It takes a few minutes a map; each map is saved when it finishes.")) return;
-  const r = await simPost(g ? { action: "all", game: g } : { action: "all" });
+// an Every map run left unfinished (the simulator keeps its progress): Continue it, or Start over
+function allLeft() {
+  const g = $("sim-game").value, info = simState && simState.resume && simState.resume[g || "all"];
+  return info ? info.total - info.done : 0;
+}
+function allLabel() {
+  const g = $("sim-game").value, which = g ? "every " + gameName(g) + " map" : "every map", left = allLeft();
+  $("sim-all").textContent = left ? "Continue (" + left + " map" + (left === 1 ? "" : "s") + " left)" : which[0].toUpperCase() + which.slice(1);
+  $("sim-all").title = left ? "Go on with the " + which + " run from where it stopped" : "Every map of the game picked below, in turn, each with its Forge layouts";
+  $("sim-fresh").hidden = !left;
+}
+$("sim-game").onchange = allLabel;
+async function simAll(fresh) {
+  const g = $("sim-game").value, which = g ? "every " + gameName(g) + " map" : "every map", left = allLeft();
+  const ask = fresh ? "Start " + which + " over from the first map? Maps already scanned keep their scans."
+    : left ? "Continue " + which + "? " + left + " map" + (left === 1 ? "" : "s") + " left; each is saved when it finishes."
+    : "Simulate " + which + " in turn, each with its Forge layouts? It takes a few minutes a map; each map is saved when it finishes. If you stop, Every map goes on from where it stopped next time.";
+  if (!confirm(ask)) return;
+  const body = { action: "all" };
+  if (g) body.game = g;
+  if (fresh) body.fresh = true;
+  const r = await simPost(body);
   if (!r.ok) $("sim-state").textContent = r.data.error || "Could not start.";
-};
+}
+$("sim-all").onclick = () => simAll(false);
+$("sim-fresh").onclick = () => simAll(true);
+$("sim-skip").onclick = () => simPost({ action: "skip" });
 $("sim-pause").onclick = () => simPost({ action: simState && simState.paused ? "resume" : "pause" });
 $("sim-stop").onclick = () => simPost({ action: "stop" });
 $("sim-cover").onclick = () => setCover(!coverMode);

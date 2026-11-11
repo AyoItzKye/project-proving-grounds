@@ -72,16 +72,26 @@ def main():
     mids = [b.order.point for b in bots.values() if b.order.role == "mid"]
     if lanes and any(all(dist(q, l) > 0.01 for l in lanes) for q in mids):
         fails.append(f"split: pushers off the lanes {mids}")
-    # 4. Boardwalk: they carry ours, theirs is home: everyone but one defender on the carrier (research 12 3.5)
-    d, bots = setup()
-    ps = [PlayerState(i, 0, f"b{i}", RED + Vec(i * 0.7, 1.0, 0)) for i in bots] + [
-        PlayerState(10, 1, "e0", Vec(2, -10, 17), has_flag=True)]
-    flags = {0: FlagState(0, RED, Vec(2, -10, 17), "carried", 10), 1: FlagState(1, BLUE, BLUE, "home")}
-    d.next_roles = 0.0
-    d.assign_roles(20.0, Snapshot(20.0, ps, flags, mode="ctf"))
-    got = sorted(d.roles.values())
-    if got.count("hunter") != len(bots) - 1 or "runner" in got:
-        fails.append(f"our flag carried, theirs home: roles {got} (want all but one hunting)")
+    # 4. Boardwalk: they carry ours, theirs is home. The player's rule (his flagged games, Nov 11; director.OWNER_SPLITS):
+    #    two flags, about half on the carrier and the rest attack theirs, nobody on the empty stand. Off (research 12
+    #    3.5, the play before): everyone but one defender on the carrier
+    import brain.director as Dmod
+    for splits in (True, False):
+        Dmod.OWNER_SPLITS = splits
+        try:
+            d, bots = setup()
+            ps = [PlayerState(i, 0, f"b{i}", RED + Vec(i * 0.7, 1.0, 0)) for i in bots] + [
+                PlayerState(10, 1, "e0", Vec(2, -10, 17), has_flag=True)]
+            flags = {0: FlagState(0, RED, Vec(2, -10, 17), "carried", 10), 1: FlagState(1, BLUE, BLUE, "home")}
+            d.next_roles = 0.0
+            d.assign_roles(20.0, Snapshot(20.0, ps, flags, mode="ctf"))
+            got = sorted(d.roles.values())
+        finally:
+            Dmod.OWNER_SPLITS = True
+        if splits and (got.count("hunter") != 3 or "runner" not in got or "defender" in got):
+            fails.append(f"our flag carried, theirs home: roles {got} (want 3 of 6 hunting, a runner, no defender)")
+        if not splits and (got.count("hunter") != len(bots) - 1 or "runner" in got):
+            fails.append(f"our flag carried, theirs home, splits off: roles {got} (want all but one hunting)")
     # 5. a person of ours carries theirs: no bot runs "home" for him, the escorts go with him
     d, bots = setup()
     ps = [PlayerState(i, 0, f"b{i}", RED + Vec(i * 0.7, 1.0, 0)) for i in bots] + [

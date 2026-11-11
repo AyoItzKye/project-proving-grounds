@@ -40,6 +40,16 @@ CARRY_PLAY, CUTOFF = True, True
 # run or giving his slot to another (about 90 u of distance). Not while our flag is carried: the collapse on their
 # carrier stays everyone's (research 12 section 3.5, tools/test_ctf_effort.py). False: the play before (A/B)
 RUNNER_KEEP, KEEP_RUNNERS = 3.0, True
+# The player's CTF splits (his flagged games, Nov 11): two flags home, DEFEND_SHARE of the team (people too) defends,
+# the rest attack; our flag taken with theirs home, THIEF_HUNT of us hunt the thief and the rest attack (One Flag: all),
+# and nobody guards an empty stand. False: the play before (research 12 sections 1.4, 3.5; A/B)
+OWNER_SPLITS, DEFEND_SHARE, THIEF_HUNT = True, 0.25, 0.5
+# The player's vehicle rules (his flagged games, Nov 11: Mongooses taken far too often, an Elephant ridden in Oddball):
+# no crew job on a Mongoose or an Elephant (a bot rides a Mongoose only to cross the map, Bot.decide MONGOOSE_TRIP), at
+# most two transports crewed (a Warthog for the attack and one for the defence, each with a gunner) and one harasser.
+# False: the play before (every harasser crewed; A/B)
+OWNER_VEHICLES, NO_CREW_KINDS, OWNER_ROLE_MAX = True, ("mongoose", "elephant"), {"transport": 2, "harasser": 1}
+ODD_FREE_R = 8.0      # u: a ball carrier's spot people held the ball at (maps.people_holds) with an enemy this near is passed over
 # the getaway ride: one transport driver parks GETAWAY_D u from their stand on our side while our runners go in, then
 # fetches our carrier at any distance
 GETAWAY, GETAWAY_D = True, 16.0
@@ -1267,15 +1277,18 @@ class Director:
         from . import vehicles
         crews = s.__dict__.setdefault("crews", {})          # vehicle handle -> (bot id, since)
         skip = s.__dict__.setdefault("crew_skip", {})       # (bot id, handle) -> not before
-        filled = set()
+        filled, jobs = set(), {}
         for v in snap.vehicles:
             r = vehicles.roles_of(v["kind"])
             if r and v["occupied"] and v.get("team") == s.team:
-                filled.add(next((x for x in r if x not in filled), r[0]))
+                x = next((x for x in r if x not in filled), r[0])
+                filled.add(x)
+                jobs[x] = jobs.get(x, 0) + 1
         # (no wreck, nothing on its side, no vehicle bots stood by without getting in: vehicles.usable)
         duds = s.map.get("_vehicle_duds", {})
         empty = {v["handle"]: v for v in snap.vehicles if not v["occupied"] and vehicles.roles_of(v["kind"])
-                 and vehicles.usable(v, now, duds)}
+                 and vehicles.usable(v, now, duds)
+                 and not (OWNER_VEHICLES and vehicles.kind_of(v["kind"]) in NO_CREW_KINDS)}
         free = {b.id: b for b in foot}
         near = {b.id: b for b in busy}
         for h, (bid, since) in list(crews.items()):
@@ -1285,7 +1298,9 @@ class Director:
                 b.set_order(Order("drive", Vec(*v["pos"]), target=h), sure=True)   # (it took the job)
                 s.roles[bid] = "drive"
                 r = vehicles.roles_of(v["kind"])
-                filled.add(next((x for x in r if x not in filled), r[0]))
+                x = next((x for x in r if x not in filled), r[0])
+                filled.add(x)
+                jobs[x] = jobs.get(x, 0) + 1
             else:
                 if now - since >= 30.0:
                     skip[(bid, h)] = now + 60.0
@@ -1299,7 +1314,8 @@ class Director:
         elif any(vehicles.kind_of(k) in vehicles.TANKS for k in theirs):
             first = "anti_vehicle"
         for role in ([first] if first else []) + [r for r in vehicles.ROLE_ORDER if r != first]:
-            while role == "harasser" or role not in filled:
+            while ((role == "harasser" or role not in filled) if not OWNER_VEHICLES
+                   else jobs.get(role, 0) < OWNER_ROLE_MAX.get(role, 1)):
                 pairs = [(dist(players[bid].pos, Vec(*v["pos"])), b, v) for v in empty.values()
                          if role in vehicles.roles_of(v["kind"]) for bid, b in free.items()
                          if skip.get((bid, v["handle"]), 0.0) <= now]
@@ -1315,6 +1331,7 @@ class Director:
                 crews[v["handle"]] = (b.id, now)
                 s.roles[b.id] = "drive"
                 filled.add(role)
+                jobs[role] = jobs.get(role, 0) + 1
                 s.event(now, "vehicle", f"{players[b.id].name}: driving the {v['kind']} ({role.replace('_', '-')})")
         # a power vehicle (vehicles.taxi_ok: a Banshee, a tank ...) nobody of ours took, by a bot on an objective job
         # (busy: Invasion has no other kind): the nearest one within POWER_R takes it to work it (Bot.drive: its role's
@@ -1789,6 +1806,10 @@ class Director:
             # going the other way
             collapse = own.state == "carried" and not carrier and (theirs is None or theirs.state == "home")
             k = n - 1 if standoff or collapse else 2
+            if OWNER_SPLITS and collapse:
+                # the player's rule (his One Flag game, Nov 11): with our flag gone there is nothing to defend; One
+                # Flag: the whole team on the thief; two flags: about half on him, the rest keep attacking theirs
+                k = n if s.is_one_flag(snap) or theirs is None else max(1, math.ceil(THIEF_HUNT * n))
             cut = s.cutoff_point(snap, own) if CUTOFF and own.state == "carried" and k >= 3 else None
             if cut is not None:
                 # one cuts him off on his way home (guide 19 CTF-MULTI-11: the hunters went where he was, behind him)
@@ -1800,13 +1821,16 @@ class Director:
         # One Flag (one flag in the match, sides swap each round; research 12 O3.13): attacking, there is no flag of
         # ours to defend, so nobody defends; defending, everyone but a forward pair holds it ("push the offense back")
         # (our flag out with five of us or fewer: no defender guards the empty stand, its hunters bring it back)
-        if own is not None and (own.state == "home" or n >= 6 or s.is_one_flag(snap)) and not all_in_carry:
+        if (own is not None and (own.state == "home" or (not OWNER_SPLITS and (n >= 6 or s.is_one_flag(snap))))
+                and not all_in_carry):
             # the lobby shows team sizes: no point in more defenders than half their team; one returner always. A real
             # attack every time: one defender up to four of us, two up to seven, three past, and room for a runner with
             # an escort while we are not two ahead (Boardwalk sims: three bots kept two defenders and sent a lone
             # runner, one flag run in 560 s)
             n_enemy = sum(p.team != s.team for p in snap.players)
             base = 1 if n <= 4 else 2 if n <= 7 else 3
+            if OWNER_SPLITS:      # two flags home: about a quarter of the team defends (the player's 75 / 25)
+                base = max(1, round(DEFEND_SHARE * sum(1 for p in snap.players if p.team == s.team)))
             want = min(base, int(s.plan.get("defenders", 2)))
             defenders = max(1, min(want, n - 1, (n_enemy + 1) // 2))
             keep = n - 2 if n >= 3 else n - 1
@@ -2417,6 +2441,14 @@ class Director:
         foes = [p.pos for p in snap.players if p.team != s.team and p.alive]
         if s.posture.state == "hide_and_hold" and getattr(s, "odd_spot", None) is not None:
             return s.odd_spot      # ahead, the clock running out: one spot held, no more moves (guide 19 ODD-CORE-11)
+        # where people hold the ball (Passive LiDAR, maps.people_holds): the longest-held spot no enemy is on (ODD_FREE_R)
+        if not hasattr(s, "_odd_people"):
+            from .maps import people_holds
+            s._odd_people = people_holds(s.map, "oddball")
+        for spot, _ in s._odd_people:
+            if all(dist(spot, f) > ODD_FREE_R for f in foes):
+                s.odd_spot = spot
+                return spot
         s.odd_spot = max(s.map["holds"][s.side] + [s.map["points"]["mid"]],
                          key=lambda h: min((dist(h, f) for f in foes), default=0.0))
         return s.odd_spot

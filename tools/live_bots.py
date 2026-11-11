@@ -1269,6 +1269,10 @@ def main():
                                      steering if p.id == 0 else None, p.vehicle != -1)
                                     for p in snap.players if p.id not in st["bots"].values() and p.name != "ai"])
                 rides.update(now, snap.vehicles, snap.players, set(st["bots"].values()))
+                if snap.mode == "oddball" and snap.ball_carrier is not None:   # where people hold the ball (Passive LiDAR)
+                    hp = snap.player(snap.ball_carrier)
+                    if hp is not None and hp.alive and not hp.is_bot and hp.id not in st["bots"].values():
+                        people.holding(now, "oddball", (hp.pos.x, hp.pos.y, hp.pos.z))
                 if rides_new[0]:                 # saved new rides: on this match's terrain now (main thread)
                     rides_new[0] = False
                     from brain.maps import data_names, rides_layers

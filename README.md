@@ -80,7 +80,9 @@ leave parts of the map unused. Scan each map once before you play it (or all of 
    - **One map**: **Pick a map**, then watch. The bots walk every floor, try the jumps and drops, and stop on their
      own once the map is covered.
    - **A whole game**: set **Every map runs** to the game (for example Halo 3), then press **Every map**. Each map of
-     that game is scanned in turn, with its Forge layouts. Leave it running; **Max** speed is the quickest.
+     that game is scanned in turn, with its Forge layouts. Leave it running; **Max** speed is the quickest. Stopped
+     part way, the button reads "Continue (N maps left)" next time and goes on with the maps left; **Skip to next map** moves on
+     from a map that takes too long (what it mapped is saved).
 3. **Forge layouts and custom maps** need one match first: the simulator only knows a layout once the bots have been
    in a match on it. In MCC, start a match on the layout with **LiDAR mapping** turned on in the BOTS panel (top
    right). Mapping bots join your team and walk the whole layout while you watch; end the match when they stop
@@ -267,7 +269,8 @@ panel (bottom right):
 
 - **Pick a map**: the Maps list opens; click a map's picture (or its **Simulate** button). Forge layouts the bots have
   played on are listed under their map. Picking another map while one runs stops it (what it mapped is saved).
-- **Every map**: all of them in turn, each saved when it finishes.
+- **Every map**: all of them in turn, each saved when it finishes. Stopped part way, it goes on from where it stopped
+  next time (**Start over from the first map** begins again); **Skip to next map** ends a slow map and moves on.
 - **Speed**: 1x (real time) to 16x, or **Max** (as fast as this PC runs it). The panel shows the speed actually
   reached: big maps with 16 bots and 8 aircraft run slower than asked on most PCs.
 - **Pause** / **Resume** and **Stop** (it saves what was mapped).

@@ -65,6 +65,7 @@ LINK_MIN_XY, LINK_MIN_RISE = 0.8, 0.3   # a landed jump is a link if it covers t
 MERGE = 0.6                      # links with take-offs and landings this close are one jump
 TELE_JUMP, TELE_GAP = 6.0, 0.5   # a person moved this far (u) within this long (s), alive and on foot: a teleport (no
                                  # run, sprint or evade covers 6 u in a step; a respawn has him dead in between)
+HOLD_CELL = 2                    # u: people's objective holds are summed per cell this size (Recorder.held)
 TELE_MERGE = 1.5                 # teleports with starts and ends this close are one teleporter's (each way its own)
 PAD_R, PAD_Z = 4.0, 3.0          # a ride starting or ending this near a lift's or man cannon's pad (flat u, up / down)
 PAD_UP, PAD_ACROSS = 2.0, 6.0    # ... and carried more than any jump: up 2+ u or 6+ u across from a pad, or 2+ u down
@@ -300,6 +301,7 @@ class Recorder:
                 w.insert(3, KIND_BOT)
         s.links = s.stored.get("links", [])        # shared: grows during the run, saved whole
         s.teleports = s.stored.get("teleports", [])   # [[from, to, times]] people went through, each way its own
+        s.holds = s.stored.get("holds", {})         # {mode: {"x,y,z" 2 u cell: seconds}} where people held the objective
         s.stored_deaths = s.stored.get("deaths", [])
         s.walk = {}                                 # this run: (ix, iy, iz, kind) -> samples
         s.cover = {(int(x * CELL // COVER), int(y * CELL // COVER), int(z * ZSTEP // 1.0))
@@ -561,6 +563,14 @@ class Recorder:
             s.teleports.append(t)
             return t
 
+    def held(s, mode, p, dt):
+        """Someone held the mode's objective (Oddball: the ball) dt seconds at p: summed per HOLD_CELL u cell, the spots
+        people pick to hold it (brain/maps.people_holds; the director's ball carrier goes there)."""
+        key = ",".join(str(round(v / HOLD_CELL) * HOLD_CELL) for v in p[:3])
+        with s.lock:
+            d = s.holds.setdefault(mode, {})
+            d[key] = round(d.get(key, 0.0) + dt, 2)
+
     def find_link(s, p0, p1, kind="jump"):
         """The known link from p0 to p1 (a crouch route also from p1 to p0: it works both ways)."""
         for l in s.links:
@@ -675,6 +685,7 @@ class Recorder:
             keep = [l for l in s.links if l.get("found_by") != "map" and not (l.get("crouch") and not l.get("human"))]
             links, weapons, cover = json.loads(json.dumps(keep)), [dict(w) for w in s.weapons], sorted(s.cover_spots.values())
             teleports = json.loads(json.dumps(s.teleports))
+            holds = json.loads(json.dumps(s.holds))
             s.count_run, s.saved_deaths, s.jumps = False, len(s.deaths), []
         with s.__dict__.setdefault("save_lock", threading.Lock()):
             old = load(s.path)
@@ -692,7 +703,7 @@ class Recorder:
                        walk=[[*k, n] for k, n in sorted(walk.items())],
                        deaths=(old.get("deaths", []) + deaths)[-3000:],
                        jumps=(old.get("jumps", []) + jumps)[-2000:],
-                       links=links, weapons=weapons, cover=cover, teleports=teleports)
+                       links=links, weapons=weapons, cover=cover, teleports=teleports, holds=holds)
             objectives = s.objectives.saved() if getattr(s, "objectives", None) is not None else old.get("objectives")
             if objectives:                           # every gametype objective place, reached or not (Objectives)
                 out["objectives"] = objectives
@@ -2367,6 +2378,15 @@ class HumanWatch:
         if not ok:
             s.skipped += 1
         return ok
+
+    def holding(s, now, mode, pos):
+        """A person holds the mode's objective at pos this tick (live_bots: Oddball's ball): the seconds since the last
+        call, at most 0.5, go to the Recorder (Recorder.held)."""
+        last = s.__dict__.setdefault("hold_t", {})
+        dt = min(0.5, now - last.get(mode, now))
+        last[mode] = now
+        if dt > 0:
+            s.rec.held(mode, pos, dt)
 
     def at_pad(s, p):
         return p is not None and any(math.hypot(p[0] - q[0], p[1] - q[1]) <= PAD_R and abs(p[2] - q[2]) <= PAD_Z

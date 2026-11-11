@@ -924,6 +924,17 @@ class LiveH3(LiveH2):
                 continue
             g = struct.unpack("<9f", s.g.read(gpo + s.POS_AT, 36))
             live[t], rets[t] = _on_frame(g, loc), _on_frame(g, ELEPHANT["flag_return"])
+        # a map variant's own stands (Sandtrap's variant "SAND TARP", One Flag: its flag hung on a stand 23.7 u from the
+        # map's stand points, read as Slayer, live Nov 11): before any flag is known, a weapon hung on a stand object where
+        # no map stand is becomes a stand of the team whose map stand is nearest (One Flag's owner: one_flag_owner)
+        if not getattr(s, "_flag_tags", None):
+            for h, tag, parent, pos in weapons:
+                if h not in getattr(s, "_on_stand", ()) or h in s._riding or h in held:
+                    continue
+                d2 = {t: (pos[0] - st.x) ** 2 + (pos[1] - st.y) ** 2 for t, st in stands.items()}
+                t = min(d2, key=d2.get)
+                if d2[t] > 0.6 ** 2 and t not in live:
+                    live[t] = Vec(*pos)
         s.live_stands = live = {**getattr(s, "live_stands", {}), **live}
         s.live_returns = {**getattr(s, "live_returns", {}), **rets}
         if live:
@@ -1018,7 +1029,7 @@ class LiveH3(LiveH2):
 
     def _weapons_held(s, players):
         """([(handle, tag, +0x14, pos)] of every weapon object, {weapon handle: player} of those in a unit's slots)."""
-        held, s._third, s._attached, s._riding, s._riding_frame = {}, set(), set(), {}, {}
+        held, s._third, s._attached, s._riding, s._riding_frame, s._on_stand = {}, set(), set(), {}, {}, set()
         for p in (p for p in players if p.get("pos") is not None):
             o = s.object(p["unit"])
             if o:
@@ -1048,6 +1059,8 @@ class LiveH3(LiveH2):
                 if po and po not in (s.object(p["unit"]) for p in players if p.get("pos") is not None):
                     base = struct.unpack("<3f", s.g.read(po + s.POS_AT, 12))
                     pos = (base[0] + pos[0], base[1] + pos[1], base[2] + pos[2])
+                    if (parent & 0xFFFF) < mx and b[(parent & 0xFFFF) * 0x18 + s.TYPE_AT] == 10:
+                        s._on_stand.add(h)  # hung on a stand object (a flag's), wherever that stand is (LiveH3.flags)
                     # and that marker on a vehicle (Halo 3 Sandtrap: each CTF flag's stand rides its team's Elephant;
                     # the flag read 1.4 u from the map's origin and Multi Flag played as Slayer): the vehicle's place
                     # plus the offset along its axes (forward, then up, after its position)

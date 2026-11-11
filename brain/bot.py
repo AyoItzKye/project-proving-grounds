@@ -99,6 +99,9 @@ def loadout_value(guns, rank, game=None):
     return cover + 0.4 * max(0.0, max(rank(w) for w in guns) - 3.5)
 
 
+OWNER_LEASH = True           # keep_role's leashes from the player's flagged games, Nov 11 (Oddball / King hunters on the
+                             # carrier, third teams, a ferry on foot, vehicle trips): False, the play before (A/B)
+MONGOOSE_TRIP = 50.0         # a Mongoose only for a trip this long: across the map fast (the player's rule, Nov 11)
 VEHICLE_TRIP = 35.0          # goals farther than this make a free vehicle nearby worth taking (brain/vehicles.py)
 GROUND_RISE = 15.0           # u: a goal this far over the bot is no trip for a ground vehicle (Spire's core, 37 u up)
 GETAWAY_PARK_R = 3.0         # u: the getaway ride parks this near its spot (director.vehicle_jobs)
@@ -951,7 +954,7 @@ class Bot:
         o, k = s.order, s.p.teamwork
         if k <= 0 or me.has_flag:
             return
-        goal_pt, firm = None, None
+        goal_pt, firm, third_team = None, None, None
         core_rush = s.urgent(me, snap)
         # (in the team's blitz: director.blitz_tick)
         urgent = core_rush or s.pressing(me, snap) or getattr(s, "blitz_until", 0.0) > snap.time
@@ -1017,6 +1020,29 @@ class Bot:
             # with no leash any committed fight or item beat the return
             goal_pt = s.live_point(me, snap)
             strays, away = (lambda q: dist(q, goal_pt) > HUNT_R), dist(me.pos, goal_pt) > 0.5 * HUNT_R
+        elif (OWNER_LEASH and o.role == "hunter" and snap.mode in ("oddball", "king") and o.point is not None
+              and len({p.team for p in snap.players if p.team != me.team}) >= 2):
+            # (lobbies of three teams or more only: in two-team sims the leash cost ball changes, 24 games, pickups
+            # 228 -> 178, closeness 0.41 -> 0.21; there a hunter's fights are with the carrier's side anyway)
+            # their ball carrier (or the loose ball, the hill) is the job, as the CTF return: the player's Oddball, Nov 11,
+            # five teams of three: the 12 hunters sent at him fought a third team in 74% of their fights, him in 6%, and
+            # were within 10 u of him 6% of the time (items 20%, vehicles 28%); he held the ball 199-0. Fights with a
+            # team that is not the carrier's stray as a far gun does (third_team, below), unless the man is on us
+            c = snap.player(snap.ball_carrier) if snap.mode == "oddball" and snap.ball_carrier is not None else None
+            mine = c is not None and c.alive and c.team != me.team
+            goal_pt = c.pos if mine else snap.ball if snap.mode == "oddball" and snap.ball is not None else (
+                snap.hill or o.point)
+            strays, away = (lambda q: dist(q, goal_pt) > HUNT_R), dist(me.pos, goal_pt) > 0.5 * HUNT_R
+            third_team = c.team if mine and len({p.team for p in snap.players if p.team != me.team}) >= 2 else None
+        elif OWNER_LEASH and o.role == "ferry" and me.vehicle in (None, -1):
+            # sent to pick up our carrier but on foot: it stays on him as an escort does (the player's High Ground CTF,
+            # Nov 11, 129.7 / 141.8 s: the ferry walked off to a gun at (-28, -6.5) while the carrier waited for it)
+            c = next((p for p in snap.players if p.team == me.team and p.has_flag and p.alive and p.id != me.id), None)
+            goal_pt = c.pos if c is not None else o.point
+            if goal_pt is None:
+                return
+            strays, away = (lambda q: dist(q, goal_pt) > ESCORT_R), dist(me.pos, goal_pt) > 0.5 * ESCORT_R
+            urgent = True
         elif o.role == "escort" and s.lead(me, snap) is not None:
             c = s.lead(me, snap).pos
             strays, away = (lambda q: dist(q, c) > ESCORT_R), dist(me.pos, c) > 0.5 * ESCORT_R
@@ -1091,6 +1117,17 @@ class Bot:
                                   or (here and dist(me.pos, b.pos) < (4.0 if urgent else 8))):
                     continue          # on us, or right here: fight back wherever (the core at stake: only at arm's length)
                 q = b.pos
+                tp = snap.player(arg) if isinstance(arg, int) else None
+                if third_team is not None and tp is not None and tp.team != third_team:
+                    scores[key] *= 0.15 if urgent else 1.0 - 0.7 * k     # a third team's man, not the carrier's side
+                    continue
+            elif kind in ("vehicle", "board") and OWNER_LEASH:
+                # a seat to go to is a trip off the job as a gun is (the player's Oddball, Nov 11: his two escorts 18% of
+                # their time on vehicles, a median 33 u off him; an Elephant taken beside the ball)
+                v = next((v for v in snap.vehicles if str(v.get("handle")) == str(arg)), None)
+                if v is None or me.vehicle not in (None, -1):
+                    continue
+                q = Vec(*v["pos"])
             elif kind in ("hunt", "item", "hold") and isinstance(arg, Vec):
                 if (kind == "item" and s.dry(me)) or (kind == "hunt" and (not on_clock or dist(me.pos, arg) < HIT_BACK_R) and (any(
                         b.source == "hit" and b.pos == arg for b in s.per.beliefs.values())
@@ -2433,7 +2470,8 @@ class Bot:
             # (not on wheels to a goal far over it: live Spire 20261105-060020 phase 3, five attackers took turns in
             # the Warthog at the spire's foot for the core 37 u up, 300-1,200 rows each "waiting for crew", no pickup)
             pick = max((v for v in snap.vehicles if vehicles.usable(v, now, s.duds()) and not s.veh_banned(v, now)
-                        and s.trip_ok(v, me, far)),
+                        and s.trip_ok(v, me, far)
+                        and not (vehicles.kind_of(v["kind"]) == "mongoose" and trip < MONGOOSE_TRIP)),
                        key=lambda v: vehicles.ride_score(v, me, far, trip), default=None)
             if (pick and vehicles.ride_score(pick, me, far, trip) > 0.15
                     and (snap.mode == "race" or s.rng.random() < 0.3 + 0.6 * s.p.map_iq)):

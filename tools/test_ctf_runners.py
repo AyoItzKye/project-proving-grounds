@@ -1,6 +1,5 @@
-"""CTF runners keep going (the player's Halo 3 Sandtrap CTF, Nov 11 11:18, his team all Legendary: "the legendary team
-isnt even going anywhere near the flag 99% of the time, they keep straggling between attempting to go for the enemy
-flag and also running back to base"; live: near their flag 10% of the time, orders changed 3.9 times a bot-minute).
+"""CTF runners keep going (the player's Halo 3 Sandtrap CTF, Nov 11 11:18, his team all Legendary: runners went back and
+forth between their flag and home; live: near their flag 10% of the time, orders changed 3.9 times a bot-minute).
 His team's director replayed on that match's first 100 s (tools/fixtures/shrine_ctf_111849.json.gz: everyone's
 place, the flags and vehicles as read live), the old play (director.KEEP_RUNNERS off) against the new:
 
@@ -50,7 +49,7 @@ def flat(a, b):
 
 
 def run(keep):
-    D.KEEP_RUNNERS = keep
+    D.KEEP_RUNNERS = D.OWNER_SPLITS = D.OWNER_VEHICLES = keep   # (the old play: none of the player's rules)
     bots = {int(i): Bot(int(i), m[0], make_profile(m[1], m[2], random.Random(int(i))), M, random.Random(int(i)))
             for i, m in FIX["bots"].items() if m[0] == TEAM}
     d = D.Director(TEAM, M, bots, random.Random(0))
@@ -75,12 +74,12 @@ def run(keep):
 
 def main():
     fails = []
-    keep0 = D.KEEP_RUNNERS
+    keep0, splits0, veh0 = D.KEEP_RUNNERS, getattr(D, "OWNER_SPLITS", True), getattr(D, "OWNER_VEHICLES", True)
     try:
         old = run(False)
         new = run(True)
     finally:
-        D.KEEP_RUNNERS = keep0
+        D.KEEP_RUNNERS, D.OWNER_SPLITS, D.OWNER_VEHICLES = keep0, splits0, veh0
     for name, back in (("old", old), ("new", new)):
         print(f"{name}: runners turned back, both flags home: {len(back)} {back[:5]}")
     if new:

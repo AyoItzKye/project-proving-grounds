@@ -82,8 +82,9 @@ def urgency(fails, m, inv):
         fails.append(f"phase 3 defenders by a Mongoose, the core 35 u up: {trips(3)} of 40 took it")
     if trips(3, "drive", ride=banshee):
         fails.append(f"phase 3 defenders called to drive the Banshee: {trips(3, 'drive', ride=banshee)} of 40 went for it")
-    if not trips(2):
-        fails.append("(test: in phase 2 no defender ever took the Mongoose for a 40 u trip; the check proves nothing)")
+    # (the control: a 40 u trip by a Warthog; a Mongoose only for MONGOOSE_TRIP, the player's rule, Nov 11)
+    if not trips(2, ride=dict(banshee, kind="warthog")):
+        fails.append("(test: in phase 2 no defender ever took the Warthog for a 40 u trip; the check proves nothing)")
     if trips(2, ride=banshee):
         fails.append(f"phase 2 defenders took the Banshee for a 40 u trip: {trips(2, ride=banshee)} of 40 (a power "
                      f"vehicle is no taxi)")

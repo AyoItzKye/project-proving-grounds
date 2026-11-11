@@ -223,9 +223,9 @@ def anchor_launches(links, features):
     """People's rides up (a link rising LAUNCH_RISE+) recorded from near a man cannon or gravity lift (features.json
     "launcher" / "lift") start at its trigger, marked a ride: LiDAR set the take-off where the person left the ground, a
     few units off when he jumped onto the pad (live Spire: one 4.1 u off the middle cannon, where three bots circled
-    pressing jump; "Do these stupid fucks think the man cannon is there?"). The trigger is the ride people started
-    nearest the marker, within PAD_TRIGGER of it: the marker itself sits up to 1.2 u into the cannon's body ("Right here
-    where im standing, if I go forward it will shoot me up", 0.4 u from such a ride's start and 1.2 u from the marker; a
+    pressing jump where no cannon was). The trigger is the ride people started
+    nearest the marker, within PAD_TRIGGER of it: the marker itself sits up to 1.2 u into the cannon's body (a player
+    showed the spot one step short of the launch, 0.4 u from such a ride's start and 1.2 u from the marker; a
     bot dithered 2 u off the Elites' cannon). With none that near, the marker. Copies; the rest as they are."""
     pads = [f["pos"] for f in features if f.get("kind") in ("launcher", "lift")]
     kinds = [f.get("kind") for f in features if f.get("kind") in ("launcher", "lift")]
@@ -312,6 +312,22 @@ def crouch_jumps(links, game):
 
 
 TELE_SAME = 1.5        # a person's teleport starting and ending this near a known pair's is that pair (the same way)
+
+
+HOLD_MIN_S = 10.0      # s: a spot people held the objective at least this long (all their matches summed) is one of theirs
+
+
+def people_holds(m, mode):
+    """Where people held the mode's objective (lidar.json "holds", Passive LiDAR: Oddball's ball), summed over the
+    map's data names: [(Vec, seconds)] with HOLD_MIN_S or more, the longest first. The player's Sandtrap Oddball, Nov 11:
+    416 of 580 holding samples in one spot inside the centre structure: under a roof, little exposure, several ways out."""
+    total = {}
+    for nm in data_names(m):
+        f = os.path.join(ROOT, nm, "lidar.json")
+        for k, sec in (read_json(f).get("holds", {}).get(mode, {}) if os.path.exists(f) else {}).items():
+            total[k] = total.get(k, 0.0) + sec
+    out = [(Vec(*(float(v) for v in k.split(","))), sec) for k, sec in total.items() if sec >= HOLD_MIN_S]
+    return sorted(out, key=lambda x: -x[1])
 
 
 def people_teleports(known, seen):

@@ -343,6 +343,15 @@ def run_map(name, o, switch, k, n, log, ctl=None):
         mid = np.array([T.lz.shape[1] / 2, T.lz.shape[2] / 2])
         picks = cells[np.argsort(np.abs(cells[:, 1:] - mid).sum(axis=1))[:16]]
         spawns = [(c.x, c.y, c.z) for c in (T._center(*map(int, k)) for k in picks)]
+    if not spawns:
+        # no floor at all: an empty Forge canvas (H2A's skyboxes), every floor its layouts' pieces. Nothing to scan
+        # here; a layout is, once played (a fresh install's "Every Halo 2 Anniversary map": three FAILED
+        # ZeroDivisionError rows, Nov 11)
+        line = f"| {name} | {game} | no floor: an empty Forge canvas, nothing to scan here (its Forge layouts are, once played) |"
+        print(line, flush=True)
+        log.write(line + "\n")
+        log.flush()
+        return None
     rng = random.Random(sum(map(ord, name)))
     walkers = [(Roomba(i, rng), Body(spawns[i % len(spawns)])) for i in range(o.walkers)]
     from brain import oob                            # the map's kill zones: bots keep out as in a match, the director
@@ -479,6 +488,16 @@ class Switch:
     last_seen = 0.0          # the view's last poll (lidar.serve): the simulator stops a while after it closes
 
 
+VIEW_IDLE_S = 90.0       # a page with no window of its own to watch, unpolled this long: closed
+
+
+def view_gone(win, last_seen, now):
+    """Nobody is looking any more: its window closed (when_closed sets last_seen 0), or, with no window of its own (a
+    browser tab), its page unpolled VIEW_IDLE_S. A window's page goes quiet while it asks "Simulate every ... map?":
+    the question left open 90 s stopped the simulator and its OK found nothing there (live, a fresh install, Nov 11)."""
+    return last_seen == 0.0 or (win is None and now - last_seen > VIEW_IDLE_S)
+
+
 def mass_run(names, game=None):
     """The maps an "every map" run takes in turn: all of them, or one game's, each Forge layout after its map."""
     return [m for m in names if game is None or J.game_of(m.partition("/")[0]) == game]
@@ -496,6 +515,42 @@ class Control:
         s.speed, s.paused, s.stop_now = 4.0, False, False
         s.pending, s.clear = [], False
         s.last = None                   # the last map finished: (name, floor cells, new jumps, sim minutes, stopped)
+        # an Every map run's progress, kept across runs (user/lidar_all.json: {"all" or a game: {"done": [maps]}}):
+        # clicking Every map again goes on with the maps left ("fresh": start over); Skip to next map counts as done
+        s.resume_path = os.path.join(ROOT, "user", "lidar_all.json")
+        s.all_key, s.all_maps, s.skip_name = None, [], None
+
+    def resume_state(s):
+        try:
+            with open(s.resume_path, encoding="utf-8") as f:
+                d = json.load(f)
+            return d if isinstance(d, dict) else {}
+        except (OSError, ValueError):
+            return {}
+
+    def save_resume(s, d):
+        os.makedirs(os.path.dirname(s.resume_path), exist_ok=True)
+        tmp = s.resume_path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(d, f)
+        os.replace(tmp, s.resume_path)
+
+    def map_done(s, name, stopped):
+        """After a map of an Every map run: done unless Stop and save ended it (a skip is done); the run's record is
+        dropped once every map of it is done."""
+        with s.lock:
+            key, skipped = s.all_key, s.skip_name == name
+            s.skip_name = None
+            if key is None or name not in s.all_maps or (stopped and not skipped):
+                return
+            d = s.resume_state()
+            done = d.setdefault(key, {}).setdefault("done", [])
+            if name not in done:
+                done.append(name)
+            if all(m in done for m in s.all_maps):
+                d.pop(key, None)
+                s.all_key = None
+            s.save_resume(d)
 
     def command(s, d):
         """One request from the view: (HTTP status, answer)."""
@@ -505,7 +560,7 @@ class Control:
                 name = d.get("name")
                 if name not in s.names:
                     return 404, dict(error="no level data for that map")
-                s.queue = [name]
+                s.queue, s.all_key = [name], None   # (one map: not part of an Every map run)
                 s.stop_now, s.paused = s.current is not None, False   # (the map running now ends, this one starts)
             elif act == "all":
                 # every map, or one game's ("game": ce, h2, h2a, h3, odst, reach, h4), each followed by its Forge layouts
@@ -513,10 +568,19 @@ class Control:
                 game = d.get("game") or None
                 if game is not None and game not in GAMES:
                     return 400, dict(error="game must be one of " + ", ".join(GAMES))
-                s.queue = mass_run(s.names, game)
-                if not s.queue:
+                full = mass_run(s.names, game)
+                if not full:
                     return 404, dict(error="no maps with level data for that game")
+                key, saved = game or "all", s.resume_state()
+                done = [m for m in saved.get(key, {}).get("done", []) if m in full]
+                if d.get("fresh") or len(done) >= len(full):
+                    done = []
+                    saved.pop(key, None)
+                    s.save_resume(saved)
+                s.queue = [m for m in full if m not in done]
+                s.all_key, s.all_maps = key, full
                 s.stop_now, s.paused = s.current is not None, False
+                return 200, dict(ok=True, resumed=len(done), left=len(s.queue))
             elif act == "speed":
                 v = float(d.get("speed", 4))
                 if v not in s.SPEEDS:
@@ -524,6 +588,10 @@ class Control:
                 s.speed, s._rate, s.actual = v, None, 0.0     # (measured afresh at the new speed)
             elif act in ("pause", "resume"):
                 s.paused = act == "pause" and s.current is not None
+            elif act == "skip":
+                if s.current is None:
+                    return 409, dict(error="no map is running")
+                s.skip_name, s.stop_now = s.current, True     # (it ends, saved as it stands; the queue goes on)
             elif act == "stop":
                 s.queue, s.paused = [], False
                 s.stop_now = s.current is not None
@@ -593,7 +661,18 @@ class Control:
         return dict(current=s.current, title=map_title(s.current) if s.current else None, minutes=round(s.t / 60, 1),
                     speed=s.speed, actual=round(getattr(s, "actual", 0.0), 1) if s.current else 0.0,
                     speeds=list(s.SPEEDS), paused=s.paused, queue=len(s.queue), last=s.last,
-                    spots=d.spot_view() if d is not None else [], painted=round(getattr(d, "painted_share", 0.0), 3))
+                    spots=d.spot_view() if d is not None else [], painted=round(getattr(d, "painted_share", 0.0), 3),
+                    resume=s.resume_view())
+
+    def resume_view(s):
+        """Every map runs left unfinished, by "all" or game: {key: {done, total}} (the view's Continue button)."""
+        out = {}
+        for key, v in s.resume_state().items():
+            full = mass_run(s.names, None if key == "all" else key)
+            done = [m for m in v.get("done", []) if m in full]
+            if full and 0 < len(done) < len(full):
+                out[key] = dict(done=len(done), total=len(full))
+        return out
 
 
 def main():
@@ -654,13 +733,14 @@ def main():
             if name is None:
                 if not waiting and not o.open:
                     break                             # (named maps, no window: done)
-                if time.time() - switch.last_seen > 90:
-                    break                             # (its window closed a while ago)
+                if view_gone(win, switch.last_seen, time.time()):
+                    break
                 time.sleep(0.3)
                 continue
             k += 1
             try:
                 run_map(name, o, switch, k, k + len(ctl.queue), log, ctl)
+                ctl.map_done(name, bool((ctl.last or {}).get("stopped")))
             except Exception as e:                    # one broken map must not stop the tour
                 import traceback
                 print(f"{name}: FAILED {type(e).__name__}: {e}\n{traceback.format_exc(limit=-9)}", flush=True)
