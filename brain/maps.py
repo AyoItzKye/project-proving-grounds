@@ -281,6 +281,52 @@ def anchor_launches(links, features):
     return out
 
 
+CROUCH_OVER = 0.03     # a landing this much past the plain jump's height already needed the feet tucked (crouched).
+                       # Small on purpose: the measured jump speeds are good to 2-4% (apex 4-8%), so some plain jumps
+                       # get marked (Reach's marks sit 0.04-0.08 past its 0.67), which costs nothing (a crouch in the
+                       # air only tucks the feet), while a real crouch-jump left plain is one the bots fall short of
+CROUCH_BAND = 0.35     # ... up to this much past it: a crouch's tuck (0.15-0.225 u, the kits' bipeds) and slack; higher
+                       # was carried by something else (a ramp's run, a lift), not a crouch
+CROUCH_AIR = 0.35      # and aloft at most this past the plain jump's time to its top: one jump onto a ledge at about
+                       # its top (stairs and ramps the tracker reads as air, and hops in a row, take 1.2-1.6 s for the
+                       # same rise in Halo 3: no crouch-jumps)
+
+
+def crouch_jumps(links, game):
+    """People's jumps (Passive LiDAR in every match, LiDAR mapping) that landed higher over their take-off than the
+    game's plain jump lifts the feet (brain/games.plain_jump), by up to a crouch's tuck: only crouching in the air
+    lands those (GitHub #20), so the bots crouch-jump them too. The game says when the person crouched in H2A and
+    Halo 4 only (tools/botctl.py owner_crouch); elsewhere the landing's height shows it. Returns the links, the
+    marked ones as copies ("crouch": 1, "crouch_from": "height"); the saved LiDAR data is not changed."""
+    from .games import plain_jump
+    top, rise_s = plain_jump(game), plain_jump(game, seconds=True)
+    out = []
+    for k in links:
+        if (k.get("human") and not k.get("crouch") and not (k.get("kind") or k.get("ride") or k.get("called")
+                                                           or k.get("painted")) and k.get("take_off") and k.get("land")):
+            rise = k["land"][2] - k["take_off"][2]
+            if top + CROUCH_OVER < rise <= top + CROUCH_BAND and float(k.get("air_s") or 9.0) <= rise_s + CROUCH_AIR:
+                k = dict(k, crouch=1, crouch_from="height")
+        out.append(k)
+    return out
+
+
+TELE_SAME = 1.5        # a person's teleport starting and ending this near a known pair's is that pair (the same way)
+
+
+def people_teleports(known, seen):
+    """The teleports people went through (lidar.json "teleports", [[from, to, times]], Passive LiDAR) as one-way
+    pairs (Vec, Vec) for the nav (Terrain.add_links), each direction people used and the map's data (known pairs)
+    lacks: a Forge layout's teleporters, ones the map's flags miss, and the way back through a two-way one."""
+    out = []
+    for a, b, _ in seen:
+        a, b = Vec(*a[:3]), Vec(*b[:3])
+        if not any((a - x).flat() < TELE_SAME and abs(a.z - x.z) < 2.0 and (b - y).flat() < TELE_SAME
+                   and abs(b.z - y.z) < 2.0 for x, y in list(known) + out):
+            out.append((a, b))
+    return out
+
+
 def usable_links(links, pvp=None):
     """LiDAR links bots may use: people's; jumps a bot called and landed on the call, in a match or in the
     simulator (tools/lidar_sim.py); others bots did twice. Not ones bots keep failing. In PvP matches
@@ -469,12 +515,17 @@ def _build(m, window):
     T.add_links(m["teleporters"])
     if not m["name"].startswith(("h2_", "h3_", "reach_", "odst_", "h2a_", "h4_")):  # jump links, for skilled bots (CE jump physics; ponytail:
         T.build_jumps()                  # Halo 2's jump is not measured yet, so no gap jumps there)
-    data = {}
+    data, seen_tele = {}, []
     for nm in names:                     # jumps people landed (tools/lidar.py), unless bots keep failing them
         lidar = os.path.join(ROOT, nm, "lidar.json")
         d = read_json(lidar) if os.path.exists(lidar) else {}
         for k in ("walk", "cover", "jumps", "links"):
             data.setdefault(k, []).extend(d.get(k, []))
+        seen_tele.extend(d.get("teleports", []))
+    extra = people_teleports(m["teleporters"], seen_tele)   # teleporters people went through that the map's data lacks
+    if extra:
+        m["teleporters"] = list(m["teleporters"]) + extra
+        T.add_links(extra)
     links = []
     if any(data.values()):
         from .terrain import crouch_key  # and floor people walked crouched: every bot crouches there
@@ -484,7 +535,8 @@ def _build(m, window):
             T.cover_spots = np.array(data["cover"], dtype=float)
         jumps = sorted(data.get("jumps", []))       # apexes LiDAR measured on this map
         T.jump_apex = jumps[len(jumps) // 2] if len(jumps) >= 20 else 0.8
-        links = usable_links(data.get("links", []))
+        from .equipment import game_of
+        links = crouch_jumps(usable_links(data.get("links", [])), game_of(m["name"]))
     links = anchor_launches(links + painted, m.get("features", []))
     if links:
         T.add_human_links(links)

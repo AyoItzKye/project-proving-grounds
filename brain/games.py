@@ -43,6 +43,18 @@ def needs_health_packs(game):
     return profile(game)["health"] in ("packs", "thirds")
 
 
+def plain_jump(game, seconds=False):
+    """How high a plain jump lifts the feet in this game (world units), or with seconds=True how long it takes to
+    get there: its jump speed and gravity measured in real matches (tools/jumpphys.py PHYS: Halo 3 1.11 u in 0.74 s,
+    Reach 0.67 u in 0.57 s, CE 0.65 u in 0.64 s)."""
+    import os
+    import sys
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "tools"))
+    from jumpphys import PHYS
+    _, v0, g, _ = PHYS.get(game, PHYS["h3"])
+    return v0 / g if seconds else v0 * v0 / (2 * g)
+
+
 def radar_range(game):
     """The motion tracker's range in world units where the game's tag gives it (CE: 20), else None."""
     return profile(game)["radar"]

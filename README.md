@@ -126,7 +126,13 @@ what changes is how fast the bots react and how smart they play.
 ## Map the maps (LiDAR)
 
 The bots play better on a map they have mapped: every floor, height, jump and drop. No scans ship with the mod
-(each PC maps its own), and bots play unmapped maps with the map pack's height data in the meantime. Two ways:
+(each PC maps its own), and bots play unmapped maps with the map pack's height data in the meantime.
+
+Passive LiDAR is always on: in every match you play, the floor you walk, the jumps you land, the lifts and man cannons
+you ride and the teleporters you take (and whether they work both ways) are added to the map's scan in the background, with nothing on screen and nothing for you to do. Over time the bots learn the spots they
+would not find on their own. Only your moves are recorded this way; the bots play as usual.
+
+Two ways to map a map on purpose:
 
 - **LiDAR Simulator** in the launcher, no game needed: **Pick a map** (or a Forge layout the bots have played on) and
   watch the bots map it from its level data. Choose the speed (1x to 16x, or Max), pause or stop it, and turn on
@@ -237,8 +243,10 @@ stored scan. **Remove** on a scanned map deletes that map's scan to start it ove
 
 Every jump you land that beats walking (and survive for 5 seconds after landing) is saved for the map; LiDAR bots go
 and try it, and from the next match every bot uses it (Easy bots too: to get around, never as a fighting trick). A
-notice shows in the game when a jump of yours is learned, and again when bots have done it twice. Crouch spots work
-the same way (Halo 2 Anniversary and Halo 4): floor you walk crouched is marked and every bot crouches there.
+notice shows in the game when a jump of yours is learned, and again when bots have done it twice (LiDAR mapping only;
+in other matches it is learned quietly). Crouch spots work the same way (Halo 2 Anniversary and Halo 4): floor you
+walk crouched is marked and every bot crouches there. A jump of yours that landed higher than a plain jump reaches was
+a crouch-jump, in every game: the bots crouch in the air on it too.
 
 **Called jumps.** A LiDAR bot only learns a jump it called: before jumping it says where it will land, worked out from
 the game's run speed, jump and gravity over the map's level data, and it only calls jumps whose small misses it would

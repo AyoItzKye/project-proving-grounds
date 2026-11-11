@@ -32,6 +32,14 @@ INV_COMMIT = 30.0           # an Invasion attack keeps its territory at least th
 # SCREEN_AHEAD u ahead of him on his way home (role_slots); CUTOFF: with three or more hunters on their carrier, one
 # goes CUTOFF_AHEAD u ahead of him on his way home (cutoff_point). False: the play before (A/B)
 CARRY_PLAY, CUTOFF = True, True
+# CTF runners keep going (the player's Sandtrap CTF, Nov 11: his Legendary team near their flag 10% of the time, orders
+# changing 3.9 times a bot-minute, tools/test_ctf_runners.py). A runner keeps the job from pass to pass: each pass deals
+# roles to the living, so a death took a runner slot away and the runner with the weaker fit lost it (role inertia 0.5
+# against personality fit up to 0.8), and he went "mid", back toward home; the attack wave's gather relabelled him
+# "mid" for good; a power vehicle's crew took one every pass. RUNNER_KEEP is the cost of taking a kept runner off his
+# run or giving his slot to another (about 90 u of distance). Not while our flag is carried: the collapse on their
+# carrier stays everyone's (research 12 section 3.5, tools/test_ctf_effort.py). False: the play before (A/B)
+RUNNER_KEEP, KEEP_RUNNERS = 3.0, True
 # the getaway ride: one transport driver parks GETAWAY_D u from their stand on our side while our runners go in, then
 # fetches our carrier at any distance
 GETAWAY, GETAWAY_D = True, 16.0
@@ -546,8 +554,8 @@ class Director:
             for b in team:                      # gathering: to the rally, one already nearer stays where it is
                 if dist(snap.player(b.id).pos, w["target"]) > ahead:
                     b.set_order(Order("mid", w["rally"]))
-                    if b.order.role == "mid":
-                        s.roles[b.id] = "mid"
+                    if b.order.role == "mid" and not (KEEP_RUNNERS and s.roles.get(b.id) == "runner"):
+                        s.roles[b.id] = "mid"     # (a runner on his way in stays one: KEEP_RUNNERS)
             return
         used = {}
         for b in team:
@@ -780,15 +788,21 @@ class Director:
         # nothing, the team was already inside the flank points by then)
         pushing = (snap.mode == "invasion" and snap.inv_attackers == s.team and snap.inv_phase in LANE_PHASES
                    and getattr(s, "inv_target", None) is not None)
+        kept = getattr(s, "kept_runners", set()) if snap.mode == "ctf" else set()
         for role, point, fit in slots:
             if not free:
                 break
+            kept_free = role == "runner" and any(b.id in kept for b in free)
 
             def cost(b):
                 pos = snap.player(b.id).pos
                 c = dist(pos, point) / 30.0
                 c += 0.0 if s.roles.get(b.id) == role else 0.5      # role inertia
                 c -= 0.8 * getattr(b.p, fit, 0.5)                    # personality fit
+                if b.id in kept:                                     # a runner on his run stays on it (RUNNER_KEEP)
+                    c += 0.0 if role == "runner" else RUNNER_KEEP
+                elif kept_free:                                      # ... and his slot is his
+                    c += RUNNER_KEEP
                 return c
             b = min(free, key=cost)
             free.remove(b)
@@ -914,7 +928,10 @@ class Director:
         # (a power vehicle by a bot on an objective job: its pool, crew_orders)
         busy = [b for b in alive if b not in foot and players[b.id] is not None and players[b.id].alive
                 and players[b.id].vehicle == -1 and not players[b.id].has_flag and b.p.tier != "novice"
-                and s.roles.get(b.id) not in ("ride", "board", "ferry") and not b.urgent(players[b.id], snap)]
+                and s.roles.get(b.id) not in ("ride", "board", "ferry") and not b.urgent(players[b.id], snap)
+                and not (snap.mode == "ctf" and KEEP_RUNNERS and s.roles.get(b.id) == "runner")]
+        # (a CTF runner on his run is no power vehicle's crew: this pass's runners, Sandtrap Nov 11: one sent to drive
+        # every pass; a power vehicle is no taxi, vehicles.taxi_ok)
         # (Firefight: the person's escorts stay with him, no vehicle of their own; his empty gun still calls one, below.
         # Live Beachhead s172: 3175 of their order rows "drive", to Mongooses 20-40 u off, 724 escort)
         ff = snap.mode == "firefight"
@@ -1736,6 +1753,7 @@ class Director:
         own, theirs = snap.flags.get(s.team), snap.flags.get(enemy)
         if own is None and theirs is None:      # no flag of ours or theirs read (a neutral stand): play Slayer
             return s.slayer_slots(now, snap, n)
+        s.kept_runners = s.keep_runners(snap)   # (assign_roles keeps them on their run: RUNNER_KEEP)
         if s.is_one_flag(snap):                 # One Flag: the flag keeps its stand while the sides swap each round
             home = s.capture_point(snap)        # attackers score on the other stand; defenders post at the flag
         slots = []
@@ -1805,6 +1823,7 @@ class Director:
         if theirs is not None and not carrier and (lead < 2 or s.posture.state == "all_in"):
             rest = n - len(slots)
             nr = 2 if rest >= 5 or (split and rest >= 4) else 1
+            nr = max(nr, len(s.kept_runners))     # (a death does not take a living runner's slot away)
             slots += [("runner", theirs.pos, "objective")] * nr
             # and two go in with the runner (guide 07's 4v4: runner, lead escort, rear escort, defender; Halopedia:
             # clear the defenders, then grab). Live: lone runners pulled 3 times in 134 s, each carrier dead within
@@ -1855,6 +1874,18 @@ class Director:
         if not mine:
             return None
         return Vec(sum(q.x for q in mine) / len(mine), sum(q.y for q in mine) / len(mine), sum(q.z for q in mine) / len(mine))
+
+    def keep_runners(s, snap):
+        """CTF: the bots that keep the runner's job this pass (KEEP_RUNNERS): last pass's runners, alive, on our team
+        (Easy plays for itself), while both flags are home and nobody of ours carries theirs."""
+        if not KEEP_RUNNERS or snap.mode != "ctf" or s.is_one_flag(snap):
+            return set()
+        own, theirs = snap.flags.get(s.team), snap.flags.get(1 - s.side)
+        if (theirs is None or theirs.state != "home" or (own is not None and own.state != "home")
+                or any(p.team == s.team and p.has_flag for p in snap.players)):
+            return set()
+        return {b.id for b in s.bots.values() if s.roles.get(b.id) == "runner" and b.p.teamwork > 0
+                and snap.player(b.id) is not None and snap.player(b.id).alive}
 
     def cutoff_point(s, snap, own):
         """Where an enemy carrying our flag will be: CUTOFF_AHEAD u on from him toward where he scores (their stand or

@@ -1047,7 +1047,7 @@ def main():
         return director_key(b, cur[0], o.ffa)
 
     from lidar import HumanWatch, RideWatch
-    people = HumanWatch(MAP["name"], T=T)    # people's floor, deaths and landed jumps -> the map's (variant's) LiDAR data
+    people = HumanWatch(MAP["name"], T=T)    # Passive LiDAR: people's floor, deaths and landed jumps -> the map's (variant's) LiDAR data
     # everyone's drives and flights -> the map's drive mesh and airspace (rides.json), applied to this match as saved
     rides, rides_new = RideWatch(MAP["name"], T=T), [False]
 

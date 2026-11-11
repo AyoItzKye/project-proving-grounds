@@ -63,6 +63,13 @@ SETTLE_S = 0.1                   # in the air, ground must hold this long to cou
                                  # acceleration estimate crosses zero for a moment after take-off)
 LINK_MIN_XY, LINK_MIN_RISE = 0.8, 0.3   # a landed jump is a link if it covers this much or climbs this much
 MERGE = 0.6                      # links with take-offs and landings this close are one jump
+TELE_JUMP, TELE_GAP = 6.0, 0.5   # a person moved this far (u) within this long (s), alive and on foot: a teleport (no
+                                 # run, sprint or evade covers 6 u in a step; a respawn has him dead in between)
+TELE_MERGE = 1.5                 # teleports with starts and ends this close are one teleporter's (each way its own)
+PAD_R, PAD_Z = 4.0, 3.0          # a ride starting or ending this near a lift's or man cannon's pad (flat u, up / down)
+PAD_UP, PAD_ACROSS = 2.0, 6.0    # ... and carried more than any jump: up 2+ u or 6+ u across from a pad, or 2+ u down
+                                 # onto one (down a lift's shaft): the pad's, not a push, kept without a jump press
+                                 # (HumanWatch.meant; hops beside Construct's lifts, 0.2-1 u up, stay pushes)
 PORT = 8797
 BTN_JUMP, BTN_CROUCH, BTN_ACTION = 2, 4, 32   # botctl.BTN (kept here so the self-test needs no game)
 WEAPON_REACH = 8.0               # a weapon lying this close is worth a detour to pick it up
@@ -292,6 +299,7 @@ class Recorder:
             if len(w) == 4:
                 w.insert(3, KIND_BOT)
         s.links = s.stored.get("links", [])        # shared: grows during the run, saved whole
+        s.teleports = s.stored.get("teleports", [])   # [[from, to, times]] people went through, each way its own
         s.stored_deaths = s.stored.get("deaths", [])
         s.walk = {}                                 # this run: (ix, iy, iz, kind) -> samples
         s.cover = {(int(x * CELL // COVER), int(y * CELL // COVER), int(z * ZSTEP // 1.0))
@@ -541,6 +549,18 @@ class Recorder:
         walk = float(s.T._field(Vec(*p1))[s.T._node(Vec(*p0))])
         return not math.isfinite(walk) or walk > 2.0 * math.dist(p0[:2], p1[:2]) + 3.0
 
+    def teleported(s, p0, p1):
+        """Someone went through a teleporter from p0 (where he stood the step before) to p1: counted for that
+        direction (teleport_ways tells one-way from two-way)."""
+        with s.lock:
+            for t in s.teleports:
+                if math.dist(t[0], p0) < TELE_MERGE and math.dist(t[1], p1) < TELE_MERGE:
+                    t[2] += 1
+                    return t
+            t = [r2(p0), r2(p1), 1]
+            s.teleports.append(t)
+            return t
+
     def find_link(s, p0, p1, kind="jump"):
         """The known link from p0 to p1 (a crouch route also from p1 to p0: it works both ways)."""
         for l in s.links:
@@ -654,6 +674,7 @@ class Recorder:
             # brain does not crouch in the air yet, and a plain try of one falls short)
             keep = [l for l in s.links if l.get("found_by") != "map" and not (l.get("crouch") and not l.get("human"))]
             links, weapons, cover = json.loads(json.dumps(keep)), [dict(w) for w in s.weapons], sorted(s.cover_spots.values())
+            teleports = json.loads(json.dumps(s.teleports))
             s.count_run, s.saved_deaths, s.jumps = False, len(s.deaths), []
         with s.__dict__.setdefault("save_lock", threading.Lock()):
             old = load(s.path)
@@ -671,7 +692,7 @@ class Recorder:
                        walk=[[*k, n] for k, n in sorted(walk.items())],
                        deaths=(old.get("deaths", []) + deaths)[-3000:],
                        jumps=(old.get("jumps", []) + jumps)[-2000:],
-                       links=links, weapons=weapons, cover=cover)
+                       links=links, weapons=weapons, cover=cover, teleports=teleports)
             objectives = s.objectives.saved() if getattr(s, "objectives", None) is not None else old.get("objectives")
             if objectives:                           # every gametype objective place, reached or not (Objectives)
                 out["objectives"] = objectives
@@ -2278,14 +2299,25 @@ class Roomba:
 
 
 class HumanWatch:
-    """People's paths in any match (normal bot matches too): their floor, their deaths, and every
-    jump they land, into the map's LiDAR data. live_bots: update() each tick, save() now and then."""
+    """Passive LiDAR: people's paths in any match (normal bot matches too, nothing on screen): their floor, their
+    deaths, and every jump they land, into the map's LiDAR data, so the bots learn the spots they would not find by
+    themselves (brain/maps.py: floor people stood on joins the nav, people's jumps are always usable, and a jump that
+    landed past a plain jump's height is copied as a crouch-jump, crouch_jumps). Lifts and man cannons: a ride from or
+    onto a pad (pads: the map's and the layout's lift / launcher places) is kept like a jump, one-way until someone goes
+    the other way (brain/terrain.py jump_ways). Teleporters: each one a person goes through, per direction
+    (Recorder.teleported, teleport_ways; brain/maps.py people_teleports puts them in the bots' nav). Bots' own moves are
+    not recorded here. live_bots: update() each tick, save() every minute and at the match's end."""
 
-    def __init__(s, map_name, rec=None, T=None):
+    def __init__(s, map_name, rec=None, T=None, pads=None):
         s.rec = rec or Recorder(map_name, count_run=False, T=T)
         s.tracks, s.alive, s.t_last, s.seconds = {}, {}, None, 0.0
         s.steered = {}           # index -> times he pressed jump (None from the reader: unknown = yes)
         s.skipped = 0            # landings without a jump press (pushed by a bot): not his jumps
+        if pads is None:         # the map's lifts and man cannons and a layout's read live (load_features: stations)
+            pads = [f["pos"] for f in s.rec.features if f.get("kind") in ("lift", "launcher") and f.get("pos")]
+        s.pads = [tuple(p[:3]) for p in pads]   # lifts' and man cannons' places
+        s.last = {}              # index -> (time, pos) on foot and alive: a teleport is a jump from it
+        s.teleported = 0
 
     def update(s, now, people):
         """people: [(index, (x, y, z) or None, alive[, crouch held[, jump pressed[, riding]]])] for every
@@ -2297,6 +2329,12 @@ class HumanWatch:
         for index, pos, alive, *extra in people:
             crouch = extra[:1]
             steering = extra[1] if len(extra) > 1 else None
+            foot = alive and pos is not None and not (len(extra) > 2 and extra[2])
+            was = s.last.get(index)
+            if foot and was and now - was[0] <= TELE_GAP and math.dist(was[1], pos) >= TELE_JUMP:
+                s.rec.teleported(was[1], pos)
+                s.teleported += 1
+            s.last[index] = (now, tuple(pos)) if foot else None
             if len(extra) > 2 and extra[2] and alive:
                 s.tracks[index], s.alive[index] = Track(), True
                 continue
@@ -2319,19 +2357,56 @@ class HumanWatch:
     def meant(s, index, ev):
         """A jump is his only if he pressed jump around its take-off: bots walking into an idle
         player pushed him off ledges and into a lift on Lockdown, which counted as his jumps. (A
-        crouch path needs crouch held, so it is always his.)"""
+        crouch path needs crouch held, so it is always his.) A ride from or onto a lift's or man cannon's pad needs no
+        press: nobody presses jump on a cannon, and pushed in or not, the pad carries anyone the same way."""
         kind, info = ev
         if kind != "land" or "t0" not in info:
             return True
         t0 = info["t0"]
-        ok = any(t0 - 1.0 <= t <= t0 + 0.3 for t in s.steered.get(index, ()))
+        ok = any(t0 - 1.0 <= t <= t0 + 0.3 for t in s.steered.get(index, ())) or s.pad_ride(info["takeoff"], info["landing"])
         if not ok:
             s.skipped += 1
         return ok
 
+    def at_pad(s, p):
+        return p is not None and any(math.hypot(p[0] - q[0], p[1] - q[1]) <= PAD_R and abs(p[2] - q[2]) <= PAD_Z
+                                     for q in s.pads)
+
+    def pad_ride(s, p0, p1):
+        """A lift's or man cannon's carry from p0 to p1: up PAD_UP+ or PAD_ACROSS+ across from a pad, or PAD_UP+ down
+        onto one."""
+        rise, xy = p1[2] - p0[2], math.hypot(p1[0] - p0[0], p1[1] - p0[1])
+        return ((s.at_pad(p0) and (rise >= PAD_UP or xy >= PAD_ACROSS))
+                or (s.at_pad(p1) and rise <= -PAD_UP))
+
     def save(s):
         sec, s.seconds = s.seconds, 0.0
-        return s.rec.save(human_seconds=sec)
+        out = s.rec.save(human_seconds=sec)
+        rides = [l for l in out["links"] if l.get("human") and s.pad_ride(l["take_off"], l["land"])]
+        ways = teleport_ways(out["teleports"])
+        print(f"Passive LiDAR saved: {sec:.0f} s of people's play, {len(out['links'])} jumps on this map "
+              f"({s.skipped} landings without a jump press left out); lift / man cannon rides {len(rides)} "
+              f"({sum(1 for l in rides if l.get('back'))} used both ways); teleporters {len(ways)} "
+              f"({sum(1 for w in ways if w[2] == 'two-way')} two-way), {s.teleported} teleports this match", flush=True)
+        return out
+
+
+def teleport_ways(teleports):
+    """People's teleports [[from, to, times]] as teleporters: [(from, to, "one-way" | "two-way", times)], a pair used
+    both ways once (two-way: the times of both ways), one-way while nobody has gone back through it."""
+    out, used = [], set()
+    for i, (a, b, n) in enumerate(teleports):
+        if i in used:
+            continue
+        j = next((j for j, (c, d, _) in enumerate(teleports) if j != i and j not in used
+                  and math.dist(c, b) < TELE_MERGE and math.dist(d, a) < TELE_MERGE), None)
+        used.add(i)
+        if j is None:
+            out.append((a, b, "one-way", n))
+        else:
+            used.add(j)
+            out.append((a, b, "two-way", n + teleports[j][2]))
+    return out
 
 
 class RideWatch:
