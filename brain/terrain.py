@@ -58,6 +58,7 @@ class JumpVec(Vec):
     rx: float = math.nan
     ry: float = math.nan
     air: float = 0.0
+    crouch: bool = False    # a crouch-jump: crouched in the air (a person did it so, GitHub #20; LiDAR's called ones)
 
 
 @dataclass(frozen=True)
@@ -1243,6 +1244,8 @@ class Terrain:
                         rows.append(idx[ls][src][ok]); cols.append(idx[ld][dst][ok])
                         wts.append(dl + np.abs(rise[ok]) * 2.0 + WALL_COST * s.near_wall[ld][dst][ok] + RAIL_COST * over[ok]
                                    + (extra[ok] if extra is not None else 0.0))
+        if not rows:              # no floor at all: an empty Forge canvas before its layout's pieces (H2A's skyboxes, #23)
+            rows, cols, wts = [np.zeros(0, np.int64)], [np.zeros(0, np.int64)], [np.zeros(0)]
         r, c, w = np.concatenate(rows), np.concatenate(cols), np.concatenate(wts)
         s.graph = coo_matrix((w, (r, c)), shape=(s.L * N, s.L * N)).tocsr()
         s.graph_to = s.graph.T.tocsr()   # reversed: Dijkstra from a goal gives every node's cost to it
@@ -2217,13 +2220,14 @@ class Terrain:
             return a                    # at (or a cell off) the end of the vehicle's ground nearest the goal: here it
         return s._center(*far) if far else b   # stops (drive's ground_end: a = its answer, never a short step)
 
-    def nav(s, a, b, lookahead=6, jump=False, human=False, safe=False, no_tele=False, hazards=()):
+    def nav(s, a, b, lookahead=6, jump=False, human=False, safe=False, no_tele=False, hazards=(), limit=None):
         """Next point to walk toward on the way from a to b. jump=True (skilled players) also
         uses jump links, human=True (any bot that jumps) people's jumps: then the answer may be a
         JumpVec (run to its start, jump). safe=True (a carrier): round people's big drops while any other way
         exists (_field). no_tele=True: round the teleporters while any other way exists (ponytail: the straight-line
         lookahead below can still cut a pad's edge; check _straight_ok against s.links if bots clip pads). hazards:
-        ((x, y, z, r), ...) to go round while any other way exists (an enemy trip mine: Kit.hazards, GitHub #9)."""
+        ((x, y, z, r), ...) to go round while any other way exists (an enemy trip mine: Kit.hazards, GitHub #9).
+        limit: the field round b only this far (u of path; cheaper on a huge map), the whole field when a is past it."""
         if not all(math.isfinite(c) for c in (a.x, a.y, a.z, b.x, b.y)):
             return None              # (a NaN place crashed a tick here, Forge: no way from or to nowhere)
         if not math.isfinite(b.z):   # a goal with no floor under it (a point off Halo 2 Ascension's edge, sim:
@@ -2231,8 +2235,10 @@ class Terrain:
         if math.hypot(b.x - a.x, b.y - a.y) < 2.5 and s._straight_ok(a, *s._node(b)):
             return b
         human = (human or jump) and bool(getattr(s, "hjumps", None) or getattr(s, "hroutes", None))
-        cost = s._field(b, jump, human, safe, no_tele=no_tele, hazards=hazards)
+        cost = s._field(b, jump, human, safe, limit=limit, no_tele=no_tele, hazards=hazards)
         l, j, i = s._node(a)
+        if limit is not None and not np.isfinite(cost[l, j, i]):
+            cost = s._field(b, jump, human, safe, no_tele=no_tele, hazards=hazards)   # (a is past the limit)
         here = np.isfinite(cost[l, j, i])
         if human:
             # a person's jump (or crouch path) is a way in, never a detour: take it only when it is
@@ -2264,7 +2270,8 @@ class Terrain:
                     near = math.hypot(to[0] - a.x, to[1] - a.y) < 1.6
                 if near and abs(to[2] - a.z) < 0.8 and way_in(src, dst, w):
                     air = float(k.get("air_s") or 2.0) if k.get("ride") else 0.0
-                    return JumpVec(k["land"][0], k["land"][1], k["land"][2], to[0], to[1], run[0], run[1], air)
+                    return JumpVec(k["land"][0], k["land"][1], k["land"][2], to[0], to[1], run[0], run[1], air,
+                                   bool(k.get("crouch")))
             for src, dst, path, w in getattr(s, "hroutes", ()) if here else ():
                 p0 = path[0]
                 # (within 1.6 u, as a jump's take-off: at 1.0 a bot at a climb's foot stood 1.03-1.1 u off its run-up

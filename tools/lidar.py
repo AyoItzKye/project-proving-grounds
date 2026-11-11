@@ -80,6 +80,7 @@ POCKET_LIMIT = 120.0             # called-jump search: path cost from the bot (b
 # velocity" 3.08 / 2.6 / 2.3 / 2.36 / 2.34 matches jumpphys); it adds no height (docs/research/05 1.3). CE and Halo 2
 # not read (H2EK's export has other field names): no crouch-jump calls there.
 CROUCH_TUCK = {"h3": 0.225, "odst": 0.16, "reach": 0.15, "h4": 0.15, "h2a": 0.225}
+CROUCH_APEX = 0.35               # a person's jump with crouch held this near its apex's height is a crouch-jump (#20)
 RIDE_P = 0.15                    # share of Roomba goals that ride an untested man cannon or lift (in matches)
 USE_P = 0.1                      # share that go and press an untried switch (games where Use works for bots)
 RIDE_TRIES = 3                   # a launcher that threw nobody this many times is left alone
@@ -205,12 +206,16 @@ class Track:
         if flat:
             (t0, p0), s.pending = s.pending[flat - 1], s.pending[flat:]
         apex = max([q[2] for _, q in s.pending] + [p0[2], p[2]])
+        # crouched in the air round the apex (within CROUCH_APEX of its height): a crouch-jump, its feet tucked up over
+        # a ledge a plain jump does not clear (GitHub #20: bots copying it as a plain jump fell short)
+        crouched = any(s.cbuf.get(tt) for tt, q in s.pending if q[2] >= apex - CROUCH_APEX)
         if t - t0 < BLIP_S and abs(p[2] - p0[2]) < BLIP_Z and apex - max(p0[2], p[2]) < 0.15:
             out = [("ground", q) for _, q in s.pending]              # a step or a ramp corner
         else:
             out = []
             s.waiting.append((t, "land", dict(takeoff=p0, t0=t0, landing=p, apex=apex, air_s=round(t - t0, 2),
-                                              runup=s.runup, trail=[q for _, q in s.pending])))
+                                              runup=s.runup, trail=[q for _, q in s.pending],
+                                              **({"crouch": 1} if crouched else {}))))
         s.pending = []
         return out + s._ground(t, p)
 
@@ -623,6 +628,8 @@ class Recorder:
                             found_by=who, human=0, bot_ok=0, bot_fail=0, t=round(time.time()))
                 s.links.append(link)
             link["human" if who == "human" else "bot_ok"] += 1
+            if info.get("crouch"):
+                link["crouch"] = 1                  # a person crouch-jumped it: bots crouch in the air too (#20)
             return link
 
     def died(s, info, who, t):
@@ -1595,6 +1602,9 @@ class Roomba:
             jj, ii = np.divmod(rest, T.nw)
             xs, ys, zs = T.x0 + (ii + 0.5) * NAV_CELL, T.y0 + (jj + 0.5) * NAV_CELL, T.lz[ll, jj, ii]
             ok = ~rec.explored_many(xs, ys, zs)
+            play = getattr(director, "play2d", None)   # (the play area: not the sea floor round Death Island)
+            if play is not None:
+                ok &= play[jj, ii]
             for tx, ty, _ in others:
                 ok &= np.hypot(xs - tx, ys - ty) >= 8.0
             score = -d[cand] + pick.uniform(0, 6, len(cand))
@@ -1885,7 +1895,13 @@ class Roomba:
             return s.way_wp
         s.next_way = now + 0.25
         from brain.core import Vec
-        w = T.nav(Vec(*pos), Vec(*s.target), human=True)
+        # (a field round the target only, out to 2.5 times the straight way and 60 u at least: on Death Island a whole
+        # map's field took 0.1-0.2 s and the 16 bots built 4 a second, a third of the run's time; the nav falls back to
+        # the whole field when the bot is past it)
+        d = math.dist(pos[:2], s.target[:2])
+        w = T.nav(Vec(*pos), Vec(*s.target), human=True, limit=max(60.0, 2.5 * d + 2.0 * abs(pos[2] - s.target[2])))
+        if w is None:
+            return None
         s.way_wp, l = (w.x, w.y, w.z), None
         if hasattr(w, "sx"):
             l = rec.find_link((w.sx, w.sy, pos[2]), (w.x, w.y, w.z)) or \
@@ -3242,6 +3258,17 @@ def selftest():
     assert link and link["human"] == 1 and math.dist(link["take_off"][:2], L["takeoff"][:2]) < 0.01
     assert rec.landed(L, "human") is link and link["human"] == 2, "the same jump twice is one link"
     assert any(k[3] == KIND_AIR for k in rec.walk), "a landed jump's trail is set in stone"
+    assert not link.get("crouch"), "a plain jump read as a crouch-jump"
+    # 2a. the same jump crouched in the air round its apex (GitHub #20): its link is a crouch-jump; crouch held only on
+    # the run-up is not
+    for held, want in (((landed_at - 12, landed_at - 4), 1), ((10, 25), None)):
+        tr, rec8, evs8 = Track(), Recorder("_selftest", count_run=False), []
+        rec8.links = []
+        for k, p in enumerate(path):
+            evs8 += tr.update(k * dt, p, held[0] <= k < held[1])
+        L8 = [x for e, x in evs8 if e == "land"]
+        l8 = rec8.landed(L8[0], "human") if L8 else None
+        assert l8 is not None and l8.get("crouch") == want, f"crouch held at rows {held}: link crouch {l8 and l8.get('crouch')}"
     # 2b. the same jump, then a slip off a slope and death 2 s after landing: it does not count
     tr, rec6 = Track(), Recorder("_selftest", count_run=False)
     rec6.links = []

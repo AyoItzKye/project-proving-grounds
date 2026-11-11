@@ -1097,8 +1097,12 @@ class Director:
             kind, fights = vehicles.kind_of(v["kind"]), sp["gun"] is not None
             aboard = [x for x in snap.players if x.alive and x.vehicle == v["handle"] and x.id != b.id]
             job = None
+            # our carrier aboard, a bot or a person: where he scores, first (GitHub #16: a person with the flag got into
+            # a bot's Warthog and the trip's end was the flag, so the vehicle itself: "arrived", the driver got out)
+            if ours is not None and ours.id != b.id and ours.vehicle == v["handle"]:
+                job = ("taxi", s.carry_point(snap))
             # (their carrier away in a vehicle: anything of ours that drives goes after him, guide 17 PUR rules)
-            if theirs is not None and (fights or theirs.vehicle not in (None, -1)) and theirs.vehicle != v["handle"]:
+            elif theirs is not None and (fights or theirs.vehicle not in (None, -1)) and theirs.vehicle != v["handle"]:
                 job = ("hunt", theirs.pos)
             elif ours is not None and ours.id != b.id and fights and ours.vehicle != v["handle"] and kind not in vehicles.TANKS:
                 job = ("escort", ours.pos)
@@ -1207,6 +1211,16 @@ class Director:
                 "passenger" in sp["seats"] or bool(vehicles.REACH_SEATS.get(k, {}).get("passenger")))
             if v and seat_ok and getattr(b, "seat", "") == "driver" and v.get("riders", 0) < len(sp["seats"]):
                 drivers.append((dist(Vec(*v["pos"]), carrier.pos), b, v))
+        # a person's vehicle with a seat free by our carrier bot: in he gets, as people hop on a mate's Warthog with the
+        # flag (GitHub #16: carriers walked past them)
+        cb = s.bots.get(carrier.id)
+        lifts = [(dist(Vec(*v["pos"]), carrier.pos), v) for v in snap.vehicles if s.ferry_seat(v)
+                 and any(p.alive and not p.is_bot and p.team == s.team and p.vehicle == v["handle"] for p in snap.players)]
+        lift = min(lifts, key=lambda x: x[0], default=None)
+        if cb is not None and lift is not None and lift[0] < 10.0 and all(lift[0] < x[0] for x in drivers):
+            cb.order = Order("board", Vec(*lift[1]["pos"]), target=lift[1]["handle"])
+            s.roles[cb.id] = "board"
+            return
         if not drivers:
             return
         d, b, v = min(drivers, key=lambda x: x[0])

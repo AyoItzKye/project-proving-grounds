@@ -69,9 +69,19 @@ def main():
     if act.pitch != -0.2 or act.forward != 1.0 or notes:
         fails.append(f"setting down at its destination: pitch {act.pitch:.2f}, forward {act.forward:.2f}, {notes} "
                      f"(want untouched)")
+    # 5. over the spire's top under the map's roof (1.5-2.5 u of room over the decks, live 20261110-201813: "pull up" and
+    # the roof's "down" on 5,583 rows of one Banshee): from the upper half of the room under the roof no pull-up, whatever
+    # its speed (in the room it keeps the middle)
+    for pos in (Vec(-178.0, -397.0, -17.5), Vec(-170.0, -395.0, -17.5)):
+        for vel in (Vec(5.0, -2.0, 0.0), Vec(1.0, 0.0, 0.0)):
+            act, notes = fly(pos, vel, 0.0)
+            if any("pull up" in n for n in notes):
+                fails.append(f"over the spire's top at {pos} under the roof, speed {vel.flat():.0f}: {notes} (pulled up "
+                             "into the roof)")
     if fails:
         sys.exit("FAIL\n" + "\n".join(fails))
-    print(f"air guard OK (the spire's top reads {top:.1f}; a Banshee under it pulls up; the open and gunners as they were)")
+    print(f"air guard OK (the spire's top reads {top:.1f}; a Banshee under it pulls up; the open and gunners as they were; "
+          "no pull-up into the roof over the top)")
 
 
 if __name__ == "__main__":

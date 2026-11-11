@@ -57,13 +57,39 @@ SPOT_GIVE_UP = 120.0     # seconds: a spot no bot reached by then has no way the
 OBJECTIVE_SHARE = 0.5    # at most this share of the bots on gametype objectives at a time (tools/lidar.py Objectives)
 DETACHED = 6.0           # u: an island this far (flat) from any reachable floor is detached (a lift, a cannon, outside)
 RIDE_NEAR = 12.0         # u: a lift, man cannon or teleporter this close to an island (or its take-off side) leads there
+# u: the play area is the hull of the map's spawns and placed features (weapons, objectives, lifts) and this much round
+# it; floor past it is not floor to cover. Maps with no boundary walked on and on into it: Death Island's sea floor is
+# 43% of its reachable floor, Sandbox's desert 89%, Timberland 12% (the window's run there went on for hours: nothing
+# reached the coverage target and new floor kept coming). Ordinary maps: 0-1.5% of their floor past it
+PLAY_MARGIN = 16.0
+
+
+def play_area(T, points, margin=None):
+    """(nh, nw) bool: the nav grid's columns within margin u of the hull of points ((x, y), 3 or more apart), or None
+    (too few points: no limit)."""
+    from scipy import ndimage
+    from scipy.spatial import ConvexHull, Delaunay
+    from brain.terrain import NAV_CELL
+    margin = PLAY_MARGIN if margin is None else margin
+    pts = np.unique(np.round(np.array([p[:2] for p in points], float), 1), axis=0) if len(points) else np.zeros((0, 2))
+    if len(pts) < 3:
+        return None
+    try:
+        hull = Delaunay(pts[ConvexHull(pts).vertices])
+    except Exception:                                   # (all in a line: no area)
+        return None
+    jj, ii = np.mgrid[0:T.nh, 0:T.nw]
+    inside = hull.find_simplex(np.c_[T.x0 + (ii.ravel() + 0.5) * NAV_CELL, T.y0 + (jj.ravel() + 0.5) * NAV_CELL]) >= 0
+    inside = inside.reshape(T.nh, T.nw)
+    return ndimage.distance_transform_edt(~inside) * NAV_CELL <= margin
 
 
 class LidarDirector:
-    def __init__(s, T, rec, spawns=()):
+    def __init__(s, T, rec, spawns=(), play=()):
         from scipy.ndimage import label  # noqa: F401  (checked here: the director needs SciPy's labelling)
         from brain.terrain import NAV_CELL
         s.T, s.rec, s.spawns = T, rec, list(spawns)
+        s.play2d = play_area(T, list(play)) if play else None     # (nh, nw) the play area, None: the whole map
         s.cell = NAV_CELL * STEP
         walk = T.lwalk[:, ::STEP, ::STEP]
         s.l, s.j, s.i = np.nonzero(walk)
@@ -76,6 +102,7 @@ class LidarDirector:
         tx, ty = np.floor((s.x - T.x0) / TILE).astype(np.int64), np.floor((s.y - T.y0) / TILE).astype(np.int64)
         ny = int(ty.max()) + 1 if len(ty) else 1
         s.tile, s.ntiles = tx * ny + ty, (int(tx.max()) + 1 if len(tx) else 1) * ny
+        s.inplay = s.play2d[jj, ii] if s.play2d is not None else np.ones(len(s.x), bool)
         s.tries = np.zeros(len(s.x), np.int16)          # failed tries per sample (patches) / jump calls (islands)
         s.kz = np.zeros(len(s.x), bool)
         s.want = s.painted = s.reach = s.behind = np.zeros(len(s.x), bool)
@@ -236,7 +263,7 @@ class LidarDirector:
         s.kz = oob[s.l, s.j * STEP, s.i * STEP] if oob is not None else np.zeros(len(s.x), bool)
         safe = s._reach_safe(reach)
         s.behind = reach & ~safe & ~s.kz            # reachable only through a kill zone: not floor to cover
-        s.reach, s.want = reach, safe & ~s.kz
+        s.reach, s.want = reach, safe & ~s.kz & s.inplay
         want = s.want
         s.reach_share = float(reach.mean()) if len(reach) else 0.0
         s.coverage = s.painted_share = float((painted & want).sum() / max(1, want.sum()))
@@ -249,7 +276,7 @@ class LidarDirector:
             s.patch_of[m] = k + 1
         s.patch_grid[:] = 0
         s.patch_grid[s.l, s.j, s.i] = s.patch_of
-        s.islands = s._pieces(~reach & ~s.kz & ~painted, least=MIN_CELLS)
+        s.islands = s._pieces(~reach & ~s.kz & ~painted & s.inplay, least=MIN_CELLS)
         if now - s.retry_t >= PATCH_RETRY:            # patches left are offered again (new links may reach them now)
             s.retry_t = now
             s.tries[want] = 0

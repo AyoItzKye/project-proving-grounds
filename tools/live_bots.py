@@ -996,6 +996,19 @@ def main():
                       f"{MAP['window']}", flush=True)
         except Exception as e:
             print("could not read the game's Forge pieces:", e, flush=True)
+    if o.game == "odst":
+        # its exported weapon spots are the campaign scenario's (h100: a sniper at 67.6, -50.7; Crater Firefight's lies in
+        # a weapon box at -32.6, -15.3): the power guns lying in this match instead, its boxes' too (GitHub #17)
+        try:
+            from brain.maps import POWER
+            vals = {n: v for n, kind, v in POWER.values() if kind == "weapon"}
+            found = [dict(name=n, kind="weapon", value=vals[n], pos=Vec(*p), respawn=45)
+                     for n, p in live.ground_weapons() if n in vals]
+            print(f"Firefight power guns lying in the match: {sorted(it['name'] for it in found)} (was "
+                  f"{sorted(it['name'] for it in MAP['items'] if it['kind'] == 'weapon')} from the export)", flush=True)
+            MAP["items"] = [it for it in MAP["items"] if it["kind"] != "weapon"] + found
+        except Exception as e:
+            print("could not read the guns lying in the match:", e, flush=True)
     if T is None:
         T = map_terrain(MAP)
     palette = Palette() if getattr(live, "LOADOUT", 0) else None   # Reach, Halo 4, H2A

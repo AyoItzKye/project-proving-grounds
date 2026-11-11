@@ -136,6 +136,9 @@ POWER = {"rocket launcher": ("rockets", "weapon", 1.0), "sniper rifle": ("sniper
          "powerup super shield": ("overshield", "powerup", 0.9), "shield-invisibility": ("camo", "powerup", 0.7),
          "powerup invisibility": ("camo", "powerup", 0.7),
          "plasma_cannon": ("fuelrod", "weapon", 0.6),
+         # health packs: health that does not come back by itself (CE, ODST; brain/games.py), taken when hurt
+         "powerup health pack": ("health_pack", "health", 0.0), "health_pack_large": ("health_pack", "health", 0.0),
+         "health_pack_medium": ("health_pack", "health", 0.0), "health_pack_small": ("health_pack", "health", 0.0),
          # Halo 2 (item collection names)
          "rocket_launcher": ("rockets", "weapon", 1.0), "sniper_rifle": ("sniper", "weapon", 0.8),
          "energy_sword": ("sword", "weapon", 0.9), "beam_rifle": ("beam_rifle", "weapon", 0.6),

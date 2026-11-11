@@ -19,7 +19,7 @@ Everything about where the mod stands is in four places:
 
 | | |
 |---|---|
-| **[Release](https://github.com/AyoItzKye/project-proving-grounds/releases/latest)** | Version **0.2.2**, last updated **November 10, 2026**. Download it from the Releases page. <!-- release --> |
+| **[Release](https://github.com/AyoItzKye/project-proving-grounds/releases/latest)** | Version **0.2.2**, last updated **November 11, 2026**. Download it from the Releases page. <!-- release --> |
 | **[Updates](docs/UPDATES.md)** | What changed in each version (new, fixed, changed, known problems), newest first. |
 | **[Known bugs](docs/KNOWN_BUGS.md)** | Everything known to be broken, by game, and every bug reported on GitHub with its status. |
 | **[Bot status sheet (PDF)](docs/BOT_STATUS.pdf)** | An honest rating of every game, mode and vehicle, from green (good to go) to red (not working yet). |
@@ -70,6 +70,26 @@ and bots for anyone who wants to study how they play (the zip has its own README
    - **Settings**: each bot's profile with its 3D look, emblem and clan tag; re-roll them.
 4. Pick a map and game type, then START. The bots join a few seconds after the match loads.
 
+### Before your first match: map the map (LiDAR)
+
+No map scans come with the mod. Until a map is scanned on your PC, the bots run into walls, miss jumps and drops, and
+leave parts of the map unused. Scan each map once before you play it (or all of them at once):
+
+1. Open **Project Proving Grounds** and go to **Tools > LiDAR Simulator**. MCC does not need to be running.
+2. Scan the maps:
+   - **One map**: **Pick a map**, then watch. The bots walk every floor, try the jumps and drops, and stop on their
+     own once the map is covered.
+   - **A whole game**: set **Every map runs** to the game (for example Halo 3), then press **Every map**. Each map of
+     that game is scanned in turn, with its Forge layouts. Leave it running; **Max** speed is the quickest.
+3. **Forge layouts and custom maps** need one match first: the simulator only knows a layout once the bots have been
+   in a match on it. In MCC, start a match on the layout with **LiDAR mapping** turned on in the BOTS panel (top
+   right). Mapping bots join your team and walk the whole layout while you watch; end the match when they stop
+   finding new floor. After that, play it normally, or improve the scan in the simulator.
+4. Optional: open **Tools > LiDAR Viewer** to see a map's scan in 3D.
+
+A map changed by a game update, or bots that still stumble somewhere: scan it again. More in
+[LiDAR mapping](#lidar-mapping).
+
 ## Difficulty
 
 Pick a difficulty for each bot in the BOTS panel, or one for everyone. Every difficulty aims the way a person does;
@@ -111,7 +131,7 @@ The bots play better on a map they have mapped: every floor, height, jump and dr
 - **LiDAR Simulator** in the launcher, no game needed: **Pick a map** (or a Forge layout the bots have played on) and
   watch the bots map it from its level data. Choose the speed (1x to 16x, or Max), pause or stop it, and turn on
   **Click spots to cover** to send bots to places first. **Every map** maps them all in turn.
-- **LiDAR mode** in the BOTS panel: start any match and the bots walk the whole map while you watch. Jumps you land
+- **LiDAR mapping** in the BOTS panel: start any match and the bots walk the whole map while you watch. Jumps you land
   that beat walking are learned and every bot uses them.
 
 **LiDAR Viewer** shows any map's scan in 3D. Details: [LiDAR mapping](#lidar-mapping) below.
@@ -193,16 +213,16 @@ Command line: `tools\match_export.py <trace file>`.
 
 Bots play better on a map they have mapped. No scans ship with the mod: each PC maps its own.
 
-#### LiDAR mode (in a match)
+#### LiDAR mapping (in a match)
 
-Tick **LiDAR mode** in the BOTS panel and start any match: up to 16 players, all bots on your team, nobody fights.
+Turn on **LiDAR mapping** in the BOTS panel and start any match: up to 16 players, all bots on your team, nobody fights.
 The bots walk every floor, measure heights and jumps, and record where they fall. Open the **LiDAR Viewer** to watch
 in 3D: bots are white dots, you are gold, every step colours the floor by height, a jump or fall is a white trail that
 turns magenta only if the bot lands and is still alive 5 seconds later, and a red cross marks each deadly edge.
 Open the Viewer any time during the match: it shows the match live (the Simulator has its own window and never gets in
 the way).
 
-**Objectives of every game type.** Any game type works for LiDAR mode: the bots also visit every objective place the
+**Objectives of every game type.** Any game type works for LiDAR mapping: the bots also visit every objective place the
 map has for all of its game types at once (flag stands and returns, hills, oddball and bomb spawns, plant points,
 territories, havens, drop points, race checkpoints, Invasion zones), read from the map's own data, plus objectives seen
 in the game on a Forge layout. Up to half the bots at a time walk to the nearest ones; the rest keep mapping. The scan
@@ -250,7 +270,7 @@ panel (bottom right):
 A map runs until nothing new turns up for 45 seconds (6 simulated minutes at most); run it again to add to its scan.
 Jumps the bots land go into the map's LiDAR data, where bots in real matches try them and stop using ones that fail
 in the game. Command line: `tools\lidar_sim.py --open [maps...] [--all] [--speed 4]`. The simulator only
-knows the level data, so it cannot find floor the data lacks or steps the game lets you walk up; LiDAR mode in a match
+knows the level data, so it cannot find floor the data lacks or steps the game lets you walk up; LiDAR mapping in a match
 fills those in. Its jump physics is each game's own (gravity and jump speed measured from recorded matches, run speeds
 and fall damage from the official editing kits).
 

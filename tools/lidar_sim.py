@@ -23,7 +23,8 @@ maps/<map>/lidar.json, and a line per map to logs/lidar_sim.md.
 
 usage: python -I lidar_sim.py [maps... | --all] [--game ce] [--minutes 6] [--walkers 16] [--aircraft 8]
                               [--speed 0] [--max-real 240] [--open] [--port 8798] [--hold 0]
-  maps      names to run in turn (none: wait for a pick in the view); --all: every map with level data
+  maps      names to run in turn (none: wait for a pick in the view); --all: every map with level data and its
+            Forge layouts (with --game: that game's only)
   --speed   simulated seconds per real second (0: as fast as it runs)
   --max-real  real seconds at most per map (a huge campaign map would take hours)
   --hold    keep the view up this many seconds after the last map
@@ -350,7 +351,9 @@ def run_map(name, o, switch, k, n, log, ctl=None):
         T.set_oob([], 0, vols)
     if not getattr(o, "no_director", False):         # the LiDAR director (tools/lidar_director.py)
         from lidar_director import LidarDirector
-        rec.director = LidarDirector(T, rec, [Vec(*p) for p in spawns])
+        play = [(p.x, p.y) for mode in m["spawns"].values() for team in mode.values() for p in team if inside(p)]
+        play += [tuple(f["pos"][:2]) for f in rec.features if len(f.get("pos") or ()) >= 2 and inside(Vec(*f["pos"][:2], 0.0))]
+        rec.director = LidarDirector(T, rec, [Vec(*p) for p in spawns], play=play)
         rec.objectives = lidar.Objectives(name, T)   # every gametype objective place, visited afresh each run
         rec.objectives.seed(rec.director)
     ceiling, why = ceiling_of(name, T)
@@ -365,7 +368,8 @@ def run_map(name, o, switch, k, n, log, ctl=None):
     # (--max-real bounds a command-line batch only: in the Simulator window a map at Max speed was cut at 240 real s
     # before its coverage target, GitHub issue #8 "LiDAR Sim cuts off prematurely"; the window's maps end by coverage
     # and the quiet rule below, or the player's Stop)
-    while t < o.minutes * 60 and (ran < o.max_real or ctl is not None):
+    # (the window's control is passed to a command-line batch too: ctl itself said nothing, and --max-real bounded no run)
+    while t < o.minutes * 60 and (ran < o.max_real or getattr(o, "window", True)):
         if ctl is not None:
             if ctl.stop_now:
                 break
@@ -431,10 +435,12 @@ def run_map(name, o, switch, k, n, log, ctl=None):
             for cache in (T._fields, getattr(T, "_hfields", {}), getattr(T, "_jfields", {})):
                 if len(cache) > MAX_FIELDS:
                     cache.clear()
-            fn = sum(1 for key in rec.walk if key[3] in (lidar.KIND_BOT, lidar.KIND_SPREAD))
+            dr = getattr(rec, "director", None)
+            # (new floor counts in the play area only: a map with no boundary had new floor for ever, Death Island)
+            fn = int((dr.painted & dr.want).sum()) if dr is not None and len(dr.want) else                 sum(1 for key in rec.walk if key[3] in (lidar.KIND_BOT, lidar.KIND_SPREAD))
             if fn > floor_n + 5:
                 floor_n, last_new = fn, t
-            dr = getattr(rec, "director", None)      # (with a director: only once it has nothing left to send bots to,
+                                                     # (with a director: only once it has nothing left to send bots to,
             if t > 90 and t - last_new > 45 and all(c.idle == air.version for c in crafts) and \
                     (dr is None or not dr.open_work()):  # coverage at its target or every patch left, objectives done)
                 break                                # nothing new for 45 s and the air is flown
@@ -473,6 +479,11 @@ class Switch:
     last_seen = 0.0          # the view's last poll (lidar.serve): the simulator stops a while after it closes
 
 
+def mass_run(names, game=None):
+    """The maps an "every map" run takes in turn: all of them, or one game's, each Forge layout after its map."""
+    return [m for m in names if game is None or J.game_of(m.partition("/")[0]) == game]
+
+
 class Control:
     """What the view asks of the simulator (POST /sim, tools/lidar.py serve) and what it shows (state() in /live).
     The view's thread sets; the simulator's loop reads at every tick."""
@@ -497,7 +508,14 @@ class Control:
                 s.queue = [name]
                 s.stop_now, s.paused = s.current is not None, False   # (the map running now ends, this one starts)
             elif act == "all":
-                s.queue = [m for m in s.names if "/variants/" not in m]
+                # every map, or one game's ("game": ce, h2, h2a, h3, odst, reach, h4), each followed by its Forge layouts
+                # (maps/<map>/variants: a layout is its own map to the bots; the run left them out)
+                game = d.get("game") or None
+                if game is not None and game not in GAMES:
+                    return 400, dict(error="game must be one of " + ", ".join(GAMES))
+                s.queue = mass_run(s.names, game)
+                if not s.queue:
+                    return 404, dict(error="no maps with level data for that game")
                 s.stop_now, s.paused = s.current is not None, False
             elif act == "speed":
                 v = float(d.get("speed", 4))
@@ -595,9 +613,9 @@ def main():
     ap.add_argument("--no-director", action="store_true", help="bots pick their own goals (no LiDAR director): A/B runs")
     o = ap.parse_args()
     every = sorted(lidar.map_list_names(), key=lambda d: (GAMES.index(J.game_of(d.partition("/")[0])), d))
-    names = o.maps or ([m for m in every if "/variants/" not in m] if o.all else [])
-    if o.game:
-        names = [d for d in names if J.game_of(d) == o.game]
+    names = o.maps or (mass_run(every, o.game) if o.all else [])
+    if o.game and o.maps:
+        names = [d for d in names if J.game_of(d.partition("/")[0]) == o.game]
     switch = Switch()
     switch.control = ctl = Control(every)
     ctl.queue = list(names)
@@ -615,6 +633,7 @@ def main():
         return
     os.makedirs(os.path.join(ROOT, "logs"), exist_ok=True)
     waiting = not names                            # (no maps named: the view picks)
+    o.window = waiting or o.open                   # (the window steers: no --max-real, its maps end by coverage)
     with open(os.path.join(ROOT, "logs", "lidar_sim.md"), "a") as log:
         log.write(f"\n## Run {time.strftime('%Y-%m-%d %H:%M')}: {len(names) or 'picked'} maps, {o.walkers} bots, {o.aircraft} aircraft\n\n"
                   "| map | game | sim min | floor cells painted | reachable cells (level data) | calls made | missed | "

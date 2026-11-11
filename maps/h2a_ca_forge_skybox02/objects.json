@@ -1,0 +1,207 @@
+{
+ "netgame_flags": [
+  {
+   "type": "ctf - flag",
+   "id": 0,
+   "team": 0,
+   "pos": [
+    0.0,
+    0.0,
+    0.1
+   ],
+   "facing": 0.0
+  },
+  {
+   "type": "ctf - flag",
+   "id": 1,
+   "team": 1,
+   "pos": [
+    -2.341,
+    2.104,
+    0.602
+   ],
+   "facing": 0.0
+  }
+ ],
+ "equipment": [],
+ "vehicles": [],
+ "spawns": [
+  {
+   "pos": [
+    0.0,
+    0.0,
+    0.1
+   ],
+   "team": 0,
+   "facing": 0.0,
+   "games": [
+    "slayer",
+    "ctf"
+   ]
+  },
+  {
+   "pos": [
+    0.0,
+    0.0,
+    0.1
+   ],
+   "team": 1,
+   "facing": 0.0,
+   "games": [
+    "slayer"
+   ]
+  },
+  {
+   "pos": [
+    -0.04,
+    -8.796,
+    0.131
+   ],
+   "team": 0,
+   "facing": -0.0,
+   "games": [
+    "slayer",
+    "ctf"
+   ]
+  },
+  {
+   "pos": [
+    -0.04,
+    -8.796,
+    0.131
+   ],
+   "team": 1,
+   "facing": -0.0,
+   "games": [
+    "slayer"
+   ]
+  },
+  {
+   "pos": [
+    5.267,
+    -8.769,
+    0.132
+   ],
+   "team": 0,
+   "facing": -0.0,
+   "games": [
+    "slayer",
+    "ctf"
+   ]
+  },
+  {
+   "pos": [
+    5.267,
+    -8.769,
+    0.132
+   ],
+   "team": 1,
+   "facing": -0.0,
+   "games": [
+    "slayer"
+   ]
+  },
+  {
+   "pos": [
+    -6.369,
+    -8.727,
+    0.132
+   ],
+   "team": 0,
+   "facing": -0.0,
+   "games": [
+    "slayer",
+    "ctf"
+   ]
+  },
+  {
+   "pos": [
+    -6.369,
+    -8.727,
+    0.132
+   ],
+   "team": 1,
+   "facing": -0.0,
+   "games": [
+    "slayer"
+   ]
+  },
+  {
+   "pos": [
+    -0.072,
+    11.159,
+    0.127
+   ],
+   "team": 0,
+   "facing": -0.0,
+   "games": [
+    "slayer"
+   ]
+  },
+  {
+   "pos": [
+    -0.072,
+    11.159,
+    0.127
+   ],
+   "team": 1,
+   "facing": -0.0,
+   "games": [
+    "slayer",
+    "ctf"
+   ]
+  },
+  {
+   "pos": [
+    6.927,
+    11.151,
+    0.133
+   ],
+   "team": 0,
+   "facing": -0.0,
+   "games": [
+    "slayer"
+   ]
+  },
+  {
+   "pos": [
+    6.927,
+    11.151,
+    0.133
+   ],
+   "team": 1,
+   "facing": -0.0,
+   "games": [
+    "slayer",
+    "ctf"
+   ]
+  },
+  {
+   "pos": [
+    -6.022,
+    10.99,
+    0.124
+   ],
+   "team": 0,
+   "facing": -0.0,
+   "games": [
+    "slayer"
+   ]
+  },
+  {
+   "pos": [
+    -6.022,
+    10.99,
+    0.124
+   ],
+   "team": 1,
+   "facing": -0.0,
+   "games": [
+    "slayer",
+    "ctf"
+   ]
+  }
+ ],
+ "scenery": [],
+ "placed": []
+}

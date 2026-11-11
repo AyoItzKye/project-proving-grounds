@@ -469,8 +469,12 @@ class Watch:
                 s.items_t = now
                 try:
                     s.items = live.objective_items(raw, stands, s.mode)
-                except Exception:
+                except Exception as e:
                     s.items = []
+                    if not getattr(s, "items_err", None):   # (said once: it was silent, and live Boardwalk Stockpile
+                        import traceback                    # Nov 10 read no flag in 516 s while a probe read 7)
+                        s.items_err = f"{type(e).__name__}: {e}"
+                        print(f"objective items unread ({s.items_err}):", traceback.format_exc(limit=3), flush=True)
             snap.obj_items = [dict(pos=Vec(*it["pos"]), carrier=it["carrier"], kind=stand_kind,
                                    team=placed[it["stand"]][1] if it.get("stand") in stands else 8) for it in s.items]
             # Assault: a bomb with nobody carrying it in the other team's goal, off its own stand, is armed there (as

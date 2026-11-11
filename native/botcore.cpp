@@ -279,6 +279,27 @@ static void __fastcall tick_hook(void* a, void* b, void* c, void* d) {
     ce_own_ids();
 }
 
+// A player's HUD message (pickups: "picked up 4 grenades", power-ups, their sounds), FUN_180ada904(player, ...). In a
+// hosted game it goes to the player's machine as a network message; a bot's machine is made up, and the host showed
+// its pickups to the person (GitHub #21). A bot gets none.
+static const uintptr_t RVA_HUD_MESSAGE = 0xADA904;
+typedef void(__fastcall* hud_message_fn)(uint32_t player, uint8_t a, uint32_t b, uint16_t c, uint8_t d);
+static hud_message_fn g_hud_message_orig;
+static volatile long g_hud_skipped;
+
+static void __fastcall hud_message_hook(uint32_t player, uint8_t a, uint32_t b, uint16_t c, uint8_t d) {
+    if (g_shm && player != 0xFFFFFFFFu) {
+        int index = (int)(player & 0xFFFF);
+        for (int i = 0; i < HB_MAX_PLAYERS; i++)
+            if (g_shm->bot_player_index[i] == index) {
+                long n = InterlockedIncrement(&g_hud_skipped);
+                if ((n & (n - 1)) == 0) logf("ce: %ld bot HUD messages (pickups) kept off the player's screen", n);
+                return;
+            }
+    }
+    g_hud_message_orig(player, a, b, c, d);
+}
+
 static uint8_t g_patch[5];   // the jump our hook wrote: another loaded botcore's jump is not ours
 
 static void hook(uint8_t* h1) {
@@ -286,6 +307,7 @@ static void hook(uint8_t* h1) {
         MH_RemoveHook(g_h1 + RVA_GAME_TICK);
         MH_RemoveHook(g_h1 + RVA_DEQUEUE);
         MH_RemoveHook(g_h1 + RVA_UNIT_LOCAL_PLAYER);
+        MH_RemoveHook(g_h1 + RVA_HUD_MESSAGE);
         for (int i = 0; i < HB_MAX_PLAYERS; i++) g_shm->bot_player_index[i] = -1;
     }
     g_h1 = h1;
@@ -295,6 +317,7 @@ static void hook(uint8_t* h1) {
         MH_CreateHook(g_h1 + RVA_DEQUEUE, (void*)&dequeue_hook, (void**)&g_dequeue_orig) != MH_OK ||
         MH_CreateHook(g_h1 + RVA_UNIT_LOCAL_PLAYER, stub, &g_unit_local_orig) != MH_OK ||
         !(*g_stub_orig_slot = (uint64_t)g_unit_local_orig) ||
+        MH_CreateHook(g_h1 + RVA_HUD_MESSAGE, (void*)&hud_message_hook, (void**)&g_hud_message_orig) != MH_OK ||
         MH_EnableHook(MH_ALL_HOOKS) != MH_OK) {
         logf("hooks failed at halo1 %p", g_h1);
     } else {
@@ -530,7 +553,7 @@ static DWORD WINAPI main_thread(LPVOID self) {
         reach_watch();                        // Halo: Reach (native/reach.cpp)
         odst_watch();                         // Halo 3: ODST (native/odst.cpp)
         h4f_watch();                          // Halo 2 Anniversary, Halo 4 (native/h4f.cpp)
-        spawnhook_watch();                    // Reach: bots respawn in Invasion (native/spawnhook.cpp)
+        spawnhook_watch();                    // Reach respawns; no bot countdown beeps (native/spawnhook.cpp)
         // the brain runs while a match is on: start it when the menus give way to a game (MCC
         // does not always reload halo1.dll for a new match), stop it back in the menus
         int menu = mcc_menu_state();

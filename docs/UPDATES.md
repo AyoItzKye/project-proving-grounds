@@ -5,9 +5,13 @@ What changed in each version. Download the newest one from the [Releases page](h
 Click a version to see what it added and fixed.
 
 <details open>
-<summary><b>0.2.2</b> (November 6 to 10, 2026): Halo 2 vehicles, the Halo 4 Mantis and Banshee bombs, call bots into your vehicle, follow me and roam chat commands, Firefight bots that follow and respawn, Reach Firefight Versus and Generator Defense with Spartan and Elite bots, ODST characters for bots, an Invasion rework</summary>
+<summary><b>0.2.2</b> (November 6 to 11, 2026): Halo 2 vehicles, the Halo 4 Mantis and Banshee bombs, call bots into your vehicle, follow me and roam chat commands, Firefight bots that follow and respawn, Reach Firefight Versus and Generator Defense with Spartan and Elite bots, ODST characters for bots, an Invasion rework, Sandtrap's Elephants, Halo 2 Anniversary Forge maps</summary>
 
 ### + Added
+- <!-- build: 20261111-0430 --> **LiDAR Simulator, one game at a time**: set **Every map runs** to a game and press **Every map** to scan every map of that game in turn, each with its Forge layouts. Maps with no edge to them (Death Island) end once their play area is covered instead of mapping empty ground for hours.
+- <!-- build: 20261111-0430 --> **Crouch-jumps** ([#20](https://github.com/AyoItzKye/project-proving-grounds/issues/20)): a jump you land during LiDAR mapping with crouch held near its top is saved as a crouch-jump, and bots taking it crouch in the air the same way. Plain jumps stay plain.
+- <!-- build: 20261111-0430 --> **Each game's own rules, first part**: in Halo CE and ODST, where health never comes back by itself, a hurt bot goes for a health pack; in Halo CE the bots' motion tracker reaches as far as the game's.
+- <!-- build: 20261111-0430 --> **A LiDAR how-to**: the README's Play section walks through scanning a map before your first match on it, a whole game at once, and Forge layouts.
 - <!-- build: 20261108-2028 --> **Linux and Steam Deck: whether the bots loaded**: the launcher shows if the last start through Steam's launch option loaded the bots, why not if it didn't, and the exact launch option to paste when the bots have never loaded.
 - <!-- build: 20261108-1250 --> **ODST bots in the editor hold the silenced SMG**: the 3D view of your ODST bots, Dare too, shows them with ODST's silenced SMG instead of the assault rifle.
 - <!-- build: 20261108-1120 --> **Dare in Halo 3: ODST**: bots can play as Dare, with her helmet on or off, in Firefight, as the other ODST characters do. Pick her in the bot editor, whose 3D view shows her own model. Bots no longer take on your character either: while you played Dare, every bot became Dare too.
@@ -38,6 +42,17 @@ Click a version to see what it added and fixed.
 - **Flight heights from the map**: aircraft pick their attack and travel heights from the ground under them; painting airspace is optional.
 
 ### - Fixed
+- <!-- build: 20261111-0430 --> **Sandtrap's Elephants**: bots go round an Elephant instead of running into its side, and flag carriers score on its second floor: up the ramp, then a crouch-jump onto the deck or the stairs, or in by the tire wells and the jumps at the back and front. A flag stand on an Elephant that drives off is followed where it goes.
+- <!-- build: 20261111-0430 --> **Flag carriers and vehicles** ([#16](https://github.com/AyoItzKye/project-proving-grounds/issues/16)): a bot driving with a flag carrier aboard (you or a bot) drives the carrier home instead of getting out, a bot carrier that gets into a seat stays in until it's home, and a bot carrier gets into a teammate's vehicle, yours too, when it's right beside it. Escorts far from their flag carrier head straight for the carrier.
+- <!-- build: 20261111-0430 --> **Respawn countdown beeps** ([#22](https://github.com/AyoItzKye/project-proving-grounds/issues/22)): in Reach and ODST you no longer hear every bot's respawn countdown, only your own.
+- <!-- build: 20261111-0430 --> **Halo 2 Anniversary Forge maps** ([#23](https://github.com/AyoItzKye/project-proving-grounds/issues/23)): bots join layouts built on Skyward and the other Forge maps, walking the layout's own pieces (they refused to join before).
+- <!-- build: 20261111-0430 --> **Halo CE pickup messages** ([#21](https://github.com/AyoItzKye/project-proving-grounds/issues/21)): a bot picking up grenades, a power-up or a gun no longer shows you its pickup message or plays its pickup sound.
+- <!-- build: 20261111-0430 --> **ODST weapons** ([#17](https://github.com/AyoItzKye/project-proving-grounds/issues/17)): bots know which guns they hold and which lie around, so they switch to their SMG up close, see dropped guns, and know Firefight's sniper rifle and rocket launcher in their weapon boxes.
+- <!-- build: 20261111-0430 --> **Invasion objectives**: attackers running to an objective being taken keep going when someone shoots them from across the map; only a shooter within about 25 units turns them.
+- <!-- build: 20261111-0430 --> **Aircraft under a ceiling**: pilots no longer pull up into the top of the map (Spire's peak), bobbing against it.
+- <!-- build: 20261111-0430 --> **Vehicle gunners**: a side gun (the Falcon's) shoots only targets on its own side, and the chaingun keeps firing where an enemy just ducked out of sight.
+- <!-- build: 20261111-0430 --> **Bots stuck hopping at a ledge**: a bot hopping in place against a lip now counts as stuck and works its way out (Halo CE bots hopped at one for half a minute).
+- <!-- build: 20261111-0430 --> **A gun gone mid-read**: a gun picked up or despawned while the bots read it no longer stops them for the match.
 - <!-- build: 20261110-0940 --> **Bots reach the flag and the hill**: on Narrows and seven other maps, spots the bots had learned as out of bounds next to a flag stand or hill kept them a few steps short of it, so they never picked up the flag. On maps whose deadly falls the bots already know, those learned spots are gone and no new ones are learned.
 - <!-- build: 20261110-0940 --> **Reach Stockpile on Boardwalk**: bots now see the flags and where to take them (they saw none, and matches ended 0-0). The same goes for any Reach map variant whose file leaves out a mode's places.
 - <!-- build: 20261110-0940 --> **Broken map files**: two saves at the same moment no longer leave a map's learned file broken, and a broken one no longer stops the next match from starting (it's set aside and learned again).

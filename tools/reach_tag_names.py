@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 from brain import paths  # noqa: E402  (where MCC is installed)
 
 MCC = paths.mcc()
-GAME_DIR = {"reach": "haloreach", "h3": "halo3", "h4": "halo4", "h2a": "groundhog"}
+GAME_DIR = {"reach": "haloreach", "h3": "halo3", "h4": "halo4", "h2a": "groundhog", "odst": "halo3odst"}
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, "..", "maps", "_shapes")
 

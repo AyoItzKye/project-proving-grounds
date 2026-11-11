@@ -112,7 +112,7 @@ def main():
     lk = decks[0] if decks else rides[0]
     w = type("W", (), {})()
     w.x, w.y, w.z, w.sx, w.sy = lk["land"][0], lk["land"][1], lk["land"][2], lk["take_off"][0], lk["take_off"][1]
-    T.nav = lambda p, q, human=False: w                # (the nav's next step is that ride)
+    T.nav = lambda p, q, human=False, **kw: w          # (the nav's next step is that ride)
     bot.way_in(0.0, tuple(lk["take_off"]), rec, T)
     tr = bot.trial
     if tr is None or tr.get("kind") != "ride" or tr.get("steer") != lk.get("steer"):
@@ -129,7 +129,7 @@ def main():
             b2 = lidar.Roomba(1, random.Random(4))
             b2.trial, b2.phase, b2.trial_t, b2.trial_s, b2.target = dict(tr), "go", 0.0, 60.0, tuple(to)
             b2.deadly = lambda *a, **k: True
-            T.nav = lambda p, q, human=False, _t=to: type("W", (), dict(x=_t[0], y=_t[1], z=_t[2]))()
+            T.nav = lambda p, q, human=False, _t=to, **kw: type("W", (), dict(x=_t[0], y=_t[1], z=_t[2]))()
             T._field = lambda v: type("F", (), {"__getitem__": lambda s, k: 1.0})()
             b2.think(1.0, (to[0] - off, to[1], to[2]), rec, T, None)
             if (b2.trial is not None) != keep:

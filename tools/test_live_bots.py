@@ -3,6 +3,7 @@ encoding run against a fake game reader, so a typo there fails here instead of i
 
 usage: python -I test_live_bots.py      -> "live_bots OK"
 """
+import math
 import os
 import random
 import struct
@@ -234,11 +235,13 @@ def main():
     if set(got) != {0, 1} or not all(near(got[t], want[t]) for t in want) or \
             not all(near((h3s.live_stands[t].x, h3s.live_stands[t].y, h3s.live_stands[t].z), want[t]) for t in want):
         raise AssertionError(f"Sandtrap flags {got}, stands {h3s.live_stands} (want both at {want})")
-    # ... and each team captures at its Elephant's flag_return, on the bay floor (brain/vehicles.ELEPHANT)
-    want_ret = {0: (8.83, 33.36, -21.22), 1: (-0.51, -58.29, -21.71)}
+    # ... and each team captures at its Elephant's flag_return: on the second floor near its stand (brain/vehicles.ELEPHANT;
+    # the bay floor's marker below never scored, a player's flags of the deck, Nov 11)
     rets = getattr(h3s, "live_returns", {})
-    if set(rets) != {0, 1} or not all(near((rets[t].x, rets[t].y, rets[t].z), want_ret[t]) for t in want_ret):
-        raise AssertionError(f"Sandtrap returns {rets} (want {want_ret})")
+    by_stand = lambda t: (math.hypot(rets[t].x - want[t][0], rets[t].y - want[t][1]) < 1.6
+                          and abs(rets[t].z - want[t][2]) < 0.3)
+    if set(rets) != {0, 1} or not all(by_stand(t) for t in want):
+        raise AssertionError(f"Sandtrap returns {rets} (want on the deck within 1.6 u of the stands {want})")
     # Halo 2: reserve +0x22E and magazine +0x230 side by side (found live: 120 -> 60 per refill, 60 -> 14 firing)
     from brain.live import LiveH2
 
@@ -262,7 +265,8 @@ def main():
     from brain.live import NONE, Live
     for cls, parent_at, at, want in ((LiveH2, 0x14, (0x22E, 0x230), [2.0, 4.0]), (LiveH3, 0x10, (0x236, 0x23A), [2.0, 4.0]),
                                      (LiveReach, 0x14, (0x200, 0x202), [2.0, 3.0, 4.0]),
-                                     (LiveH4F, 0x24, (0x200, 0x202), [2.0, 3.0, 4.0])):
+                                     (LiveH4F, 0x24, (0x200, 0x202), [2.0, 3.0, 4.0]),
+                                     (LiveODST, 0x10, (0x236, 0x23A), [2.0, 3.0, 4.0])):   # (ODST: GitHub #17)
         objs = {1: (0xE301, 0x12340001, 24, 12), 2: (0xE302, NONE, 24, 12), 3: (0xE301, NONE, 0, 0),
                 4: (0xE304, NONE, 0, 0), 5: (0xE305, NONE, 0, 0)}     # handle: (tag, parent, reserve, magazine)
 
@@ -278,12 +282,38 @@ def main():
         r = object.__new__(cls)
         r.g, r.object, r._flag_tags = LooseMem(), lambda h: h << 16, {0xE305}
         r.objects = lambda types=None: [(h, 2, f"weapons\\gun{h}", (float(h), 0.0, 0.0)) for h in objs]
+        r._h3_tag_names = []                                 # (ODST: no weapon boxes here; below)
         r.rounds(1)                                          # gun 1 in hand seen loaded (players() reads it each tick)
         got = r.ground_weapons()
         if [p[0] for _, p in got] != want:
             raise AssertionError(f"{cls.__name__} loose guns: {got} (want guns {want})")
-    if LiveODST.ground_weapons is not Live.ground_weapons:
-        raise AssertionError("ODST loose guns changed (not decoded there: left as they were)")
+    # ODST Firefight's sniper and rockets lie in weapon_box machines, attached at the box's origin (live Crater, #17):
+    # read at the box's place; a gun in a player's hands (parent: a biped) is not
+    from brain.live import LiveODST as _OD
+    tags = {0xE0000001: "objects\\weapons\\rifle\\sniper_rifle\\sniper_rifle",
+            0xE0000002: "objects\\gear\\human\\military\\weapon_box\\weapon_box", 0xE0000003: "objects\\characters\\odst\\odst"}
+    names = [""] * 4
+    for t, n in tags.items():
+        names[t & 0xFFFF] = n
+    # handle: (tag, parent, position); 1 the boxed sniper, 2 its box, 3 a rifle in a player's hands, 4 his body
+    box_objs = {1: (0xE0000001, 2, (0.0, 0.0, 0.0)), 2: (0xE0000002, NONE, (-32.6, -15.3, 5.0)), 3: (0xE0000001, 4, (0.0, 0.0, 0.0)),
+                4: (0xE0000003, NONE, (1.0, 2.0, 3.0))}
+
+    class BoxMem:
+        def read(s, a, n):
+            tag, parent, pos = box_objs[a >> 16]
+            b = bytearray(0x300)
+            struct.pack_into("<I", b, 0, tag)
+            struct.pack_into("<I", b, 0x10, parent)
+            struct.pack_into("<3f", b, 0x50, *pos)
+            struct.pack_into("<hh", b, 0x236, 4, 4)
+            return bytes(b[a & 0xFFFF:(a & 0xFFFF) + n])
+    od = object.__new__(_OD)
+    od.g, od.object, od._flag_tags, od._h3_tag_names = BoxMem(), lambda h: h << 16 if h in box_objs else None, set(), names
+    od.objects = lambda types=None: [(h, 2, "sniper", (0.0, 0.0, 0.0)) for h in (1, 3)]
+    got = [(n, tuple(round(v, 1) for v in p)) for n, p in od.ground_weapons()]
+    if got != [("sniper", (-32.6, -15.3, 5.0))]:
+        raise AssertionError(f"ODST weapon box: {got} (want the boxed sniper at its box only)")
     # CE's gun in hand: the slot is the byte at unit +0x2D3 (+0x2D2 beside it stays 0). Read as an int16 at +0x2D2, a
     # player on his second gun read slot 256, "none" (live: +0x2D3 followed the slot asked, 0 then 1, and fire on
     # slot 1 drained the needler a bot had picked up, 20 -> 6)

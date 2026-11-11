@@ -86,6 +86,18 @@ def main():
         toward |= act.jump and mx < -0.7                         # jumping west, back the way it came
     assert held >= 3, f"wedged bot never held a jump ({held} ticks)"
     assert toward, "wedged bot never jumped back the way it came"
+    # hopping in place is no headway (live CE Battle Creek, Nov 11: bots hopped at a ledge's lip 32 s, z swinging
+    # 0.64 u, each hop read as moving): pressing on, xy still, z up and down 0.65 u every 0.6 s, it wiggles within 3 s
+    bot = Bot(10, 0, make_profile("novice", "camper", random.Random(10)), MAP, random.Random(10))
+    bot._terrain = T
+    bot.goal, bot.planned_jump = ("hunt", None), False
+    lip, wiggled = spot(T, 71.0, -120.0), None
+    for k in range(60):
+        hop = Vec(0, 0, 0.65 * abs(math.sin(k * 0.1 * math.pi / 0.6)))
+        bot.unstuck(k * 0.1, PlayerState(10, 0, "bot", lip + hop), Action(forward=1.0, yaw=0.0))
+        if wiggled is None and getattr(bot, "wiggle_until", 0.0) > k * 0.1:
+            wiggled = k * 0.1
+    assert wiggled is not None and wiggled <= 3.0, f"a bot hopping in place never read stuck (wiggle at {wiggled})"
     print("stuck learning OK")
 
 

@@ -10,6 +10,14 @@
 // death screen gives him.
 // On whenever haloreach.dll is loaded, and only over the functions' own first bytes (MCC 1.3528's haloreach.dll; another
 // build is left alone and logged once).
+// GitHub #22, the person heard every bot's respawn countdown beep (Reach, ODST, Halo 3). The respawn handler (Reach
+// FUN_18004633c, ODST FUN_1800fe0bc, Halo 3 FUN_1800e3e74) beeps at 3, 2 and 1 s left and on the last tick with a
+// 2D interface sound (Reach FUN_1800bada8, ODST FUN_180185ca4, Halo 3 FUN_180158244, the same code as ODST's) for a
+// player whose machine is this one (Reach
+// FUN_1800532d8, ODST FUN_180108044: player +0x14 machine identifier against the local machine's). A bot carries the
+// host's machine (reach.cpp hr_add_bot, odst.cpp od_add_bot: its shots do damage only so), so each of its countdowns
+// beeped on the person's speakers. While a bot's respawn handler runs, the interface sound plays nothing; a person's
+// own countdown is untouched.
 #include <windows.h>
 #include <string.h>
 #include "shared.h"
@@ -26,6 +34,31 @@ static should_spawn_fn o_hr_should_spawn;
 static respawn_tick_fn o_hr_respawn_tick;
 static const uint8_t HR_SHOULD_SPAWN_HEAD[8] = { 0x48, 0x89, 0x5C, 0x24, 0x08, 0x48, 0x89, 0x74 };
 static const uint8_t HR_RESPAWN_TICK_HEAD[8] = { 0x48, 0x8B, 0xC4, 0x48, 0x89, 0x58, 0x08, 0x48 };
+typedef void(__fastcall* hr_ui_sound_fn)(uint32_t sound, float volume, char flag);   // (ecx, xmm1, r8b)
+typedef void(__fastcall* od_respawn_tick_fn)(uint32_t player);
+typedef void(__fastcall* od_ui_sound_fn)(uint32_t sound, float volume);              // (ecx, xmm1)
+static hr_ui_sound_fn o_hr_ui_sound;
+static od_respawn_tick_fn o_od_respawn_tick;
+static od_ui_sound_fn o_od_ui_sound;
+static od_respawn_tick_fn o_h3_respawn_tick;    // Halo 3's are ODST's functions (the same engine)
+static od_ui_sound_fn o_h3_ui_sound;
+static const uint8_t HR_UI_SOUND_HEAD[8] = { 0x48, 0x8B, 0xC4, 0x48, 0x89, 0x58, 0x18, 0x48 };
+static const uint8_t OD_RESPAWN_TICK_HEAD[8] = { 0x89, 0x4C, 0x24, 0x08, 0x55, 0x53, 0x56, 0x57 };
+static const uint8_t OD_UI_SOUND_HEAD[8] = { 0x40, 0x55, 0x48, 0x8D, 0x6C, 0x24, 0xA9, 0x48 };
+static thread_local bool t_bot_tick;            // a bot's respawn handler is running (game thread)
+static volatile long g_muted[3];                // bot countdown sounds muted: Reach, ODST, Halo 3 (logged: proof without a speaker)
+
+static void muted(int game) {
+    static const char* names[3] = { "Reach", "ODST", "Halo 3" };
+    long n = InterlockedIncrement(&g_muted[game]);
+    if (n == 1 || n % 20 == 0) logf("spawnhook: %s: %ld bot respawn countdown sounds muted", names[game], n);
+}
+
+static bool is_bot(uint32_t player) {
+    int index = player & 0xFFFF;
+    for (int i = 0; i < HB_MAX_PLAYERS; i++) if (g_shm->bot_player_index[i] == index) return true;
+    return false;
+}
 
 static char __fastcall h_hr_should_spawn(uint32_t player) {
     hr_bot_solo_spawn(player);
@@ -34,7 +67,37 @@ static char __fastcall h_hr_should_spawn(uint32_t player) {
 
 static uint64_t __fastcall h_hr_respawn_tick(uint32_t player) {
     hr_bot_spawn_point(player);
-    return o_hr_respawn_tick(player);
+    t_bot_tick = is_bot(player);
+    uint64_t r = o_hr_respawn_tick(player);
+    t_bot_tick = false;
+    return r;
+}
+
+static void __fastcall h_hr_ui_sound(uint32_t sound, float volume, char flag) {
+    if (!t_bot_tick) o_hr_ui_sound(sound, volume, flag);
+    else muted(0);
+}
+
+static void __fastcall h_od_respawn_tick(uint32_t player) {
+    t_bot_tick = is_bot(player);
+    o_od_respawn_tick(player);
+    t_bot_tick = false;
+}
+
+static void __fastcall h_od_ui_sound(uint32_t sound, float volume) {
+    if (!t_bot_tick) o_od_ui_sound(sound, volume);
+    else muted(1);
+}
+
+static void __fastcall h_h3_respawn_tick(uint32_t player) {
+    t_bot_tick = is_bot(player);
+    o_h3_respawn_tick(player);
+    t_bot_tick = false;
+}
+
+static void __fastcall h_h3_ui_sound(uint32_t sound, float volume) {
+    if (!t_bot_tick) o_h3_ui_sound(sound, volume);
+    else muted(2);
 }
 
 static bool same(const uint8_t* at, const uint8_t* bytes, size_t n) {
@@ -46,15 +109,20 @@ static bool same(const uint8_t* at, const uint8_t* bytes, size_t n) {
 // the same address has its own bytes back: disable (MinHook writes the original bytes, the same) and enable again.
 struct made_hook { uint8_t* at; void* tramp; };
 struct game_hook {
-    const char* name; uintptr_t rva; const uint8_t* head; void* detour; void** orig;
+    const wchar_t* dll; const char* name; uintptr_t rva; const uint8_t* head; void* detour; void** orig;
     made_hook made[16];             // every address the hook was created at (the DLL may load elsewhere next time)
     uint8_t* at;                    // where it is on now
     uint8_t bytes[5];               // the jump it wrote, to see a reloaded module
     bool refused;
 };
 static game_hook g_hooks[] = {
-    { "spawn check", 0xFFABC, HR_SHOULD_SPAWN_HEAD, (void*)&h_hr_should_spawn, (void**)&o_hr_should_spawn },
-    { "respawn handler", 0x4633C, HR_RESPAWN_TICK_HEAD, (void*)&h_hr_respawn_tick, (void**)&o_hr_respawn_tick },
+    { L"haloreach.dll", "spawn check", 0xFFABC, HR_SHOULD_SPAWN_HEAD, (void*)&h_hr_should_spawn, (void**)&o_hr_should_spawn },
+    { L"haloreach.dll", "respawn handler", 0x4633C, HR_RESPAWN_TICK_HEAD, (void*)&h_hr_respawn_tick, (void**)&o_hr_respawn_tick },
+    { L"haloreach.dll", "interface sound", 0xBADA8, HR_UI_SOUND_HEAD, (void*)&h_hr_ui_sound, (void**)&o_hr_ui_sound },
+    { L"halo3odst.dll", "respawn handler", 0xFE0BC, OD_RESPAWN_TICK_HEAD, (void*)&h_od_respawn_tick, (void**)&o_od_respawn_tick },
+    { L"halo3odst.dll", "interface sound", 0x185CA4, OD_UI_SOUND_HEAD, (void*)&h_od_ui_sound, (void**)&o_od_ui_sound },
+    { L"halo3.dll", "respawn handler", 0xE3E74, OD_RESPAWN_TICK_HEAD, (void*)&h_h3_respawn_tick, (void**)&o_h3_respawn_tick },
+    { L"halo3.dll", "interface sound", 0x158244, OD_UI_SOUND_HEAD, (void*)&h_h3_ui_sound, (void**)&o_h3_ui_sound },
 };
 
 static void watch_one(game_hook& k, uint8_t* mod) {
@@ -64,8 +132,8 @@ static void watch_one(game_hook& k, uint8_t* mod) {
     made_hook* h = nullptr;
     for (made_hook& m : k.made) if (m.at == at) h = &m;
     if (!h && !same(at, k.head, 8)) {
-        if (!k.refused) logf("spawnhook: haloreach.dll+0x%llx (%s) is not the expected function: no hook",
-                             (unsigned long long)k.rva, k.name);
+        if (!k.refused) logf("spawnhook: %ls+0x%llx (%s) is not the expected function: no hook",
+                             k.dll, (unsigned long long)k.rva, k.name);
         k.refused = true;
         return;
     }
@@ -83,12 +151,11 @@ static void watch_one(game_hook& k, uint8_t* mod) {
     if (MH_EnableHook(at) != MH_OK) { logf("spawnhook: %s hook at %p not enabled", k.name, at); return; }
     k.at = at;
     memcpy(k.bytes, at, 5);
-    logf("spawnhook: Reach %s hooked at %p", k.name, at);
+    logf("spawnhook: %ls %s hooked at %p", k.dll, k.name, at);
 }
 
-// botcore's main loop: keep the hooks on while haloreach.dll is loaded, following it through unload / reload
+// botcore's main loop: keep each hook on while its DLL is loaded, following it through unload / reload
 void spawnhook_watch() {
     if (!g_shm) return;
-    uint8_t* mod = (uint8_t*)GetModuleHandleW(L"haloreach.dll");
-    for (game_hook& k : g_hooks) watch_one(k, mod);
+    for (game_hook& k : g_hooks) watch_one(k, (uint8_t*)GetModuleHandleW(k.dll));
 }

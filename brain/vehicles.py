@@ -374,9 +374,39 @@ def spec(name):
 # Sandtrap's Elephant (its model, objects\levels\multi\shrine\behemoth: tools/model2obj on shrine.map), in its own
 # frame (f forward, l left, z up over its origin, world units): each team's flag hangs at its "flag_spawn" marker
 # (1.45, -0.47, 1.36), 0.76 u over the bay floor (z 0.5-0.6, f -3.8 to 2.2, within 0.9 of the middle line), and is
-# captured at "flag_return" on that floor; the bay's one way in is the rear ramp (40 degrees, l -1.0 to 0.0)
-ELEPHANT = dict(flag_return=(0.24, -0.27, 0.55), bay=(-3.8, 2.4, 0.9), ramp=((-4.7, -0.5), (-2.4, -0.5)),
-                hull=(-4.25, 4.2, 2.3))
+# captured on the second floor by the stand; the bay's way in is the rear ramp (40 degrees, l -1.0 to 0.0)
+# The second floor (deck z about 1.7) and its stairs, from a player's flags walking a parked Elephant live (Nov 11,
+# match 20261111-000807, 1010-1111 s; the frame from his four corner flags, 7.3 x 4.4 u, his facing flags 0 and 180
+# degrees off it): the stairs up the left side from (f -3.0, l 1.2, z 0.74) to (-0.9, 1.2, 1.74); the flag on the deck
+# at (1.48, -0.59, 1.61), the model's flag_spawn marker (1.45, -0.47, 1.36). The bay floor runs l -1.5 to 1.5. Also
+# (not walked by the bots yet): a front entrance at (2.2, -0.1, 0.55) taken with a jump, a jump from the first floor
+# to the deck at (0.4, 0.5), and each side's tire well up to the deck by jumps. A carrier who stood on the bay floor's
+# "flag_return" marker (0.24, -0.27, 0.55) never scored: 5 minutes there that match with his own flag home, and "sat
+# on the first level the whole time" before. The capture spot: a player's "need to be up here" flag, (0.35, -0.27, 1.69),
+# straight over "bots keep on standing under here to attempt to score" (0.25, -0.32, 0.59), the old marker
+# The hull box: a player's walk round it hugging its sides (match 20261111-013603): rear f -3.6 to -3.85, front 2.6
+# to 3.0, sides out to l 2.5 (2.2 most of it, 1.6 at the narrow middles); the box is the walk's outer line.
+ELEPHANT = dict(flag_return=(0.3, -0.3, 1.7), bay=(-3.8, 2.4, 1.5), ramp=((-4.7, -0.5), (-2.4, -0.5)),
+                hull=(-3.85, 3.0, 2.5), deck=1.25, stair=((-3.0, 1.2), (-0.9, 1.2, 1.74)),
+                deck_jump=((-1.55, 0.2), (0.2, 0.4, 1.72)),   # (take-off: live, a 1.5 u/s carrier from -2.08 met the lip
+                # at -0.55 falling; from here over it 0.67 s up at 1.86. A player's, at 2 u/s: -2.0 to -1.7)
+                # the ways in from outside besides the ramp, each its jumps in order ((take-off f, l), (landing f, l, z)),
+                # from a player's climbs in a data collector session (match 20261111-010919): into the bay, the
+                # ramp's left half (half ramp half jump, 56 s) and the front entrance (a jump, his flags); onto the
+                # deck, each tire well: a jump onto its top, then one onto the deck (114, 124, 142, 152 s; his two
+                # rear-right tries jumping outward fell back to the sand)
+                entries=(("rear left jump", "bay", (((-4.6, 1.05), (-3.0, 0.92, 0.67)),)),
+                         ("front jump", "bay", (((4.0, 0.1), (2.2, -0.1, 0.6)),)),
+                         ("front left well", "deck", (((4.3, 2.2), (2.6, 1.6, 1.32)), ((2.3, 1.58), (0.5, 0.9, 1.72)))),
+                         ("rear left well", "deck", (((-4.45, 2.95), (-3.0, 2.3, 1.33)), ((-1.95, 2.1), (-0.4, 1.6, 1.9)))),
+                         ("rear right well", "deck", (((-5.1, -2.25), (-4.0, -1.85, 1.03)), ((-2.7, -1.78), (-0.8, -1.6, 1.9)))),
+                         ("front right well", "deck", (((3.85, -3.0), (2.75, -2.15, 1.1)), ((2.3, -2.0), (0.65, -1.3, 1.9))))))
+# deck_jump: a player's jump from the bay floor onto the deck, 7 times in a row (data collector, match
+# 20261111-010919, 73-90 s): take-off at f -2.1 to -1.5, l 0.0 to 0.36 (z 0.62-0.68), up 1.1 u, landing forward on the
+# deck (f -3.4 to 0.4). The way up for a goal on the deck; the stairs when three jumps in 12 s did not get there. Not
+# used yet: his rear entry jump on the ramp's left (-4.6, 1.1) to (-3.0, 0.9, 0.67), each tire well's climb from outside
+# onto the deck (front left (4.2, 2.2), rear left (-4.6, 3.0), rear right (-5.2, -2.3), front right (3.8, -3.0)), and
+# the jump from the deck onto the flag stand's top (z 2.8 at (1.2-1.6, -0.5 to -0.75))
 
 
 def frame_of(v):

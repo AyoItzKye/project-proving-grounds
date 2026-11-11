@@ -265,6 +265,11 @@ class Sim:
             p.weapon = name
             s.ammo[p.id] = AMMO.get(name, 8)   # power weapons the table lacks (H2 sword): 8 uses
             return True
+        if it["kind"] == "health":                       # a health pack: health whole again (CE, ODST)
+            if p.health >= 1.0:
+                return False
+            p.health = 1.0
+            return True
         if it["kind"] == "equipment":                    # Halo 3: one slot, the new one replaces it
             p.equipment = name
             return True
