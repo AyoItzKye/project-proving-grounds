@@ -66,7 +66,7 @@ DEV_ONLY = ("tools/test_*.py", "tools/run_tests.py", "tools/testdata.py", "tools
             "tools/human_data.py", "tools/baseline_compare.py", "tools/clean_bin.py", "tools/zoom_match.py",
             "brain/sim.py", "brain/sim_modes.py", "brain/simgear.py", "native/panel_preview.cpp", "native/build_preview.bat", "native/test_zoom.cpp",
             "native/tests/**", "CODE_OF_CONDUCT.md", "CONTRIBUTING.md", "SECURITY.md", "requirements.txt",
-            "requirements-dev.txt", ".gitignore", ".github/**", make_release.MARK)
+            "requirements-dev.txt", ".gitignore", ".github/**", "lidar-maps/**", make_release.MARK)
 
 
 LATEST = "https://github.com/AyoItzKye/project-proving-grounds/releases/latest"

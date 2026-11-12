@@ -1333,7 +1333,7 @@ def main():
                         bots[index].liked = liked_guns(me.name)   # its favourite loadout guns (brain/loadouts.py)
                         # Reach: botcore s67 fills the pickup itself (native/reach.cpp hr_loose_weapon); Halo 3 the
                         # same way as Halo 2. H2A / H4 pickups not decoded yet
-                        bots[index].can_pickup = o.game in ("ce", "h2", "h3", "reach")
+                        bots[index].can_pickup = o.game in ("ce", "h2", "h3", "reach", "odst")   # (ODST: native/odst.cpp od_pickup_target, #17)
                         # what reaches the game: botcore sends melee natively only in CE; the rest
                         # only where decoded (maps/_inputs); a bot plans with what it can press
                         names = {n for _, n, *_ in pressable}

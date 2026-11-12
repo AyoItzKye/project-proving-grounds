@@ -1,0 +1,44 @@
+name: Share a LiDAR map
+description: Share your LiDAR scan of a map so other players' bots start with what you found on it.
+title: "[LiDAR map] "
+labels: ["lidar-map"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Export the scan first, in the mod's folder: `python\python.exe tools\lidar_share.py export <map>`
+        (the map's folder name: `python\python.exe tools\lidar_share.py list` shows them). The zip is in the
+        `lidar-share` folder. More on the [LiDAR maps page](https://github.com/AyoItzKye/project-proving-grounds/tree/main/lidar-maps).
+  - type: dropdown
+    id: game
+    attributes:
+      label: Game
+      options:
+        - "Halo: Combat Evolved"
+        - Halo 2
+        - Halo 2 Anniversary
+        - Halo 3
+        - "Halo 3: ODST"
+        - "Halo: Reach"
+        - Halo 4
+    validations:
+      required: true
+  - type: input
+    id: map
+    attributes:
+      label: Map
+      description: The map's folder name from the list (e.g. h3_construct), and its name if you like.
+    validations:
+      required: true
+  - type: textarea
+    id: zip
+    attributes:
+      label: The scan
+      description: Drag the zip from the lidar-share folder into this box.
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything worth knowing?
+      description: A jump or route you found, the modes you played, how long you mapped it.

@@ -1,0 +1,66 @@
+{
+ "cycle": [
+  {
+   "off": 64,
+   "mask": 768,
+   "press": false,
+   "how": "decoded live 2026-11-12: key 1, 25 ticks held, idle noise excluded; the bits every button set (+0x40 bit 48, +0x88, +0x60, crouch's +0x10) dropped as input noise, the rest as Halo 3's"
+  }
+ ],
+ "reload": [
+  {
+   "off": 40,
+   "mask": 4294967296,
+   "press": false,
+   "how": "decoded live 2026-11-12: key r, 26 ticks held, idle noise excluded; the bits every button set (+0x40 bit 48, +0x88, +0x60, crouch's +0x10) dropped as input noise, the rest as Halo 3's"
+  },
+  {
+   "off": 64,
+   "mask": 12288,
+   "press": false,
+   "how": "decoded live 2026-11-12: key r, 26 ticks held, idle noise excluded; the bits every button set (+0x40 bit 48, +0x88, +0x60, crouch's +0x10) dropped as input noise, the rest as Halo 3's"
+  }
+ ],
+ "melee": [
+  {
+   "off": 8,
+   "mask": 32,
+   "press": false,
+   "how": "decoded live 2026-11-12: key q, 25 ticks held, idle noise excluded; the bits every button set (+0x40 bit 48, +0x88, +0x60, crouch's +0x10) dropped as input noise, the rest as Halo 3's"
+  }
+ ],
+ "grenade": [
+  {
+   "off": 8,
+   "mask": 536870912,
+   "press": false,
+   "how": "decoded live 2026-11-12: key f, 25 ticks held, idle noise excluded; the bits every button set (+0x40 bit 48, +0x88, +0x60, crouch's +0x10) dropped as input noise, the rest as Halo 3's"
+  },
+  {
+   "off": 40,
+   "mask": 8589934592,
+   "press": false,
+   "how": "decoded live 2026-11-12: key f, 25 ticks held, idle noise excluded; the bits every button set (+0x40 bit 48, +0x88, +0x60, crouch's +0x10) dropped as input noise, the rest as Halo 3's"
+  },
+  {
+   "off": 64,
+   "mask": 16,
+   "press": false,
+   "how": "decoded live 2026-11-12: key f, 25 ticks held, idle noise excluded; the bits every button set (+0x40 bit 48, +0x88, +0x60, crouch's +0x10) dropped as input noise, the rest as Halo 3's"
+  }
+ ],
+ "crouch": [
+  {
+   "off": 8,
+   "mask": 1,
+   "press": false,
+   "how": "decoded live 2026-11-12: key ctrl, 25 ticks held, idle noise excluded; the bits every button set (+0x40 bit 48, +0x88, +0x60, crouch's +0x10) dropped as input noise, the rest as Halo 3's"
+  },
+  {
+   "off": 56,
+   "mask": 4575657221408423936,
+   "press": false,
+   "how": "decoded live 2026-11-12: key ctrl, 25 ticks held, idle noise excluded; the bits every button set (+0x40 bit 48, +0x88, +0x60, crouch's +0x10) dropped as input noise, the rest as Halo 3's"
+  }
+ ]
+}

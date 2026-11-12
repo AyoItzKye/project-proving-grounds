@@ -1203,6 +1203,10 @@ class LiveReach(LiveH3):
     name. Object entry (0x18): +0 salt, +4 type (2 weapon, 3 equipment), +0x10 object address.
     Object +0 tag, +0xC next sibling, +0x10 first child, +0x14 parent, +0x44 position (feet),
     +0x50 forward; unit +0x350 4 weapon handles, +0x374 armor ability."""
+    # its own tag names (brain/forge.py _tag_names), not LiveH3's: inheriting "h3" (bd94362, Nov 12) read Reach maps' tag
+    # names from Halo 3's folder, and every Reach reader naming objects by tag failed quietly (live Beachhead Generator
+    # Defense, Nov 12: no generator read in 299 snapshots, the bots played plain Firefight: GitHub #18)
+    TAG_GAME = "reach"
     UNIT_ZOOM = None      # the unit's desired zoom byte (not decoded)
     DEAD_AT, HEALTH_BLOCK = 0x138, 0x184   # (Live.vehicle_dead / vehicle_left; ghidra/hr_object_get_health.c)
     MAG_NAMES = {}        # (Halo 3's magazine sizes are not this game's)

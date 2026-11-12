@@ -1,5 +1,6 @@
 # made on each PC: recordings, logs, backups
 logs/
+lidar-share/
 backups/
 __pycache__/
 *.pyc

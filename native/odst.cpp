@@ -159,6 +159,40 @@ static void __fastcall h_od_update(uint8_t* actions) {
 // throttle left, +0x30 trigger, +0x38 jump (1.0), +0x40 action (E: 1, held long 3), +0x44 weapon
 // set / +0x46 primary / +0x47 secondary index (unit +0x274; weapons at unit +0x27C), +0x4A zoom,
 // +0x4C interaction type, +0x50 interaction object, +0x54.. targets
+// the gun nearest the unit within 1.5 units for "hold E to pick up", as Halo 3's h3_pickup_target (h3.cpp) over ODST's
+// object list (TLS +0x20): a weapon (type 2) lying loose, or in a Firefight weapon box (its parent no biped or vehicle,
+// the box's place plus the gun's offset). GitHub #17 (live h100 Firefight Nov 12: 0 pickups in 3 minutes, Use pressed
+// with nothing chosen: this action's +0x4C / +0x50 stayed empty). ponytail: linear scan, only while E is held
+static uint32_t od_pickup_target(uint8_t* tls, uint8_t* unit) {
+    uint8_t* hdr = *(uint8_t**)(tls + 0x20);
+    if (!hdr) return 0xFFFFFFFFu;
+    int n = *(int32_t*)(hdr + 0x20);
+    uint8_t* ents = *(uint8_t**)(hdr + 0x48);
+    const float* p = (const float*)(unit + 0x50);
+    uint32_t best = 0xFFFFFFFFu;
+    float bd = 1.5f * 1.5f;
+    for (int i = 0; i < n; i++) {
+        uint8_t* e = ents + (size_t)i * 0x18;
+        if (!*(uint16_t*)e || e[3] != 2) continue;
+        uint8_t* o = *(uint8_t**)(e + 0x10);
+        if (!o) continue;
+        float q[3] = { ((const float*)(o + 0x50))[0], ((const float*)(o + 0x50))[1], ((const float*)(o + 0x50))[2] };
+        uint32_t parent = *(uint32_t*)(o + 0x10);
+        if (parent != 0xFFFFFFFFu) {
+            int pi = (int)(parent & 0xFFFF);
+            if (pi >= n) continue;
+            uint8_t* pe = ents + (size_t)pi * 0x18;
+            uint8_t* po = *(uint8_t**)(pe + 0x10);
+            if (pe[3] == 0 || pe[3] == 1 || !po || *(uint32_t*)(po + 0x10) != 0xFFFFFFFFu) continue;   // in hands, a seat
+            const float* s = (const float*)(po + 0x50);
+            for (int k = 0; k < 3; k++) q[k] += s[k];
+        }
+        float d = (q[0] - p[0]) * (q[0] - p[0]) + (q[1] - p[1]) * (q[1] - p[1]) + (q[2] - p[2]) * (q[2] - p[2]);
+        if (d < bd) { bd = d; best = (uint32_t)*(uint16_t*)e << 16 | (uint32_t)i; }
+    }
+    return best;
+}
+
 void od_fill(uint8_t* tls, uint8_t* act, int index, const hb_action& a, int slot) {
     (void)slot;
     uint8_t* unit = od_object(tls, *(uint32_t*)(od_player(tls, index) + 0x28));
@@ -188,6 +222,13 @@ void od_fill(uint8_t* tls, uint8_t* act, int index, const hb_action& a, int slot
     *(float*)(act + 0x34) = 0.0f;
     *(float*)(act + 0x38) = (b & HB_BTN_JUMP) ? 1.0f : 0.0f;
     *(uint32_t*)(act + 0x40) = (b & HB_BTN_ACTION) ? 3u : 0u;
+    if (unit && hb_use_picks_up(b) && *(uint32_t*)(unit + 0x10) == 0xFFFFFFFFu) {   // on foot, no seat asked
+        uint32_t target = od_pickup_target(tls, unit);
+        if (target != 0xFFFFFFFFu) {
+            *(int16_t*)(act + 0x4C) = 1;            // weapon pickup (as in Halo 3 and Halo 2)
+            *(uint32_t*)(act + 0x50) = target;
+        }
+    }
 }
 
 static DWORD tls_index_of(uint8_t* mod) {

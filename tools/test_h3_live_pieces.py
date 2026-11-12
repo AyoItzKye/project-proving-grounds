@@ -9,6 +9,9 @@ the bare map's nav.
 2. find_h3 (skipped when MCC is not found): the live pieces of a Sandbox variant (the player's ALL ITEMS when here, else
    a built-in one) pick that file, not another Sandbox file; with a third of them moved 2 m (edited since) still that
    file; the bare map (no Forge pieces, or only the map's own scenery) none
+4. every live reader names objects from its own game's .map files (TAG_GAME): Halo 3 "h3", Reach "reach" (LiveReach
+   subclasses LiveH3: inheriting "h3" broke Reach's Generator Defense, Forge pieces and AI ranks, GitHub #18), ODST
+   "odst"
 3. filing the found file gives the variant folder with its pieces (h3_forge_import.file_one); MCC's copy of the
    running variant (Temporary\UserContent, a new name each match) loses a tie to the player's own file and files
    into the same folder
@@ -126,6 +129,9 @@ else:
             imp.file_one(pick["path"], "h3")
         else:
             print("  (no match copy of the player's file: the tie checks skipped)")
+from brain.live import LiveODST, LiveReach  # noqa: E402
+check("4. each live reader's own tag names", (LiveH3.TAG_GAME, LiveReach.TAG_GAME, LiveODST.TAG_GAME) == ("h3", "reach", "odst"),
+      (LiveH3.TAG_GAME, LiveReach.TAG_GAME, LiveODST.TAG_GAME))
 if fails:
     sys.exit("FAIL\n" + "\n".join(fails))
 print("h3 live pieces OK")
