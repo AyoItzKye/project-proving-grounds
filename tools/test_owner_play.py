@@ -14,6 +14,16 @@ Bot.keep_role on scores as decide builds them, on Sandtrap (h3_shrine):
 6. vehicles by his rules (director.OWNER_VEHICLES): six bots free in CTF beside 3 Mongooses, 2 Warthogs, a Ghost and an
    Elephant: no crew job on a Mongoose or the Elephant, both Warthogs crewed (attack and defence), one Ghost; off: the
    Mongooses get drivers (the play before)
+7. a Ghost at its trip's end (High Ground 105.8 s: a bot rode one as a taxi into a group, got out and died): an enemy in
+   view 15 u off, it stays in and drives at him; nobody about, it gets out
+8. defenders post where people defend (Passive LiDAR ctf_defend: he defended 4-20 u off the flag, 71% within 30 u):
+   people's spots 18 and 24 u off our stand are the two posts, the longest-held first; switch off: the old picks
+9. every team's score (his five-team Oddball read only teams 0 and 1): live.team_scores reads a record for each team a
+   player is on, at each game's stride (Halo 3 0x18, Reach 8, H2A / Halo 4 0x1C)
+10. acting on callouts (High Ground 143.2 s): an escort hears a man called 10 u off our carrier 2 s ago and goes after
+    him over a gun; not a callout 6 s old, nor one 30 u off him; Easy does not listen
+11. no people's ball spot on a map: our carrier picks the hold that is far from the enemy (up to 30 u counts) and
+    sheltered, a roof and ways out (director.shelter, OWNER_HOLDS); off: the farthest from them (the play before)
 
 usage: python -I test_owner_play.py      -> "owner play OK"
 """
@@ -24,7 +34,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, ".."))
 from brain.bot import Belief, Bot, Order  # noqa: E402
-from brain.core import PlayerState, Snapshot, Vec  # noqa: E402
+from brain.core import PlayerState, Snapshot, Vec, dist  # noqa: E402
 from brain.maps import get_map  # noqa: E402
 from brain.profiles import make_profile  # noqa: E402
 
@@ -145,6 +155,118 @@ for owner_rules in (True, False):
               got.count("mongoose") == 0 and "elephant" not in got and got.count("warthog") == 2 and got.count("ghost") <= 1, got)
     else:
         check("6. off: the play before crews Mongooses", got.count("mongoose") >= 1, got)
+
+# 7. the Ghost
+from brain.bot import Action  # noqa: E402
+from brain.maps import terrain  # noqa: E402
+T = terrain(M)
+spot = M["points"]["mid"]
+
+
+def ghost_run(enemy):
+    g = Bot(1, 0, make_profile("top", "rusher", random.Random(1)), M, random.Random(1))
+    g._terrain, g.posture, g.notes = T, 0.5, []
+    g.seat, g.seat_for, g.seat_since = "driver", 555, 0.0
+    g.order, g.drive_to = Order("mid", spot), spot
+    me = PlayerState(1, 0, "g", spot, vehicle=555)
+    ghost = dict(handle=555, kind="ghost", pos=(spot.x, spot.y, spot.z), riders=1, occupied=True, team=0,
+                 fwd=(1.0, 0.0, 0.0), up=(0.0, 0.0, 1.0), gunner=False, turrets=[], manned=[])
+    ps = [me]
+    if enemy:
+        foe = PlayerState(9, 1, "foe", spot + Vec(15.0, 0.0, 0.0))
+        ps.append(foe)
+        g.per.beliefs[9] = Belief(foe.pos, Vec(0, 0, 0), 10.0, True, "eyes")
+        g.per.recognized = getattr(g.per, "recognized", set()) | {9}
+    for k in range(60):
+        t = 10.0 + k / 30
+        a = Action()
+        g.now = t
+        if enemy:
+            g.per.beliefs[9] = Belief(ps[1].pos, Vec(0, 0, 0), t, True, "eyes")
+        g.drive(t, 1 / 30, me, Snapshot(t, ps, mode="slayer", vehicles=[ghost]), a, lambda p, q, **kw: q)
+        if a.action:
+            return "out", g
+    return "in", g
+
+
+got, g = ghost_run(True)
+check("7. a Ghost at its trip's end with an enemy in view stays in and drives at him",
+      got == "in" and getattr(g, "drive_to", None) is not None and abs(g.drive_to.x - (spot.x + 15.0)) < 0.5,
+      (got, getattr(g, "drive_to", None)))
+got, g = ghost_run(False)
+check("7. nobody about: it gets out", got == "out", got)
+
+# 8. people's defend spots
+home = M["flags"][0]
+spots = [(home + Vec(18.0, 0.0, 0.0), 60.0), (home + Vec(0.0, 24.0, 0.0), 40.0), (home + Vec(80.0, 0.0, 0.0), 90.0)]
+for on in (True, False):
+    Dmod.OWNER_SPLITS = on
+    try:
+        dd = Dmod.Director(0, M, {}, random.Random(0))
+        dd._def_people = sorted(spots, key=lambda x: -x[1])
+        posts = dd.defend_posts(home, 2)
+    finally:
+        Dmod.OWNER_SPLITS = True
+    want = [spots[0][0], spots[1][0]]
+    if on:
+        check("8. the defenders' posts are people's spots near our stand (the 80 u one left out)", posts == want, posts)
+    else:
+        check("8. off: the old picks", posts != want, posts)
+
+# 9. team scores
+import struct  # noqa: E402
+from brain.live import team_scores  # noqa: E402
+for stride in (0x18, 8, 0x1C):
+    mem = bytearray(stride * 8)
+    for t, sc in enumerate((199, 0, 37, 12, 5)):
+        struct.pack_into("<i", mem, t * stride, sc)
+    got = team_scores(lambda at, n: bytes(mem[:n]), 0, stride, [dict(team=t) for t in range(5)] + [dict(team=-1)])
+    check(f"9. five teams' scores at stride {stride:#x}", got == {0: 199, 1: 0, 2: 37, 3: 12, 4: 5}, got)
+check("9. no players: teams 0 and 1", set(team_scores(lambda at, n: bytes(n), 0, 8, None)) == {0, 1})
+
+# 10. callouts
+carrier = PlayerState(3, 0, "carrier", Vec(0.0, 0.0, Z), has_flag=True)
+escort = PlayerState(4, 0, "escort", Vec(-6.0, 0.0, Z))
+snap = Snapshot(50.0, [carrier, escort], mode="ctf")
+
+
+def answer(age, off, tier="top"):
+    e = Bot(4, 0, make_profile(tier, "rusher", random.Random(4)), M, random.Random(4))
+    e.order = Order("escort", carrier.pos, target=3)
+    e.notes = []
+    called = carrier.pos + Vec(off, 0.0, 0.0)
+    e.per.beliefs[("callout", "Mid")] = Belief(called, Vec(0, 0, 0), 50.0 - age, False, "callout")
+    sc = {("item", Vec(-20.0, 5.0, Z)): 1.5, ("objective", carrier.pos): 1.2}
+    e.answer_calls(sc, escort, snap)
+    return best(sc)
+
+
+check("10. a fresh callout by our carrier is answered", answer(2.0, 10.0)[0] == "hunt", answer(2.0, 10.0))
+check("10. not one 6 s old", answer(6.0, 10.0)[0] != "hunt", answer(6.0, 10.0))
+check("10. not one 30 u off him", answer(2.0, 30.0)[0] != "hunt", answer(2.0, 30.0))
+check("10. Easy does not listen", answer(2.0, 10.0, "novice")[0] != "hunt", answer(2.0, 10.0, "novice"))
+
+# 11. shelter
+for name in ("h3_shrine", "h3_construct"):
+    MM = get_map(name)
+    foe = Snapshot(5.0, [PlayerState(9, 1, "f", MM["flags"][1] + Vec(0.0, 0.0, 0.0))], mode="oddball")
+    for on in (True, False):
+        Dmod.OWNER_HOLDS = on
+        try:
+            dd = Dmod.Director(0, MM, {}, random.Random(0))
+            dd._odd_people = []
+            got = dd.carry_point(foe)
+            cands = MM["holds"][0] + [MM["points"]["mid"]]
+            fd = foe.players[0].pos
+            want = max(cands, key=lambda h: min(dist(h, fd), Dmod.ODD_SAFE_R) + dd.shelter(h))
+        finally:
+            Dmod.OWNER_HOLDS = True
+        if on:
+            check(f"11. {name}: the carrier's spot weighs distance (to {Dmod.ODD_SAFE_R:.0f} u) and shelter",
+                  got == want and dd.shelter(got) >= 10.0, (got, dd.shelter(got)))
+        else:
+            old = max(cands, key=lambda h: (h - foe.players[0].pos).flat())
+            check(f"11. {name} off: the farthest spot", got == old, got)
 
 if fails:
     sys.exit(f"FAIL {len(fails)}")

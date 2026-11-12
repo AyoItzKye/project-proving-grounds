@@ -92,6 +92,15 @@ def flags_by_stand(weapons, held, stands, tags, teams, skip=(), third=(), loose=
     return out
 
 
+def team_scores(read, at, stride, players):
+    """{team: score} for teams 0 and 1 and every other team a player is on (lobbies of up to 8 teams: the player's Sandtrap
+    Oddball, Nov 11, five teams of three, read {0: 199, 1: 0}): one record per team, stride bytes apart, its int32 score
+    first (the two-team layouts the readers had: Halo 3 0x18, Reach 8, H2A / Halo 4 0x1C; teams 2+ INFERRED from them)."""
+    teams = {0, 1} | {d["team"] for d in (players or []) if isinstance(d.get("team"), int) and 0 <= d["team"] < 8}
+    b = read(at, stride * (max(teams) + 1)) or b""
+    return {t: struct.unpack_from("<i", b, t * stride)[0] for t in sorted(teams) if len(b) >= t * stride + 4}
+
+
 def one_flag_owner(flag, players, state):
     """One Flag: the flag stays on its stand while the teams swap sides each round, so its the player is the round's
     defenders, the team that spawns beside it (Reach Boardwalk: at round 2 every blue player spawned 1-3 u from the
@@ -1133,8 +1142,7 @@ class LiveH3(LiveH2):
         ticks = struct.unpack("<i", s.g.read(gg + s.H3_TICKS, 4))[0]
         score = {}
         if teams:
-            b = s.g.read(gg + s.H3_TEAM_SCORE, 0x30)
-            score = {0: struct.unpack_from("<i", b, 0)[0], 1: struct.unpack_from("<i", b, 0x18)[0]}
+            score = team_scores(s.g.read, gg + s.H3_TEAM_SCORE, 0x18, players)
         left = max(0.0, minutes * 60.0 - ticks / 60.0) if minutes else None
         return dict(score=score, limit=max(0, limit), time_left=left)
 
@@ -1280,8 +1288,7 @@ class LiveReach(LiveH3):
         if s._blk is None:
             s.players()
         gg = s.g.u64(s._blk + 0x48)
-        b = s.g.read(gg + s.REACH_TEAM_SCORE, 16)
-        score = {0: struct.unpack_from("<i", b, 0)[0], 1: struct.unpack_from("<i", b, 8)[0]}
+        score = team_scores(s.g.read, gg + s.REACH_TEAM_SCORE, 8, players)
         limit = struct.unpack("<h", s.g.read(gg + s.REACH_SCORE_LIMIT, 2))[0] if s.REACH_SCORE_LIMIT else 0
         left = None
         if s.REACH_TIME_LIMIT:
@@ -2043,8 +2050,7 @@ class LiveH4F(LiveReach):
         if not p:                      # the block went away (a map load): find it again next time
             s._blk = None
             return None
-        b = s.g.read(p + off, 0x20)
-        score = {0: struct.unpack_from("<i", b, 0)[0], 1: struct.unpack_from("<i", b, 0x1C)[0]}
+        score = team_scores(s.g.read, p + off, 0x1C, players)
         limit, left = 0, None
         if m["limits"]:
             lslot, loff, moff = m["limits"]

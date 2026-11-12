@@ -101,6 +101,8 @@ def loadout_value(guns, rank, game=None):
 
 OWNER_LEASH = True           # keep_role's leashes from the player's flagged games, Nov 11 (Oddball / King hunters on the
                              # carrier, third teams, a ferry on foot, vehicle trips): False, the play before (A/B)
+CALL_ANSWER_R, CALL_ANSWER_S, CALL_ANSWER = 15.0, 4.0, 1.9   # answer_calls: a man called this near what it guards
+GHOST_FIGHT_R = 30.0         # u: an armed driver at its trip's end with an enemy in view this near stays in and fights
 MONGOOSE_TRIP = 50.0         # a Mongoose only for a trip this long: across the map fast (the player's rule, Nov 11)
 VEHICLE_TRIP = 35.0          # goals farther than this make a free vehicle nearby worth taking (brain/vehicles.py)
 GROUND_RISE = 15.0           # u: a goal this far over the bot is no trip for a ground vehicle (Spire's core, 37 u up)
@@ -1162,6 +1164,34 @@ class Bot:
             blocked = any(dist(me.pos, s.per.beliefs[q].pos) < 4.0 for q in seen if q in s.per.beliefs)   # (in its way)
             back = GEN_BACK if o.said == "gen" and o.role == "defender" and not blocked else 1.2 + 0.6 * k
             scores[("objective", pt)] = max(scores.get(("objective", pt), 0.0), back)
+
+    def answer_calls(s, scores, me, snap):
+        """Acting on the team's callouts (the player's High Ground flag, Nov 11 143.2 s: our carrier at 12% health, an
+        enemy called 15 u off him, his escort backing off): a man called within CALL_ANSWER_R of what this bot guards
+        (our carrier for an escort or a ferry, its post for a defender, our flag for a returner), in the last
+        CALL_ANSWER_S, is gone after at CALL_ANSWER over a gun or the walk back to the post (not over a fight in hand).
+        Easy does not listen (teamwork 0); none while carrying."""
+        o = s.order
+        if not OWNER_LEASH or s.p.teamwork <= 0 or me.has_flag:
+            return
+        if o.role in ("escort", "ferry"):
+            c = s.lead(me, snap) if o.role == "escort" else next(
+                (p for p in snap.players if p.team == me.team and p.has_flag and p.alive and p.id != me.id), None)
+            anchor = c.pos if c is not None else None
+        elif o.role == "defender":
+            anchor = o.point
+        elif o.role == "hunter" and snap.mode == "ctf":
+            anchor = s.live_point(me, snap)
+        else:
+            anchor = None
+        if anchor is None:
+            return
+        for k, b in s.per.beliefs.items():
+            if (isinstance(k, tuple) and k[0] == "callout" and snap.time - b.t <= CALL_ANSWER_S
+                    and dist(b.pos, anchor) <= CALL_ANSWER_R):
+                key = ("hunt", b.pos)
+                scores[key] = max(scores.get(key, 0.0), CALL_ANSWER + 0.3 * s.p.teamwork)
+                s.note(f"answering a callout {dist(b.pos, anchor):.0f} u off what it guards")
 
     @staticmethod
     def urgent(me, snap):
@@ -2363,6 +2393,7 @@ class Bot:
                     scores[k] *= 0.25
         s.vehicle_mission(now, me, snap, scores)
         s.keep_role(scores, me, snap, seen)
+        s.answer_calls(scores, me, snap)
         s.break_stalemates(now, me, snap, scores)
         if snap.mode == "race":
             # Race scores laps, not kills (RACE-01): the gate first; far fights, hunts and guns lying about only on the
@@ -3506,6 +3537,16 @@ class Bot:
         working = ((getattr(s, "crew_ride", None) == me.vehicle and s.order.role != "runner")
                    or getattr(s, "vjob", None) in ("escort", "hunt", "anti_vehicle")
                    or (v is not None and not vehicles.taxi_ok(v["kind"])))
+        if (arrived and not working and OWNER_LEASH and v is not None and vehicles.driver_armed(v)
+                and s.order.role != "runner" and s.p.tactics > 0.15):
+            # a Ghost (a gun the driver fires) at its trip's end with men of theirs in view near: it fights from the seat,
+            # not on foot among them (the player's High Ground flag, Nov 11 105.8 s: a bot rode a Ghost as a taxi into a
+            # group, got out and died)
+            foes = [s.per.beliefs[k].pos for k in s.per.visible_enemies() if k in s.per.beliefs
+                    and dist(me.pos, s.per.beliefs[k].pos) < GHOST_FIGHT_R]
+            if foes:
+                s.drive_to, arrived = min(foes, key=lambda q: dist(me.pos, q)), False
+                s.note("vehicle: fighting from the seat (men of theirs at the trip's end)")
         if arrived and working:
             # a role's vehicle: on to the next place it is needed (a way its ground does not go: anywhere else); waiting
             # where it is needed is not being stuck

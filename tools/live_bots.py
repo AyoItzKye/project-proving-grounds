@@ -41,6 +41,7 @@ MAX_DT = 4 / HZ      # the longest step the bots think with: a longer gap (a hit
 PAUSE_TICKS = 9      # loop passes (0.3 s) with botcore's game tick standing still: the game is paused
 
 
+DEF_REC_R = 35.0     # u: a person this near his flag at home is defending it (Passive LiDAR ctf_defend, director.defend_posts)
 MAP = None   # set in main() from --map
 
 
@@ -1269,6 +1270,12 @@ def main():
                                      steering if p.id == 0 else None, p.vehicle != -1)
                                     for p in snap.players if p.id not in st["bots"].values() and p.name != "ai"])
                 rides.update(now, snap.vehicles, snap.players, set(st["bots"].values()))
+                if snap.mode == "ctf" and snap.flags:     # where people defend their flag (Passive LiDAR: defend_posts)
+                    for hp in snap.players:
+                        f = snap.flags.get(hp.team)
+                        if (hp.alive and not hp.is_bot and hp.id not in st["bots"].values() and not hp.has_flag
+                                and f is not None and f.state == "home" and 2.0 < (hp.pos - f.pos).flat() < DEF_REC_R):
+                            people.holding(now, "ctf_defend", (hp.pos.x, hp.pos.y, hp.pos.z))
                 if snap.mode == "oddball" and snap.ball_carrier is not None:   # where people hold the ball (Passive LiDAR)
                     hp = snap.player(snap.ball_carrier)
                     if hp is not None and hp.alive and not hp.is_bot and hp.id not in st["bots"].values():

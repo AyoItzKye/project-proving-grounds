@@ -8,6 +8,8 @@ Click a version to see what it added and fixed.
 <summary><b>0.2.2</b> (November 6 to 11, 2026): Halo 2 vehicles, the Halo 4 Mantis and Banshee bombs, call bots into your vehicle, follow me and roam chat commands, Firefight bots that follow and respawn, Reach Firefight Versus and Generator Defense with Spartan and Elite bots, ODST characters for bots, an Invasion rework, Sandtrap's Elephants, Halo 2 Anniversary Forge maps</summary>
 
 ### + Added
+- <!-- build: 20261111-1901 --> **Bots act on callouts**: a teammate calling out an enemy near your flag carrier, a defender's post or your stolen flag sends the bots guarding it after him.
+- <!-- build: 20261111-1901 --> **Defenders hold where you defend**: Passive LiDAR also learns where you stand guard near your flag, and the bots defend from those spots on that map.
 - <!-- build: 20261111-1737 --> **LiDAR Simulator: Continue and Skip to next map**: a stopped Every map run goes on from where it stopped (the button reads Continue, with the maps left; **Start over from the first map** begins again), and **Skip to next map** saves the map running now and moves on when one takes too long.
 - <!-- build: 20261111-1737 --> **Ball carriers hold where you hold the ball**: in Oddball, Passive LiDAR also learns the spots people hold the ball, and a bot carrying it goes to the one held longest that no enemy is on.
 - <!-- build: 20261111-1325 --> **Passive LiDAR**: every match you play teaches the bots the map in the background, with nothing on screen and nothing to switch on: the floor you walk, the jumps you land, the lifts and man cannons you ride and the teleporters you take, and whether each one works both ways. Only your own moves are recorded; the bots play as usual.
@@ -46,6 +48,9 @@ Click a version to see what it added and fixed.
 - **Flight heights from the map**: aircraft pick their attack and travel heights from the ground under them; painting airspace is optional.
 
 ### - Fixed
+- <!-- build: 20261111-1901 --> **Ghosts**: a bot that drives a Ghost into a group fights from it instead of getting out among them.
+- <!-- build: 20261111-1901 --> **Scores in games of three teams or more**: every team's score is read (only two were), so the bots know who is winning.
+- <!-- build: 20261111-1901 --> **Ball carriers on maps nobody has played Oddball on yet**: they pick a covered spot with ways out, not just the one farthest from the enemy.
 - <!-- build: 20261111-1737 --> **Hunters go for the ball carrier**: in Oddball and King of the Hill with three teams or more, bots sent after the ball carrier no longer get drawn into fights with the other teams, and teammates escorting a carrier no longer ride off in vehicles.
 - <!-- build: 20261111-1737 --> **Capture the Flag team splits**: with both flags home about a quarter of the team defends and the rest attack; when your flag is taken, half go after it and half keep attacking (One Flag: everyone goes after it), and nobody guards an empty stand.
 - <!-- build: 20261111-1737 --> **Vehicles**: bots no longer get sent to drive Mongooses or Elephants; a bot rides a Mongoose only to cross the map. At most two Warthogs get crews (one for the attack, one for the defence) and one Ghost.

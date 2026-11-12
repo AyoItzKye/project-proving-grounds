@@ -49,6 +49,8 @@ OWNER_SPLITS, DEFEND_SHARE, THIEF_HUNT = True, 0.25, 0.5
 # most two transports crewed (a Warthog for the attack and one for the defence, each with a gunner) and one harasser.
 # False: the play before (every harasser crewed; A/B)
 OWNER_VEHICLES, NO_CREW_KINDS, OWNER_ROLE_MAX = True, ("mongoose", "elephant"), {"transport": 2, "harasser": 1}
+DEF_PEOPLE_R = 35.0   # u: people's defend spots this near our stand are our defenders' posts first (defend_posts)
+OWNER_HOLDS, ODD_SAFE_R, ODD_ROOF, ODD_EXIT = True, 30.0, 10.0, 2.0   # carry_point's covered spot (shelter); A/B
 ODD_FREE_R = 8.0      # u: a ball carrier's spot people held the ball at (maps.people_holds) with an enemy this near is passed over
 # the getaway ride: one transport driver parks GETAWAY_D u from their stand on our side while our runners go in, then
 # fetches our carrier at any distance
@@ -1931,6 +1933,18 @@ class Director:
         if key in cache:
             return cache[key]
         T, eye, out = s.terrain(), Vec(0, 0, 0.6), []
+        if OWNER_SPLITS:
+            # where people defend this flag (Passive LiDAR ctf_defend, maps.people_holds): their spots first, the longest
+            # held, 3 u apart (the player's games, Nov 11: 4-20 u off the flag on Sandtrap, within 30 u 71% of the time
+            # on High Ground, with sight of the lanes rather than the stand)
+            if not hasattr(s, "_def_people"):
+                from .maps import people_holds
+                s._def_people = people_holds(s.map, "ctf_defend")
+            for q, _ in s._def_people:
+                if len(out) >= n:
+                    break
+                if 2.0 < dist(q, home) <= DEF_PEOPLE_R and all(dist(q, o) >= 3.0 for o in out):
+                    out.append(q)
         cs = getattr(T, "cover_spots", None)
         if cs is not None and len(cs):
             for c in sorted(cs.tolist(), key=lambda c: abs(math.hypot(c[0] - home.x, c[1] - home.y) - 6.0)):
@@ -2449,9 +2463,31 @@ class Director:
             if all(dist(spot, f) > ODD_FREE_R for f in foes):
                 s.odd_spot = spot
                 return spot
-        s.odd_spot = max(s.map["holds"][s.side] + [s.map["points"]["mid"]],
-                         key=lambda h: min((dist(h, f) for f in foes), default=0.0))
+        if OWNER_HOLDS:
+            s.terrain()    # (built first: building it snaps the map's hold points to its floor)
+        cands = s.map["holds"][s.side] + [s.map["points"]["mid"]]
+        if OWNER_HOLDS:
+            # no people's spot here: as the player holds the ball, a covered spot with ways out, away from them (the
+            # foes' distance up to ODD_SAFE_R counts, then a roof ODD_ROOF and each way out ODD_EXIT, up to four)
+            s.odd_spot = max(cands, key=lambda h: min(min((dist(h, f) for f in foes), default=ODD_SAFE_R), ODD_SAFE_R)
+                             + s.shelter(h))
+            return s.odd_spot
+        s.odd_spot = max(cands, key=lambda h: min((dist(h, f) for f in foes), default=0.0))
         return s.odd_spot
+
+    def shelter(s, h):
+        """How good a spot is to hold an objective in: ODD_ROOF with a floor 2-8 u over it (a roof: no shots from above,
+        out of the vehicles' way) and ODD_EXIT for each of up to four of eight ways out with floor 3 u off."""
+        import numpy as np
+        T = s.terrain()
+        if not (T.x0 <= h.x < T.x0 + T.nw * 0.25 and T.y0 <= h.y < T.y0 + T.nh * 0.25):
+            return 0.0
+        j, i = T._cell(h)
+        col = T.lz[:, j, i]
+        roof = bool(np.any(np.isfinite(col) & (col > h.z + 2.0) & (col < h.z + 8.0)))
+        ways = sum(1 for k in range(8) if T.ground_ok(h.x + 3.0 * math.cos(k * math.pi / 4),
+                                                       h.y + 3.0 * math.sin(k * math.pi / 4), h.z, drop=1.0))
+        return (ODD_ROOF if roof else 0.0) + ODD_EXIT * min(ways, 4)
 
     # --- the coach (brain/coach.py; guide 10 sections 4, 6, 9): events, the report, asking, applying
     def cid(s, p):
