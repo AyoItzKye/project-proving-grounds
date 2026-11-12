@@ -2351,5 +2351,277 @@
    ]
   }
  ],
- "scenery": []
+ "scenery": [],
+ "placed": [
+  {
+   "kind": "machines",
+   "name": "shutter_doors",
+   "pos": [
+    -2.8133,
+    -16.73,
+    3.6306
+   ],
+   "rot": [
+    3.14159,
+    -0.0,
+    -0.0
+   ],
+   "flags": "does not operate automatically"
+  },
+  {
+   "kind": "machines",
+   "name": "shutter_doors",
+   "pos": [
+    2.3,
+    16.73,
+    3.6306
+   ],
+   "rot": [
+    0.0,
+    -0.0,
+    -0.0
+   ],
+   "flags": "does not operate automatically"
+  },
+  {
+   "kind": "machines",
+   "name": "button",
+   "pos": [
+    5.1163,
+    19.314,
+    3.7541
+   ],
+   "rot": [
+    -0.7854,
+    0.0,
+    0.0
+   ],
+   "flags": "can change only once, does not operate automatically"
+  },
+  {
+   "kind": "machines",
+   "name": "button",
+   "pos": [
+    -5.6297,
+    -19.3103,
+    3.7502
+   ],
+   "rot": [
+    2.35619,
+    0.0,
+    0.0
+   ],
+   "flags": "can change only once, does not operate automatically"
+  },
+  {
+   "kind": "machines",
+   "name": "tunnel_door",
+   "pos": [
+    -0.9589,
+    -20.8543,
+    1.447
+   ],
+   "rot": [
+    0.0,
+    -0.0,
+    -0.0
+   ],
+   "flags": "lock name to env. object, lock transform to env. object, lock type to env. object, can change only once"
+  },
+  {
+   "kind": "machines",
+   "name": "tunnel_door",
+   "pos": [
+    2.4627,
+    -17.9917,
+    1.447
+   ],
+   "rot": [
+    0.7854,
+    0.0,
+    -0.0
+   ],
+   "flags": "lock name to env. object, lock transform to env. object, lock type to env. object, can change only once"
+  },
+  {
+   "kind": "machines",
+   "name": "tunnel_door",
+   "pos": [
+    0.4438,
+    20.8613,
+    1.447
+   ],
+   "rot": [
+    -3.14159,
+    -0.0,
+    0.0
+   ],
+   "flags": "lock name to env. object, lock transform to env. object, lock type to env. object, can change only once"
+  },
+  {
+   "kind": "machines",
+   "name": "tunnel_door",
+   "pos": [
+    -2.9849,
+    17.9987,
+    1.447
+   ],
+   "rot": [
+    -2.35619,
+    -0.0,
+    0.0
+   ],
+   "flags": "lock name to env. object, lock transform to env. object, lock type to env. object, can change only once"
+  },
+  {
+   "kind": "machines",
+   "name": "door_sign",
+   "pos": [
+    -9.7395,
+    -18.9119,
+    5.6783
+   ],
+   "rot": [
+    3.14159,
+    0.0,
+    0.0
+   ],
+   "flags": "can change only once, does not operate automatically"
+  },
+  {
+   "kind": "machines",
+   "name": "door_sign",
+   "pos": [
+    -21.3746,
+    -19.8611,
+    5.9354
+   ],
+   "rot": [
+    3.14159,
+    0.0,
+    0.0
+   ],
+   "flags": "can change only once, does not operate automatically"
+  },
+  {
+   "kind": "machines",
+   "name": "door_sign",
+   "pos": [
+    -6.0757,
+    -15.53,
+    4.6695
+   ],
+   "rot": [
+    -2.35619,
+    0.0,
+    0.0
+   ],
+   "flags": "can change only once, does not operate automatically"
+  },
+  {
+   "kind": "machines",
+   "name": "door_sign",
+   "pos": [
+    -12.4418,
+    -23.1485,
+    5.9788
+   ],
+   "rot": [
+    0.7854,
+    0.0,
+    0.0
+   ],
+   "flags": "can change only once, does not operate automatically"
+  },
+  {
+   "kind": "machines",
+   "name": "door_sign",
+   "pos": [
+    9.2442,
+    18.9129,
+    5.6786
+   ],
+   "rot": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "flags": "can change only once, does not operate automatically"
+  },
+  {
+   "kind": "machines",
+   "name": "door_sign",
+   "pos": [
+    5.5647,
+    15.5328,
+    4.6789
+   ],
+   "rot": [
+    0.7854,
+    0.0,
+    0.0
+   ],
+   "flags": "can change only once, does not operate automatically"
+  },
+  {
+   "kind": "machines",
+   "name": "door_sign",
+   "pos": [
+    20.8954,
+    19.8623,
+    5.935
+   ],
+   "rot": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "flags": "can change only once, does not operate automatically"
+  },
+  {
+   "kind": "machines",
+   "name": "door_sign",
+   "pos": [
+    11.9344,
+    23.1572,
+    5.9784
+   ],
+   "rot": [
+    -2.35619,
+    0.0,
+    0.0
+   ],
+   "flags": "can change only once, does not operate automatically"
+  },
+  {
+   "kind": "machines",
+   "name": "door_sign",
+   "pos": [
+    4.2626,
+    -16.2608,
+    3.2489
+   ],
+   "rot": [
+    2.35619,
+    -0.0,
+    -0.0
+   ],
+   "flags": "can change only once, does not operate automatically"
+  },
+  {
+   "kind": "machines",
+   "name": "door_sign",
+   "pos": [
+    -4.7642,
+    16.2595,
+    3.2513
+   ],
+   "rot": [
+    -0.7854,
+    -0.0,
+    -0.0
+   ],
+   "flags": "can change only once, does not operate automatically"
+  }
+ ]
 }

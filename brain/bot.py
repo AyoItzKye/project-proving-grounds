@@ -215,6 +215,7 @@ ODD_FIGHT_SEEN, ODD_FIGHT_R = True, 18.0   # an Oddball hunter on their carrier 
 ODD_HUNT_URGENT, ODD_HUNT_ADD = True, 1.0     # an Oddball hunter on their carrier: fights off him at arm's length only
 ODD_ESCORT_URGENT = True            # every Oddball carrier's escort on the person-escort leash (a bot carrier's too)
 ODD_BALL_FIRST, ODD_LOOSE_R = True, 12.0    # the loose ball near us first (Bot.ball_first), u
+RUN_GRAB, RUN_GRAB_R = True, 12.0   # CTF: a runner this near their flag at home takes it first (Bot.flag_first), u
 FF_KITE = True                      # Firefight: kite a melee bruiser facing us, flank one that is not (Bot.ff_kite)
 FF_BRUISERS = ("hunter", "chieftain", "brute_major", "elite_specops")
 FF_KITE_R, FF_FLANK_R, FF_BEHIND, FF_KITE_FLIP = 9.0, 14.0, 4.0, 2.0   # u, u, u, s
@@ -989,6 +990,25 @@ class Bot:
             return                              # (a man at arm's length: him first)
         scores[("objective", ball)] = max(scores.values()) + 0.5
 
+    def flag_first(s, me, snap, scores, seen):
+        """CTF: a runner within RUN_GRAB_R of their flag on its stand takes it before anything else (RUN_GRAB), unless a
+        man of theirs is at arm's length (3 u), and as grab_ok allows it (alone and guarded the room is cleared first: a
+        carrier cannot shoot back; test_ctf_grab 3b): the stage's wait (stage) still comes first. GRAB_R's 8 u widened to
+        RUN_GRAB_R for the flag on its stand. Live High Ground Multi Flag, Nov 12: 553 s, 0-0, one pickup; within 15 u of
+        their flag at home the runners chose it in 3% of their decisions (fights 66%, boarding the base's turret 18%; the
+        flag's median score 1.86, a fight's 3.2), both teams' runners brawling at one 5 u spot by red's base."""
+        if (not RUN_GRAB or snap.mode != "ctf" or me.has_flag or me.vehicle not in (None, -1) or not scores
+                or s.order.role != "runner" or getattr(s, "staged_at", None) == snap.time):
+            return
+        f = (snap.flags or {}).get(1 - me.team)
+        if f is None or f.state != "home" or not s.grab_ok(me, snap, f.pos, seen, r=RUN_GRAB_R):
+            return
+        if any(k in s.per.beliefs and dist(me.pos, s.per.beliefs[k].pos) < 3.0 for k in seen):
+            return                              # (a man at arm's length: him first)
+        best = max(scores.values())
+        key = next((k for k in scores if k[0] == "objective"), ("objective", f.pos))
+        scores[key] = max(scores.get(key, 0.0), best + 0.5)
+
     @staticmethod
     def ball_theirs(me, snap):
         """Oddball: the ball's carrier when he is alive and not on our team, else None."""
@@ -1028,6 +1048,7 @@ class Bot:
         for key in [key for key in scores if key[0] == "objective"]:
             scores[key] *= 0.3
         scores[("hold", spot)] = 1.3
+        s.staged_at = snap.time       # (flag_first leaves this tick to the wait)
         return True
 
     def keep_role(s, scores, me, snap, seen):
@@ -2611,6 +2632,7 @@ class Bot:
                     del scores[k]
         s.objective_first(me, snap, scores)
         s.ball_first(me, snap, scores, seen)
+        s.flag_first(me, snap, scores, seen)
         s.board_check(me, snap, scores)
         s.stay_on(scores, me, snap, seen)
         bans = getattr(s, "goal_ban", {})
@@ -2734,11 +2756,11 @@ class Bot:
         scores[("board", best[1]["handle"])] = max(max(scores.values(), default=0.0) + 0.3, 2.6)
         s.note(f"board: the {best[1]['kind']}")
 
-    def grab_ok(s, me, snap, flag, seen):
+    def grab_ok(s, me, snap, flag, seen, r=None):
         """The grab first at their flag (GRAB_R): inside GRAB_R, with no man of theirs seen within 12 u of it or with a
         teammate within GRAB_MATE_R of us (alone and guarded the room is cleared first: a carrier cannot shoot back, and
         the sim's lone pulls on The Pit died 0.9-2.3 s after the grab with nobody of ours within 21 u)."""
-        if dist(me.pos, flag) >= GRAB_R:
+        if dist(me.pos, flag) >= (GRAB_R if r is None else r):
             return False
         if not GRAB_NEEDS_COMPANY:
             return True

@@ -1558,5 +1558,37 @@
    ]
   }
  ],
- "scenery": []
+ "scenery": [],
+ "placed": [
+  {
+   "kind": "machines",
+   "name": "fan_reallyslow",
+   "pos": [
+    6.5723,
+    -11.0715,
+    5.8678
+   ],
+   "rot": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "flags": ""
+  },
+  {
+   "kind": "machines",
+   "name": "fan_slow",
+   "pos": [
+    -6.4057,
+    -11.0681,
+    5.8697
+   ],
+   "rot": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "flags": ""
+  }
+ ]
 }

@@ -2783,5 +2783,127 @@
    ]
   }
  ],
- "scenery": []
+ "scenery": [],
+ "placed": [
+  {
+   "kind": "machines",
+   "name": "avalanche_man_cannon_01",
+   "pos": [
+    -26.9979,
+    -4.2986,
+    -4.3654
+   ],
+   "rot": [
+    -0.0,
+    -0.0,
+    -0.54214
+   ],
+   "flags": ""
+  },
+  {
+   "kind": "machines",
+   "name": "avalanche_man_cannon_01",
+   "pos": [
+    27.0394,
+    -4.2873,
+    -4.3523
+   ],
+   "rot": [
+    -0.0,
+    -0.0,
+    -0.54214
+   ],
+   "flags": ""
+  },
+  {
+   "kind": "machines",
+   "name": "avalanche_man_cannon_01",
+   "pos": [
+    48.1029,
+    33.6397,
+    -0.2415
+   ],
+   "rot": [
+    -1.58311,
+    -0.54211,
+    0.00636
+   ],
+   "flags": ""
+  },
+  {
+   "kind": "machines",
+   "name": "avalanche_man_cannon_01",
+   "pos": [
+    -46.4108,
+    33.6766,
+    -0.1452
+   ],
+   "rot": [
+    1.57737,
+    0.54213,
+    0.00339
+   ],
+   "flags": ""
+  },
+  {
+   "kind": "machines",
+   "name": "avalanche_man_cannon_01",
+   "pos": [
+    -0.0535,
+    0.648,
+    -2.752
+   ],
+   "rot": [
+    3.13801,
+    0.00216,
+    0.54214
+   ],
+   "flags": ""
+  },
+  {
+   "kind": "machines",
+   "name": "avalanche_man_cannon_01",
+   "pos": [
+    0.0698,
+    21.8006,
+    -5.1278
+   ],
+   "rot": [
+    -0.00686,
+    -0.0327,
+    -0.53151
+   ],
+   "flags": ""
+  },
+  {
+   "kind": "machines",
+   "name": "avalanche_man_cannon_02",
+   "pos": [
+    -26.9733,
+    -28.8513,
+    -0.8901
+   ],
+   "rot": [
+    -0.00127,
+    -0.02027,
+    -0.04798
+   ],
+   "flags": ""
+  },
+  {
+   "kind": "machines",
+   "name": "avalanche_man_cannon_02",
+   "pos": [
+    27.0175,
+    -28.8898,
+    -0.8839
+   ],
+   "rot": [
+    0.00185,
+    0.00266,
+    -0.00362
+   ],
+   "flags": ""
+  }
+ ]
 }

@@ -512,7 +512,7 @@ def _build(m, window):
     floor = list(floor) + [tuple(c) for c in paint.get("walk", [])]
     from .placed import static_boxes             # placed crates, walls, rocks the level mesh lacks (brain/placed.py); a
     # map variant's are its own pieces (it may have moved or removed the scenario's), kept in its variant.json
-    game = next((g for g in ("reach", "h4", "h2a") if m["name"].startswith(g + "_")), None)
+    game = next((g for g in ("reach", "h4", "h2a", "h3") if m["name"].startswith(g + "_")), None)   # (h3: its shut doors)
     blocks = static_boxes(m["objects"], game) if game and "variant" not in m else []
     if "variant" in m and m.get("live_blocks") is None:
         from .forge import nav_pieces, piece_key

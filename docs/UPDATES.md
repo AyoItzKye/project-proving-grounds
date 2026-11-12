@@ -60,6 +60,7 @@ Click a version to see what it added and fixed.
 - **Flight heights from the map**: aircraft pick their attack and travel heights from the ground under them; painting airspace is optional.
 
 ### - Fixed
+- <!-- build: 20261112-0833 --> **High Ground CTF**: the base's gate counts as a wall while it is shut (bots kept walking into it and both teams piled up in front of it), and a flag runner close to the enemy flag with a teammate beside it goes for the flag instead of fighting on. The same goes for every Halo 3 door that only a switch opens, such as Orbital's large doors.
 - <!-- build: 20261112-0424 --> **A better gun close by is taken again**: away from their objective, bots pick up a better gun lying a few steps off again (in the last version they walked past it); next to the objective they still stay on the job.
 - <!-- build: 20261112-0424 --> **CTF attacks that never got going**: when two attack waves in a row never gather (their meeting spot keeps getting fought over, as on High Ground), the attackers stop waiting for waves for a minute and go for the flag on their own. On High Ground they now reach the flag and capture it.
 - <!-- build: 20261112-0058 --> **Objective first**: bots on an objective job (carrying, guarding, escorting, hunting the carrier, taking a zone) no longer walk off for a gun next to the objective. They take a gun only when out of ammo, when it lies on their way, or when it is a power weapon close by.

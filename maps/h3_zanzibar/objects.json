@@ -3489,5 +3489,52 @@
    ]
   }
  ],
- "scenery": []
+ "scenery": [],
+ "placed": [
+  {
+   "kind": "machines",
+   "name": "big_wheel",
+   "pos": [
+    0.0,
+    -4.07,
+    8.1
+   ],
+   "rot": [
+    0.0,
+    -0.0,
+    -0.0
+   ],
+   "flags": ""
+  },
+  {
+   "kind": "machines",
+   "name": "zan_barricade",
+   "pos": [
+    15.4243,
+    -27.1529,
+    2.1286
+   ],
+   "rot": [
+    3.14159,
+    -0.0,
+    -0.0
+   ],
+   "flags": ""
+  },
+  {
+   "kind": "machines",
+   "name": "house_gate",
+   "pos": [
+    7.0973,
+    -24.665,
+    2.1057
+   ],
+   "rot": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "flags": ""
+  }
+ ]
 }

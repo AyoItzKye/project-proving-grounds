@@ -2434,5 +2434,37 @@
    ]
   }
  ],
- "scenery": []
+ "scenery": [],
+ "placed": [
+  {
+   "kind": "machines",
+   "name": "deadlock_gate_v3",
+   "pos": [
+    -6.1533,
+    4.2729,
+    11.5875
+   ],
+   "rot": [
+    0.578,
+    -0.0,
+    -0.0
+   ],
+   "flags": "can change only once, does not operate automatically"
+  },
+  {
+   "kind": "machines",
+   "name": "switch_lever",
+   "pos": [
+    -8.544,
+    8.7446,
+    13.2703
+   ],
+   "rot": [
+    -90.04,
+    -0.0,
+    -0.0
+   ],
+   "flags": "can change only once, does not operate automatically"
+  }
+ ]
 }

@@ -47,9 +47,13 @@ def static_boxes(objs, game="reach"):
         # Adrift's Extraction crates, CTF stands and hill beacons, 0 on its own crates; live)
         if it.get("label") and ("hide unless megalo required" in flags or (flags.isdigit() and int(flags) & 4)):
             continue
-        if game != "reach" and it.get("kind") in ("machines", "controls"):
+        # a Halo 3 door or gate that opens only by a switch and starts shut (tools/h3_machines.py flags): a wall. High
+        # Ground's base gate, live Nov 12: open floor to the nav, red's runners pressed into it 14 minutes
+        shut = (game == "h3" and it.get("kind") == "machines" and "does not operate automatically" in flags
+                and "initially open" not in flags and any(w in name.lower() for w in ("gate", "door")))
+        if game != "reach" and it.get("kind") in ("machines", "controls") and not shut:
             continue                                  # (Halo 4's cranes, robot arms and lifts move)
-        if any(s in name.lower() for s in SKIP_NAMES):
+        if any(s in name.lower() for s in SKIP_NAMES) and not shut:
             continue
         s = shapes.get(name)
         if not s or any(m in s.get("material", "") for m in SKIP_MATERIALS):

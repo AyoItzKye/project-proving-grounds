@@ -2092,5 +2092,22 @@
    ]
   }
  ],
- "scenery": []
+ "scenery": [],
+ "placed": [
+  {
+   "kind": "machines",
+   "name": "flood_door_fast",
+   "pos": [
+    -0.0171,
+    9.8011,
+    -9.8352
+   ],
+   "rot": [
+    -0.00398,
+    -0.02041,
+    0.33321
+   ],
+   "flags": "one-sided"
+  }
+ ]
 }

@@ -30,6 +30,7 @@ MELEE_REACH = {"sword": 2.25, "gravity_hammer": 1.35}   # the lunge weapons' rea
 BODY_DMG.update(sword=2.0, gravity_hammer=2.0)        # (one lunge kills)
 HIT_SIZE = {"rockets": 3.0, "fuelrod": 2.0}   # splash: a near miss still hits
 AMMO = {"rockets": 4, "sniper": 8, "fuelrod": 5}
+SIM_GUNFIRE, SIM_MAG = True, 60   # players' magazines go down a round a shot, so gunfire is heard (Sim.gun_fired)
 SHIELD_DELAY, SHIELD_REFILL = 5.0, 4.0   # CE: 5 s delay, about 4 s to refill (docs/research/05)
 # known spots on Blood Gulch and the callout they must get (from the scenario's real objects)
 ZONE_SPOTS = [   # (docs/research/06 sections 3 and 8.1)
@@ -85,6 +86,7 @@ class Sim:
                 prof = make_profile(by_team[team][i % len(by_team[team])], pers[(i + team) % len(pers)], s.rng)
                 p = PlayerState(pid, team, f"{'RB'[team]}{i}-{prof.tier}-{prof.personality}", s.spawn_point(team))
                 p.yaw = angles_to(p.pos, s.m["flags"][1 - team])[0]
+                s.gun_fired(p, shot=False)
                 s.players.append(p)
                 s.bots[pid] = Bot(pid, team, prof, s.m, random.Random(seed * 100 + pid))
                 s.bots[pid].feet_off = 0.0       # (bodies here stand on the floor; H2A / Halo 4 report 0.38 over it: Bot.feet)
@@ -362,8 +364,21 @@ class Sim:
                 best, best_err = e, err
         return best
 
+    def gun_fired(s, p, shot=True):
+        """The gun in hand and its magazine, as a live game shows every player's (SIM_GUNFIRE): a shot takes a round, so
+        the others' Perception.fired hears it (Bot aware: Legendary 1.0, Normal 0.35, Easy 0). Before, the sim's players
+        carried no magazine and nobody ever heard a shot: one of Legendary's edges was gone from every sim. The
+        rounds left stay unknown (-1): no reload, never dry, as before."""
+        if not SIM_GUNFIRE:
+            return
+        if p.weapons != [p.weapon]:
+            p.weapons, p.mag, p.ammo = [p.weapon], [SIM_MAG], [-1]
+        if shot:
+            p.mag[0] = p.mag[0] - 1 if p.mag[0] > 1 else SIM_MAG
+
     def shoot(s, p):
         s.stats[p.id]["shots"] += 1
+        s.gun_fired(p)
         w = p.weapon                          # the shot uses the weapon in hand, even the last round
         if p.weapon in AMMO:
             s.ammo[p.id] -= 1

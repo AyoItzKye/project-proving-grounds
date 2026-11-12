@@ -2353,5 +2353,397 @@
    ]
   }
  ],
- "scenery": []
+ "scenery": [],
+ "placed": [
+  {
+   "kind": "machines",
+   "name": "search_light_1",
+   "pos": [
+    25.1272,
+    127.335,
+    8.9849
+   ],
+   "rot": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "flags": ""
+  },
+  {
+   "kind": "machines",
+   "name": "krane_01",
+   "pos": [
+    39.8346,
+    100.796,
+    5.3921
+   ],
+   "rot": [
+    0.0,
+    0.0,
+    -0.0
+   ],
+   "flags": ""
+  },
+  {
+   "kind": "machines",
+   "name": "sbr_envelope_04_anim_01",
+   "pos": [
+    33.441,
+    126.971,
+    7.8299
+   ],
+   "rot": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "flags": ""
+  },
+  {
+   "kind": "machines",
+   "name": "sbr_envelope_04_anim_02",
+   "pos": [
+    18.1098,
+    126.305,
+    7.6492
+   ],
+   "rot": [
+    0.0,
+    -0.0,
+    0.0
+   ],
+   "flags": ""
+  },
+  {
+   "kind": "machines",
+   "name": "sbr_envelope_06_anim_01",
+   "pos": [
+    14.4542,
+    91.765,
+    3.3005
+   ],
+   "rot": [
+    0.0,
+    -0.0,
+    0.0
+   ],
+   "flags": ""
+  },
+  {
+   "kind": "machines",
+   "name": "sbr_envelope_06_anim_02",
+   "pos": [
+    22.3176,
+    94.9115,
+    3.0377
+   ],
+   "rot": [
+    0.0,
+    -0.0,
+    0.0
+   ],
+   "flags": ""
+  },
+  {
+   "kind": "machines",
+   "name": "sbr_panel_fabric_01_anim_01",
+   "pos": [
+    14.9627,
+    108.587,
+    3.1392
+   ],
+   "rot": [
+    0.0,
+    -0.0,
+    0.0
+   ],
+   "flags": ""
+  },
+  {
+   "kind": "machines",
+   "name": "sbr_panel_fabric_01_anim_02",
+   "pos": [
+    24.9334,
+    105.657,
+    3.306
+   ],
+   "rot": [
+    0.0,
+    -0.0,
+    0.0
+   ],
+   "flags": ""
+  },
+  {
+   "kind": "machines",
+   "name": "sbr_panel_fabric_01_anim_03",
+   "pos": [
+    36.4308,
+    108.759,
+    2.9205
+   ],
+   "rot": [
+    0.0,
+    -0.0,
+    0.0
+   ],
+   "flags": ""
+  },
+  {
+   "kind": "machines",
+   "name": "sbr_panel_fabric_b_anim_01",
+   "pos": [
+    26.8557,
+    95.5584,
+    3.104
+   ],
+   "rot": [
+    0.0,
+    -0.0,
+    0.0
+   ],
+   "flags": ""
+  },
+  {
+   "kind": "machines",
+   "name": "sbr_panel_fabric_b_anim_02",
+   "pos": [
+    36.7264,
+    92.8644,
+    2.9157
+   ],
+   "rot": [
+    0.0,
+    -0.0,
+    0.0
+   ],
+   "flags": ""
+  },
+  {
+   "kind": "machines",
+   "name": "sbr_lift_cabin_01",
+   "pos": [
+    25.8794,
+    112.871,
+    -5.3913
+   ],
+   "rot": [
+    3.14159,
+    0.0,
+    0.0
+   ],
+   "flags": ""
+  },
+  {
+   "kind": "machines",
+   "name": "sbr_lift_cabin_01",
+   "pos": [
+    24.9224,
+    112.879,
+    -10.9426
+   ],
+   "rot": [
+    3.14159,
+    0.0,
+    0.0
+   ],
+   "flags": ""
+  },
+  {
+   "kind": "machines",
+   "name": "sbr_lift_cabin_01",
+   "pos": [
+    24.0053,
+    112.917,
+    -7.4716
+   ],
+   "rot": [
+    3.14159,
+    0.0,
+    0.0
+   ],
+   "flags": ""
+  },
+  {
+   "kind": "machines",
+   "name": "sbr_lift_cabin_01",
+   "pos": [
+    23.947,
+    88.7109,
+    -5.9458
+   ],
+   "rot": [
+    0.0,
+    -0.00024,
+    -0.0
+   ],
+   "flags": ""
+  },
+  {
+   "kind": "machines",
+   "name": "sbr_lift_cabin_01",
+   "pos": [
+    24.9075,
+    88.817,
+    -11.6598
+   ],
+   "rot": [
+    -0.0,
+    -0.0,
+    -0.0
+   ],
+   "flags": ""
+  },
+  {
+   "kind": "machines",
+   "name": "sbr_lift_cabin_01",
+   "pos": [
+    25.8541,
+    88.7332,
+    -7.3765
+   ],
+   "rot": [
+    -0.0,
+    -0.0,
+    -0.0
+   ],
+   "flags": ""
+  },
+  {
+   "kind": "machines",
+   "name": "sbr_lift_cabin_01",
+   "pos": [
+    60.0842,
+    4.6914,
+    -6.9917
+   ],
+   "rot": [
+    -1.5708,
+    -0.0,
+    -0.0
+   ],
+   "flags": ""
+  },
+  {
+   "kind": "machines",
+   "name": "sbr_lift_cabin_01",
+   "pos": [
+    60.6197,
+    1.3469,
+    -15.5019
+   ],
+   "rot": [
+    -1.5708,
+    -0.0,
+    -0.0
+   ],
+   "flags": ""
+  },
+  {
+   "kind": "machines",
+   "name": "sbr_lift_cabin_01",
+   "pos": [
+    60.0759,
+    -2.3906,
+    -11.907
+   ],
+   "rot": [
+    -1.5708,
+    -0.0,
+    -0.0
+   ],
+   "flags": ""
+  },
+  {
+   "kind": "machines",
+   "name": "sbr_lift_cabin_01",
+   "pos": [
+    -27.9505,
+    -9.6979,
+    20.8548
+   ],
+   "rot": [
+    1.5708,
+    -0.0,
+    -0.0
+   ],
+   "flags": ""
+  },
+  {
+   "kind": "machines",
+   "name": "sbr_lift_cabin_01",
+   "pos": [
+    -27.9542,
+    -2.9112,
+    20.967
+   ],
+   "rot": [
+    1.5708,
+    -0.0,
+    -0.0
+   ],
+   "flags": ""
+  },
+  {
+   "kind": "machines",
+   "name": "sbr_lift_cabin_01",
+   "pos": [
+    -27.9557,
+    -6.3172,
+    6.3116
+   ],
+   "rot": [
+    1.60787,
+    -0.0,
+    -0.0
+   ],
+   "flags": ""
+  },
+  {
+   "kind": "machines",
+   "name": "sbr_lift_cabin_01",
+   "pos": [
+    -9.2545,
+    163.088,
+    4.9891
+   ],
+   "rot": [
+    1.5708,
+    0.0,
+    0.0
+   ],
+   "flags": ""
+  },
+  {
+   "kind": "machines",
+   "name": "sbr_lift_cabin_01",
+   "pos": [
+    -30.721,
+    151.971,
+    5.2222
+   ],
+   "rot": [
+    -0.47124,
+    -0.0,
+    -0.00119
+   ],
+   "flags": ""
+  },
+  {
+   "kind": "machines",
+   "name": "sbr_lift_cabin_01",
+   "pos": [
+    -8.9173,
+    165.869,
+    -7.7483
+   ],
+   "rot": [
+    1.61443,
+    -0.0,
+    -0.0
+   ],
+   "flags": ""
+  }
+ ]
 }

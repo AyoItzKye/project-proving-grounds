@@ -1759,5 +1759,22 @@
    ]
   }
  ],
- "scenery": []
+ "scenery": [],
+ "placed": [
+  {
+   "kind": "machines",
+   "name": "radar_bar",
+   "pos": [
+    -7.4329,
+    -2.3785,
+    -4.71
+   ],
+   "rot": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "flags": ""
+  }
+ ]
 }

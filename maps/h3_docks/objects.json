@@ -2309,5 +2309,97 @@
    ]
   }
  ],
- "scenery": []
+ "scenery": [],
+ "placed": [
+  {
+   "kind": "machines",
+   "name": "bridge_strobe_light",
+   "pos": [
+    -2.1512,
+    33.5998,
+    2.9189
+   ],
+   "rot": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "flags": ""
+  },
+  {
+   "kind": "machines",
+   "name": "bridge_strobe_light",
+   "pos": [
+    -2.1537,
+    33.6792,
+    2.9
+   ],
+   "rot": [
+    180.0,
+    0.0,
+    0.0
+   ],
+   "flags": ""
+  },
+  {
+   "kind": "machines",
+   "name": "bridge00",
+   "pos": [
+    0.45,
+    25.45,
+    6.05
+   ],
+   "rot": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "flags": "can change only once, does not operate automatically"
+  },
+  {
+   "kind": "machines",
+   "name": "bridge_strobe_light",
+   "pos": [
+    1.5011,
+    23.0145,
+    4.0094
+   ],
+   "rot": [
+    -90.0,
+    -0.0,
+    -0.0
+   ],
+   "flags": ""
+  },
+  {
+   "kind": "machines",
+   "name": "bridge_strobe_light",
+   "pos": [
+    6.592,
+    26.0661,
+    3.9914
+   ],
+   "rot": [
+    90.0,
+    -0.0,
+    -0.0
+   ],
+   "flags": ""
+  },
+  {
+   "kind": "machines",
+   "name": "bridge_strobe_light",
+   "pos": [
+    0.5589,
+    20.2324,
+    4.3964
+   ],
+   "rot": [
+    0.0,
+    -0.0,
+    -0.0
+   ],
+   "flags": ""
+  }
+ ]
 }

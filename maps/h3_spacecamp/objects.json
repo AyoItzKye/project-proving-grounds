@@ -2044,5 +2044,127 @@
    ]
   }
  ],
- "scenery": []
+ "scenery": [],
+ "placed": [
+  {
+   "kind": "machines",
+   "name": "spacecamp_gate",
+   "pos": [
+    -2.1695,
+    -11.355,
+    -1.985
+   ],
+   "rot": [
+    -0.0,
+    -0.0,
+    -0.0
+   ],
+   "flags": "lock name to env. object, lock transform to env. object, lock type to env. object"
+  },
+  {
+   "kind": "machines",
+   "name": "spacecamp_gate",
+   "pos": [
+    -1.6886,
+    -14.6049,
+    -0.285
+   ],
+   "rot": [
+    -180.0,
+    -0.0,
+    -0.0
+   ],
+   "flags": "lock name to env. object, lock transform to env. object, lock type to env. object"
+  },
+  {
+   "kind": "machines",
+   "name": "spacecamp_door_large",
+   "pos": [
+    2.3002,
+    9.9,
+    0.7006
+   ],
+   "rot": [
+    -180.0,
+    -0.0,
+    -0.0
+   ],
+   "flags": "lock name to env. object, lock transform to env. object, can change only once, does not operate automatically"
+  },
+  {
+   "kind": "machines",
+   "name": "spacecamp_door_large",
+   "pos": [
+    2.3002,
+    19.6,
+    0.7006
+   ],
+   "rot": [
+    -180.0,
+    -0.0,
+    -0.0
+   ],
+   "flags": "lock name to env. object, lock transform to env. object, lock type to env. object"
+  },
+  {
+   "kind": "machines",
+   "name": "spacecamp_door_large",
+   "pos": [
+    -1.9002,
+    20.8,
+    -0.9994
+   ],
+   "rot": [
+    0.0,
+    -0.0,
+    -0.0
+   ],
+   "flags": "lock name to env. object, lock transform to env. object, lock type to env. object"
+  },
+  {
+   "kind": "machines",
+   "name": "spacecamp_door_large",
+   "pos": [
+    -1.9002,
+    9.9,
+    -0.9994
+   ],
+   "rot": [
+    0.0,
+    -0.0,
+    -0.0
+   ],
+   "flags": "lock name to env. object, lock transform to env. object, can change only once, does not operate automatically"
+  },
+  {
+   "kind": "machines",
+   "name": "spacecamp_door_large",
+   "pos": [
+    -1.9002,
+    -7.0,
+    -0.5
+   ],
+   "rot": [
+    0.0,
+    -0.0,
+    -0.0
+   ],
+   "flags": "lock name to env. object, lock transform to env. object, lock type to env. object"
+  },
+  {
+   "kind": "machines",
+   "name": "spacecamp_door_large",
+   "pos": [
+    2.3002,
+    -7.0,
+    1.2
+   ],
+   "rot": [
+    -180.0,
+    -0.0,
+    -0.0
+   ],
+   "flags": "lock name to env. object, lock transform to env. object, lock type to env. object"
+  }
+ ]
 }

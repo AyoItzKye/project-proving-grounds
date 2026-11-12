@@ -1575,5 +1575,37 @@
    ]
   }
  ],
- "scenery": []
+ "scenery": [],
+ "placed": [
+  {
+   "kind": "machines",
+   "name": "wtf_earth_hologram_01",
+   "pos": [
+    -3.2625,
+    -36.2103,
+    2.9903
+   ],
+   "rot": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "flags": ""
+  },
+  {
+   "kind": "machines",
+   "name": "satellite_antenna",
+   "pos": [
+    -13.8162,
+    -27.6621,
+    5.1564
+   ],
+   "rot": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "flags": ""
+  }
+ ]
 }

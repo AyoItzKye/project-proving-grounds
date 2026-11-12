@@ -2038,5 +2038,52 @@
    ]
   }
  ],
- "scenery": []
+ "scenery": [],
+ "placed": [
+  {
+   "kind": "machines",
+   "name": "fabric_01_moving",
+   "pos": [
+    3.6042,
+    14.2367,
+    3.7246
+   ],
+   "rot": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "flags": ""
+  },
+  {
+   "kind": "machines",
+   "name": "fabric_04_moving",
+   "pos": [
+    14.4689,
+    -4.8121,
+    10.7621
+   ],
+   "rot": [
+    0.0,
+    -0.0,
+    -0.0
+   ],
+   "flags": ""
+  },
+  {
+   "kind": "machines",
+   "name": "fabric_15_moving",
+   "pos": [
+    7.2816,
+    -2.8098,
+    7.7196
+   ],
+   "rot": [
+    0.0,
+    -0.0,
+    -0.0
+   ],
+   "flags": ""
+  }
+ ]
 }
