@@ -271,6 +271,7 @@ panel (bottom right):
   played on are listed under their map. Picking another map while one runs stops it (what it mapped is saved).
 - **Every map**: all of them in turn, each saved when it finishes. Stopped part way, it goes on from where it stopped
   next time (**Start over from the first map** begins again); **Skip to next map** ends a slow map and moves on.
+  Tick **Only maps not scanned yet** first to run just the maps the simulator has never scanned.
 - **Speed**: 1x (real time) to 16x, or **Max** (as fast as this PC runs it). The panel shows the speed actually
   reached: big maps with 16 bots and 8 aircraft run slower than asked on most PCs.
 - **Pause** / **Resume** and **Stop** (it saves what was mapped).

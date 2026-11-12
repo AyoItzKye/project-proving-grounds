@@ -128,6 +128,27 @@ def main():
     stamps = updater.BUILD_MARK.findall(MD)                             # the repository's own BUILD: the newest stamp
     build = open(os.path.join(updater.ROOT, "BUILD"), encoding="utf-8").read().strip()
     assert build == max(stamps), (build, max(stamps))
+
+    # automatic updates (tools/launcher.py try_auto_install): on by default; a newer version found goes in, unless MCC
+    # runs (the next look tries again); off: told only (the player saw the notice and never the update, Nov 11)
+    import launcher
+    os.remove(updater.STATE)
+    updater.save({})
+    assert updater.info()["auto"], "automatic updates are on by default"
+    started = []
+    real = (updater.install, launcher.conflicts.mcc_running, launcher.paths.wine)
+    updater.install = lambda on_start=None: started.append(1) or True
+    launcher.paths.wine = lambda: False
+    try:
+        got = dict(auto=True, available=True, can_install=True)
+        launcher.conflicts.mcc_running = lambda: True
+        assert not launcher.try_auto_install(None, got) and not started, "installed while MCC runs"
+        launcher.conflicts.mcc_running = lambda: False
+        assert launcher.try_auto_install(None, got) and started, "an update found was not installed"
+        started.clear()
+        assert not launcher.try_auto_install(None, dict(got, auto=False)) and not started, "installed with auto off"
+    finally:
+        updater.install, launcher.conflicts.mcc_running, launcher.paths.wine = real
     print("updater OK")
 
 

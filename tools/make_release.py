@@ -90,7 +90,7 @@ RULES = tuple((p, None) for p in NOT_SHIPPED) + (
     ("maps/*/wedges.json", None), ("maps/*/shots.json", None), ("maps/*/paint.json", None), ("maps/*/oob*.json", None),
     ("maps/*/stations.json", None), ("maps/*/variant.json", None), ("maps/*/*.obj", None), ("maps/*/*.xml", None),
     # map pack
-    ("maps/*/walls_learned.json", None),     # (learned in matches, as los_learned; the windows / fences from the kits: pack)
+    ("maps/*/shots_learned.json", None), ("maps/*/walls_learned.json", None),     # (learned in matches, as los_learned; the windows / fences from the kits: pack)
     ("maps/*/heightmap.npz", "pack"), ("maps/*/topdown.png", "pack"), ("maps/*/glass.json", "pack"),
     ("maps/*/wall_kinds.json", "pack"),
     ("maps/_shapes/**", "pack"),

@@ -13,8 +13,8 @@
     --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px; --s7: 48px;
     --fs-xs: 12px; --fs-sm: 14px; --fs-md: 16px; --fs-lg: 20px; --fs-xl: 24px;
     --r-sm: 2px; --r: 4px; --r-lg: 6px;
-    --font: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
-    --font-display: "Bahnschrift", "Segoe UI", system-ui, sans-serif;    /* (DIN, as the sign's stencil; ships with Windows) */
+    --font: "Segoe UI Variable Text", "Segoe UI", "Noto Sans", Cantarell, system-ui, sans-serif;
+    --font-display: "Bahnschrift", "Segoe UI", "Noto Sans", Cantarell, system-ui, sans-serif;    /* (DIN, as the sign's stencil; ships with Windows) */
     --font-mono: "Cascadia Mono", Consolas, ui-monospace, monospace;
     /* the dusk sky: backgrounds and surfaces */
     --bg: #121417; --surface: #1a1d21; --raised: #24282d; --hover: #2d3238; --pressed: #1e2226; --sunken: #0d0f11;
@@ -132,6 +132,13 @@
                 letter-spacing: .12em; text-transform: uppercase; border-radius: var(--r); }
   button#play svg.i { width: 18px; height: 18px; }
   button#play svg.idle { fill: currentColor; stroke: none; }
+  /* the update segment cut off Play's right end: a check when up to date, a download arrow when a patch is out */
+  .play-split { display: inline-flex; align-items: stretch; }
+  .play-split button#play { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+  button#play-upd { min-height: 52px; width: 52px; padding: 0; display: grid; place-items: center;
+                    border-radius: 0 var(--r) var(--r) 0; border-left: 1px solid rgba(0, 0, 0, .28); }
+  button#play-upd svg.i { width: 22px; height: 22px; stroke-width: 2.25; }
+  button#play-upd[data-state="busy"] svg.i { animation: spin .9s linear infinite; }
   label.check { display: flex; gap: var(--s2); align-items: flex-start; margin-top: var(--s4); padding: var(--s3);
                 border-radius: var(--r); background: var(--warn-bg); border: 1px solid var(--warn-line); cursor: pointer; }
   label.check input { width: 16px; height: 16px; margin: 2px 0 0; accent-color: var(--ember); flex: none; }
@@ -237,7 +244,7 @@
   footer button.quiet { min-height: 32px; padding: 0 var(--s2); }
   footer .legal { color: var(--text-3); font-size: var(--fs-xs); }
   .version:not(:empty)::after { content: "  |  "; white-space: pre; }
-  /* updates: the bar when a new version is out (never installed unasked), the check's state and the choice in the footer */
+  /* updates: the bar when a new version is out or going in, the check's state and the choice in the footer */
   .update { position: fixed; right: var(--edge); bottom: 52px; z-index: 5; max-width: min(460px, calc(100% - 2 * var(--edge)));
             display: flex; align-items: center; gap: var(--s2) var(--s3); flex-wrap: wrap; padding: var(--s3) var(--s4);
             border-radius: var(--r-lg); background: var(--warn-bg); border: 1px solid var(--gold); color: var(--heading);
@@ -303,6 +310,8 @@
   <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9.5 7V4.5h5V7M6 7l1 13h10l1-13"/></symbol>
   <symbol id="i-repair" viewBox="0 0 24 24"><path d="M3.5 12a8.5 8.5 0 1 0 2.8-6.3"/><path d="M3.5 4v5h5"/></symbol>
   <symbol id="i-chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 4v11M7 10.5l5 5 5-5"/><path d="M5 19.5h14"/></symbol>
 </svg>
 
 <header class="hero">
@@ -334,8 +343,11 @@
     </ul>
     <div class="play-wrap">
     <div class="play-row">
+      <div class="play-split">
       <button class="primary" id="play"><svg class="i idle" aria-hidden="true"><use href="#i-play"/></svg>
         <svg class="i spin" aria-hidden="true"><use href="#i-spin"/></svg>Play</button>
+      <button class="primary" id="play-upd" data-state="wait" aria-label="Updates" title="Updates"><svg class="i" aria-hidden="true"><use href="#i-wait"/></svg></button>
+      </div>
       <span id="play-state" class="msg" aria-live="polite"></span>
     </div>
     <div class="howto">
@@ -433,7 +445,7 @@
     <button class="quiet" id="docs"><svg class="i sm" aria-hidden="true"><use href="#i-book"/></svg>Read the guide</button>
   </nav>
   <span class="upd"><span id="updstate"></span><button class="quiet" id="updcheck" title="Check GitHub for a new version now">Check</button>
-    <label class="updauto" title="Download and install new versions when the launcher opens (never while MCC runs)"><input type="checkbox" id="updauto"> Auto-update</label></span>
+    <label class="updauto" title="Download and install new versions as soon as they are out (waits while MCC runs)"><input type="checkbox" id="updauto"> Auto-update</label></span>
   <span class="legal" title="Project Proving Grounds is not affiliated with or endorsed by Microsoft."><span class="version" id="version"></span>Not endorsed by Microsoft.</span>
 </footer>
 
@@ -649,7 +661,7 @@ $("uninstall-yes").onclick = async () => {
   if (!r.ok) { setText("uninstall-state", r.message, "bad"); return; }
   setText("uninstall-state", "Closing the mod's windows; the uninstaller opens in a moment ...", "dim");
 };
-// ---- updates (tools/updater.py): told, never forced; automatic only when the player turns it on
+// ---- updates (tools/updater.py): installed automatically (on by default), else told and the Update button
 let upd = null;
 function ago(unix) {
   if (!unix) return "never";
@@ -682,7 +694,39 @@ function showUpdate(u) {
   $("updstate").textContent = (u.available ? `Update available` : u.latest ? "Up to date" : "Updates") +
     ` · checked ${ago(u.checked)}` + (u.error ? `. ${u.error}` : "");
   $("updauto").checked = !!u.auto;
+  playUpd(u, job);
 }
+// the segment on Play: up to date (check: look again), a patch out (download: install it), going in (spinner), failed
+function playUpd(u, job) {
+  const b = $("play-upd"), v = (u.latest || "").replace(/^v/, "");
+  const st = job.state === "downloading" || job.state === "installing" ? "busy" : job.state === "failed" ? "failed"
+    : u.available ? "new" : u.latest ? "ok" : "wait";
+  const icon = { busy: "i-spin", failed: "i-warn", new: "i-down", ok: "i-check", wait: "i-wait" }[st];
+  const tip = {
+    busy: job.state === "downloading" ? `Downloading version ${v}` + (job.total ? ` ... ${Math.round(100 * job.done / job.total)}%` : " ...")
+      : "Installing the update ...",
+    failed: (job.error || "The update failed.") + " Click to try again.",
+    new: u.wine || !u.can_install ? `Version ${v} is out: click to open the releases page` : `Download and install version ${v}`,
+    ok: `Up to date (${u.current}), checked ${ago(u.checked)}. Click to check again.`,
+    wait: "Click to check for updates",
+  }[st];
+  b.dataset.state = st;
+  b.title = tip;
+  b.setAttribute("aria-label", tip);
+  b.disabled = st === "busy";
+  b.querySelector("use").setAttribute("href", "#" + icon);
+}
+$("play-upd").onclick = async () => {
+  const st = $("play-upd").dataset.state;
+  if (st === "new" || st === "failed") {
+    if (upd && (upd.wine || !upd.can_install)) { post("/open", { url: upd.url }); return; }
+    $("updnow").click();
+  } else if (st !== "busy") {
+    $("play-upd").dataset.state = "busy";
+    $("play-upd").querySelector("use").setAttribute("href", "#i-spin");
+    showUpdate(await post("/update/check"));
+  }
+};
 async function loadUpdate() { try { showUpdate(await (await fetch("/update")).json()); } catch (e) {} }
 $("updcheck").onclick = async () => { $("updstate").textContent = "Checking ..."; showUpdate(await post("/update/check")); };
 $("updauto").onchange = async (e) => { showUpdate(await post("/update/auto", { on: e.target.checked })); };
@@ -746,7 +790,7 @@ $("notes").addEventListener("close", () => { if (!$("updnotes").hidden && !$("up
 $("notes-update").onclick = () => { $("notes").close(); $("updnow").click(); };
 $("updnow").onclick = async () => {
   const r = await post("/update/install");
-  if (r.ok === false && r.message) { $("updmsg").textContent = r.message; return; }
+  if (r.ok === false && r.message) { $("updmsg").textContent = r.message; $("updbar").hidden = false; return; }
   loadUpdate();
 };
 loadUpdate();

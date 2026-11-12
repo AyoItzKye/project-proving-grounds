@@ -1,10 +1,11 @@
-"""The launcher's update check: it looks for new versions on GitHub and says so, with when it last looked, and leaves the
-choice to the player (updating automatically only when they turn that on). Updates are never forced.
+"""The launcher's update check: it looks for new versions on GitHub, with when it last looked, and installs them on its
+own (automatic updates, on unless the player turns them off: tools/launcher.py auto_update); off, it says so and the
+Update button installs.
 
 GitHub's latest release of the public repository is read at most every CHECK_EVERY (or when asked); the result and the
 player's choice are kept in user/update.json (kept by updates and Repair). An update is the release's Windows Setup,
 downloaded to user/updates and run silently over this folder (/UPDATE=1: the installer opens the launcher again after).
-Automatic updates are off unless the player turns them on; nothing is ever installed without that or the Update button.
+Nothing is installed while MCC runs; with automatic updates off, nothing without the Update button.
 
 usage: python -I updater.py            prints what it finds     python -I updater.py --selftest
 """
@@ -180,7 +181,7 @@ def info():
     return dict(current=cur, latest=latest, title=st.get("title", ""), url=st.get("url", RELEASES),
                 available=available, same_version=same, build=mine, latest_build=theirs, news=new,
                 checked=st.get("checked", 0), error=st.get("error", ""),
-                auto=bool(st.get("auto", False)), can_install=bool(st.get("setup_url")),
+                auto=bool(st.get("auto", True)), can_install=bool(st.get("setup_url")),
                 job=dict(_job))
 
 

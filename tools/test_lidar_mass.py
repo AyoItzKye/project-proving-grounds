@@ -7,6 +7,8 @@
 5. an empty Forge canvas (no floor) is a "nothing to scan" row, not a failure
 6. its progress is kept (user/lidar_all.json): a run stopped after two maps goes on with the rest next time, a skipped
    map counts as done, "fresh" starts over, a finished run is forgotten; a single map pick is not part of it
+7. "unscanned": only the maps with no scan yet (no lidar_sim.json), the list kept with that run's own record; every map
+   scanned: 404
 
 usage: python -I test_lidar_mass.py      -> "lidar mass OK"
 """
@@ -115,6 +117,34 @@ def main():
     code, _ = ctl2.command({"action": "skip"})
     if code != 409:
         fails.append(f"6. skip with nothing running: {code} (want 409)")
+    # 7. only the maps not scanned yet: the list kept with the run (a map scanned on the way stays in it, done); its own
+    #    record beside the plain run's; once done, the next run looks again
+    real = lidar_sim.scanned
+    have = set(ce[::2])
+    lidar_sim.scanned = lambda m: m in have
+    try:
+        ctl3 = lidar_sim.Control(names)
+        code, ans = ctl3.command({"action": "all", "game": "ce", "unscanned": True})
+        want7 = [m for m in ce if m not in have]
+        if code != 200 or ctl3.queue != want7:
+            fails.append(f"7. unscanned: {code} {ctl3.queue} (want {want7})")
+        ctl3.current = ctl3.next_map()
+        ctl3.finished(want7[0], 1, 0, 1.0, False)
+        ctl3.map_done(want7[0], False)
+        have.add(want7[0])
+        ctl3.current = None
+        if ctl3.resume_view().get("ce+unscanned") != dict(done=1, total=len(want7)) or "ce" in ctl3.resume_view():
+            fails.append(f"7. unscanned run's record: {ctl3.resume_view()}")
+        ctl4 = lidar_sim.Control(names)
+        ctl4.command({"action": "all", "game": "ce", "unscanned": True})
+        if ctl4.queue != want7[1:]:
+            fails.append(f"7. unscanned run again: {ctl4.queue} (want {want7[1:]})")
+        have.update(ce)
+        code, _ = lidar_sim.Control(names).command({"action": "all", "game": "ce", "unscanned": True, "fresh": True})
+        if code != 404:
+            fails.append(f"7. every map scanned: {code} (want 404)")
+    finally:
+        lidar_sim.scanned = real
     if fails:
         sys.exit("FAIL\n" + "\n".join(fails))
     print(f"lidar mass OK ({len(names)} maps and layouts, {len(want)} Reach with its {sum('/variants/' in m for m in want)} "

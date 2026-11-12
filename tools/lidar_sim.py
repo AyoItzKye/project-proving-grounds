@@ -498,6 +498,14 @@ def view_gone(win, last_seen, now):
     return last_seen == 0.0 or (win is None and now - last_seen > VIEW_IDLE_S)
 
 
+UNSCANNED = "+unscanned"          # an Every map run of the maps not scanned yet (Control.command "all")
+
+
+def scanned(name):
+    """The simulator has scanned this map (or layout) before: its maps/<map>/lidar_sim.json is there."""
+    return os.path.exists(os.path.join(ROOT, "maps", name, "lidar_sim.json"))
+
+
 def mass_run(names, game=None):
     """The maps an "every map" run takes in turn: all of them, or one game's, each Forge layout after its map."""
     return [m for m in names if game is None or J.game_of(m.partition("/")[0]) == game]
@@ -571,12 +579,25 @@ class Control:
                 full = mass_run(s.names, game)
                 if not full:
                     return 404, dict(error="no maps with level data for that game")
-                key, saved = game or "all", s.resume_state()
+                # "unscanned": only the maps with no scan of the simulator's yet (no maps/<map>/lidar_sim.json), the list
+                # kept with the run's record (maps scanned on the way stay in it, done)
+                key, saved = (game or "all") + (UNSCANNED if d.get("unscanned") else ""), s.resume_state()
+                if key.endswith(UNSCANNED):
+                    rec = saved.get(key, {})
+                    kept = [m for m in rec.get("maps") or [] if m in full]
+                    if d.get("fresh") or not kept or all(m in rec.get("done", []) for m in kept):
+                        kept = [m for m in full if not scanned(m)]
+                        saved.pop(key, None)
+                    full = kept
+                    if not full:
+                        return 404, dict(error="every map has a scan already")
                 done = [m for m in saved.get(key, {}).get("done", []) if m in full]
                 if d.get("fresh") or len(done) >= len(full):
                     done = []
                     saved.pop(key, None)
-                    s.save_resume(saved)
+                if key.endswith(UNSCANNED):
+                    saved.setdefault(key, {})["maps"] = full
+                s.save_resume(saved)
                 s.queue = [m for m in full if m not in done]
                 s.all_key, s.all_maps = key, full
                 s.stop_now, s.paused = s.current is not None, False
@@ -668,7 +689,8 @@ class Control:
         """Every map runs left unfinished, by "all" or game: {key: {done, total}} (the view's Continue button)."""
         out = {}
         for key, v in s.resume_state().items():
-            full = mass_run(s.names, None if key == "all" else key)
+            base = key[:-len(UNSCANNED)] if key.endswith(UNSCANNED) else key
+            full = v.get("maps") or mass_run(s.names, None if base == "all" else base)
             done = [m for m in v.get("done", []) if m in full]
             if full and 0 < len(done) < len(full):
                 out[key] = dict(done=len(done), total=len(full))

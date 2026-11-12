@@ -146,8 +146,9 @@ def main():
     bot = Bot(1, 0, make_profile("top", "rusher", random.Random(2)), m, random.Random(2))
     t, hp, learned = 0.0, 2.0, []
     while t < 4.0:
-        if any(abs(t - h) < 0.5 / 30 for h in (0.2, 1.6, 3.0)):
-            hp -= 0.2                                  # a hit, a burst 1.4 s apart
+        if any(abs(t - h) < 0.5 / 30 for h in (0.6, 2.0, 3.4)):
+            hp -= 0.2                                  # a hit, a burst 1.4 s apart (the first after Bot.corner_hit's
+                                                       # 0.5 s of both men's trails: no line between them all along)
         me = PlayerState(1, 0, "bot", a, yaw=math.pi, alive=True, shield=max(0.0, hp - 1.0), health=min(1.0, hp))
         foe = PlayerState(2, 1, "human", b, yaw=math.pi, alive=True,
                           weapon="battle_rifle")

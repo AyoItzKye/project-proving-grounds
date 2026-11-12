@@ -9,7 +9,7 @@
           --btn: #16263a; --btn-on: #23507a; --primary: #1d5f96; --primary-line: #3d8ad0;
           --gold: #ffc94d; --violet: #b48cff; --orange: #ff9a3d; --magenta: #ff5bd8; --red: #ff4b4b; --green: #5fe08a; --cyan: #4fd8ff; --sky: #8fd3ff; --lime: #a8f05a; --mint: #2ee6a0; }
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); overflow: hidden;
-               font: 14px/1.45 "Segoe UI", system-ui, sans-serif; }
+               font: 14px/1.45 "Segoe UI", "Noto Sans", Cantarell, system-ui, sans-serif; }
   canvas { display: block; width: 100%; height: 100%; cursor: grab; }
   canvas:active { cursor: grabbing; }
   body.cover canvas { cursor: crosshair; }
@@ -26,7 +26,7 @@
   button.primary { background: var(--primary); border-color: var(--primary-line); font-weight: 600; }
   button.primary:hover { background: #2a77b8; }
   kbd { display: inline-block; min-width: 1.4em; padding: 1px 4px; border: 1px solid #3a5670; border-radius: 3px; background: #0e1824;
-        color: var(--dim); font: 600 11px/1.3 "Segoe UI", system-ui, sans-serif; text-align: center; }
+        color: var(--dim); font: 600 11px/1.3 "Segoe UI", "Noto Sans", Cantarell, system-ui, sans-serif; text-align: center; }
   .pill { display: inline-block; padding: 2px 8px; border-radius: 9px; font-size: 11px; font-weight: 700; letter-spacing: 0.4px;
           white-space: nowrap; flex: none; }
   .live { background: #1e5b34; color: #b9f7cf; } .replay { background: #234a74; color: #cfe5ff; }
@@ -75,8 +75,9 @@
 
   /* right column: layers, simulator */
   #right { position: absolute; z-index: 2; top: 68px; right: 12px; bottom: 12px; width: 268px; display: flex; flex-direction: column;
-           gap: 8px; overflow-y: auto; pointer-events: none; }
+           gap: 8px; overflow-y: auto; pointer-events: none; scrollbar-width: thin; scrollbar-color: #3a5068 transparent; }
   #right > * { pointer-events: auto; flex: none; }
+  #right::-webkit-scrollbar { width: 8px; } #right::-webkit-scrollbar-thumb { background: #3a5068; border-radius: 4px; }
   #layers { padding: 10px 8px 8px; }
   #layers h2 { padding: 0 4px; }
   #layers button { display: flex; align-items: center; gap: 10px; width: 100%; background: none; border-color: transparent; padding: 3px 6px;
@@ -97,6 +98,8 @@
   #sim .acts button { flex: 1; }
   #sim .field { margin-top: 10px; }
   #sim .flabel { display: block; color: var(--dim); font-size: 12px; margin-bottom: 4px; }
+  #sim .check { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 13px; cursor: pointer; }
+  #sim .check input { width: 16px; height: 16px; margin: 0; }
   #sim select { width: 100%; min-height: 28px; padding: 2px 6px; background: var(--btn); color: var(--text);
                 border: 1px solid var(--line); border-radius: 4px; font: inherit; font-size: 13px; cursor: pointer; }
   #sim select:hover { border-color: #5a93c6; }
@@ -280,6 +283,7 @@
     <div class="field">
       <label class="flabel" for="sim-game">Every map runs</label>
       <select id="sim-game"><option value="">All games</option></select>
+      <label class="check" title="Every map runs only the maps the simulator has not scanned yet"><input type="checkbox" id="sim-unscanned"> Only maps not scanned yet</label>
       <button id="sim-fresh" hidden title="Start the Every map run again from its first map (maps already scanned keep their scans)">Start over from the first map</button>
     </div>
     <div class="acts">
@@ -627,19 +631,25 @@ function setCover(on) {
 }
 $("sim-pick").onclick = () => { pickMode = true; showMaps(true); };
 // an Every map run left unfinished (the simulator keeps its progress): Continue it, or Start over
+function allKey() { return ($("sim-game").value || "all") + ($("sim-unscanned").checked ? "+unscanned" : ""); }
 function allLeft() {
-  const g = $("sim-game").value, info = simState && simState.resume && simState.resume[g || "all"];
+  const info = simState && simState.resume && simState.resume[allKey()];
   return info ? info.total - info.done : 0;
 }
+function whichMaps() {
+  const g = $("sim-game").value;
+  return (g ? "every " + gameName(g) + " map" : "every map") + ($("sim-unscanned").checked ? " not scanned yet" : "");
+}
 function allLabel() {
-  const g = $("sim-game").value, which = g ? "every " + gameName(g) + " map" : "every map", left = allLeft();
+  const which = whichMaps(), left = allLeft();
   $("sim-all").textContent = left ? "Continue (" + left + " map" + (left === 1 ? "" : "s") + " left)" : which[0].toUpperCase() + which.slice(1);
   $("sim-all").title = left ? "Go on with the " + which + " run from where it stopped" : "Every map of the game picked below, in turn, each with its Forge layouts";
   $("sim-fresh").hidden = !left;
 }
 $("sim-game").onchange = allLabel;
+$("sim-unscanned").onchange = allLabel;
 async function simAll(fresh) {
-  const g = $("sim-game").value, which = g ? "every " + gameName(g) + " map" : "every map", left = allLeft();
+  const g = $("sim-game").value, which = whichMaps(), left = allLeft();
   const ask = fresh ? "Start " + which + " over from the first map? Maps already scanned keep their scans."
     : left ? "Continue " + which + "? " + left + " map" + (left === 1 ? "" : "s") + " left; each is saved when it finishes."
     : "Simulate " + which + " in turn, each with its Forge layouts? It takes a few minutes a map; each map is saved when it finishes. If you stop, Every map goes on from where it stopped next time.";
@@ -647,6 +657,7 @@ async function simAll(fresh) {
   const body = { action: "all" };
   if (g) body.game = g;
   if (fresh) body.fresh = true;
+  if ($("sim-unscanned").checked) body.unscanned = true;
   const r = await simPost(body);
   if (!r.ok) $("sim-state").textContent = r.data.error || "Could not start.";
 }

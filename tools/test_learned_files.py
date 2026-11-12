@@ -25,7 +25,7 @@ def main():
     fails = []
     d = tempfile.mkdtemp()
     try:
-        bad = os.path.join(d, "walls_learned.json")
+        bad = os.path.join(d, "shots_learned.json")
         open(bad, "w").write('[[1, 2, 3.0, 3.5, 0]][[4, 5')
         got = M.read_learned(bad)
         if got != () or not os.path.exists(bad + ".bad") or os.path.exists(bad):
@@ -49,7 +49,7 @@ def main():
         left = [f for f in os.listdir(os.path.join(d, "fake_map")) if f.endswith(".tmp")]
         if left:
             fails.append(f"save_learned left temp files: {left}")
-        for name in ("los_learned.json", "nav_learned.json", "walls_learned.json"):
+        for name in ("los_learned.json", "nav_learned.json", "shots_learned.json"):
             try:
                 json.load(open(os.path.join(d, "fake_map", name)))
             except Exception as e:
