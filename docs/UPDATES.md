@@ -8,6 +8,10 @@ Click a version to see what it added and fixed.
 <summary><b>0.2.2</b> (November 6 to 11, 2026): Halo 2 vehicles, the Halo 4 Mantis and Banshee bombs, call bots into your vehicle, follow me and roam chat commands, Firefight bots that follow and respawn, Reach Firefight Versus and Generator Defense with Spartan and Elite bots, ODST characters for bots, an Invasion rework, Sandtrap's Elephants, Halo 2 Anniversary Forge maps</summary>
 
 ### + Added
+- <!-- build: 20261111-2146 --> **Auto-update installs updates**: **Auto-update** is on unless you turn it off. The launcher looks for a new version every 30 minutes while it is open and installs it as soon as MCC is closed.
+- <!-- build: 20261111-2146 --> **Update button on Play**: a small segment on the Play button shows a check when you are up to date (click it to check again) or a download arrow when a new version is out (click it to install).
+- <!-- build: 20261111-2146 --> **LiDAR Simulator: Only maps not scanned yet**: tick it before **Every map** to scan just the maps the simulator has never scanned.
+- <!-- build: 20261111-2146 --> **Bots feel walls**: every bot compares how far it should have moved with how far it really moved. Pushing into something that stops it, it slides along it (in a fight, it strafes the other way) instead of running in place, and a dead stop is remembered for its paths.
 - <!-- build: 20261111-1901 --> **Bots act on callouts**: a teammate calling out an enemy near your flag carrier, a defender's post or your stolen flag sends the bots guarding it after him.
 - <!-- build: 20261111-1901 --> **Defenders hold where you defend**: Passive LiDAR also learns where you stand guard near your flag, and the bots defend from those spots on that map.
 - <!-- build: 20261111-1737 --> **LiDAR Simulator: Continue and Skip to next map**: a stopped Every map run goes on from where it stopped (the button reads Continue, with the maps left; **Start over from the first map** begins again), and **Skip to next map** saves the map running now and moves on when one takes too long.
@@ -48,6 +52,10 @@ Click a version to see what it added and fixed.
 - **Flight heights from the map**: aircraft pick their attack and travel heights from the ground under them; painting airspace is optional.
 
 ### - Fixed
+- <!-- build: 20261111-2146 --> **Shooting through walls**: bots fire only when the bullet itself has a line to the part of you they aim at (your head, when only your head shows over cover). They no longer learn see-through spots in solid walls from hits landed as someone went round a corner, and spots learned that way before are dropped.
+- <!-- build: 20261111-2146 --> **Oddball: the carrier is the target**: enemy bots go after the ball carrier in every lobby, fighting his teammates in their way, instead of wandering off to guns and vehicles. Your teammates watching over you stay near you.
+- <!-- build: 20261111-2146 --> **Vehicle gunners keep firing**: a gunner holds the trigger down while you are roughly in its sights, through brief swings off you, and aims a mounted gun twice as steadily as a hand gun.
+- <!-- build: 20261111-2146 --> **Steam Deck and Linux look**: the desktop icon shows the Project Proving Grounds sign, and the pages use the Deck's own font so text stays in its boxes (the Observer's stats table no longer runs past its panel).
 - <!-- build: 20261111-1901 --> **Ghosts**: a bot that drives a Ghost into a group fights from it instead of getting out among them.
 - <!-- build: 20261111-1901 --> **Scores in games of three teams or more**: every team's score is read (only two were), so the bots know who is winning.
 - <!-- build: 20261111-1901 --> **Ball carriers on maps nobody has played Oddball on yet**: they pick a covered spot with ways out, not just the one farthest from the enemy.

@@ -1079,7 +1079,7 @@ def wall_kinds_view(map_name):
         for r in d.get(k, []):
             kind = "fence" if k.startswith("fence") else "window_breaks" if len(r) > 4 and r[4] else "window"
             out[kind].append([r[0] / 4, r[1] / 4, r[2], r[3]])
-    for r in load(os.path.join(ROOT, "maps", map_name.partition("/")[0], "walls_learned.json")) or []:
+    for r in load(os.path.join(ROOT, "maps", map_name.partition("/")[0], "shots_learned.json")) or []:
         out["fence"].append([r[0] / 4, r[1] / 4, r[2], r[3]])   # (rounds went through there: Terrain.learn_shot_through)
     out["source"] = d.get("source", [])
     return out
@@ -1088,12 +1088,12 @@ def wall_kinds_view(map_name):
 def load_glass(map_name, kind="window"):
     """Quarter-unit cells -> [(z low, z high)] of see-through faces: windows (maps/<map>/glass.json, tools/glass_mask.py,
     and wall_kinds.json's windows, tools/lidar_walls.py) or kind "fence" (wall_kinds.json's fences and the walls rounds
-    went through in matches, walls_learned.json). Empty when the map has none or they were not built. (A map variant:
+    went through in matches, shots_learned.json). Empty when the map has none or they were not built. (A map variant:
     its base map's.)"""
     base = os.path.join(ROOT, "maps", map_name.partition("/")[0])
     cells = load(os.path.join(base, "glass.json")).get("cells", []) if kind == "window" else []
     out = {}
-    learned = load(os.path.join(base, "walls_learned.json")) if kind == "fence" else []
+    learned = load(os.path.join(base, "shots_learned.json")) if kind == "fence" else []
     learned = [r for r in learned if not r[4]] if isinstance(learned, list) else []   # (walls rounds went through)
     for r in list(cells) + list(load(os.path.join(base, "wall_kinds.json")).get(kind, [])) + learned:
         out.setdefault((r[0], r[1]), []).append((r[2], r[3]))

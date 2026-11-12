@@ -28,7 +28,7 @@ def main():
         "docs/CODE_GUIDE.md": "release", "docs/BOT_STATUS.pdf": "release", "tools/xref.py": None, "tools/live_bots.py": "release",
         "maps/reach_30_settlement/heightmap.npz": "pack", "maps/reach_30_settlement/topdown.png": "pack",
         "maps/reach_30_settlement/glass.json": "pack", "maps/_shapes/reach_tags_45_aftship.json": "pack",
-        "maps/h3_construct/wall_kinds.json": "pack", "maps/h3_construct/walls_learned.json": None,
+        "maps/h3_construct/wall_kinds.json": "pack", "maps/h3_construct/shots_learned.json": None,
         "maps/reach_30_settlement/lidar.json": None, "maps/reach_30_settlement/nav_learned.json": None,
         "maps/reach_35_island/variants/v3977bae2/lidar.json": None, "maps/bloodgulch/bsp.obj": None,
         "maps/bloodgulch/scenario.xml": None, "logs/drive_h2a_pass.jsonl": None, "native/bin/botcore_s153.dll": None,

@@ -36,6 +36,7 @@ PORT = 8793
 # model, inject.exe) would open a console window of its own; under python.exe with a hidden console they inherit it
 PY = os.path.join(os.path.dirname(sys.executable), "python.exe") \
     if os.path.basename(sys.executable).lower() == "pythonw.exe" else sys.executable
+AUTO_EVERY = 1800        # seconds between update checks while the launcher runs (automatic updates: fresh each time)
 IDLE_STOP = 20.0          # seconds without a ping from the window before the server stops (no task running)
 LOGS = os.path.join(ROOT, "logs", "launcher")
 # task: (script and its arguments, keeps running on its own after it opened its window, its window's port)
@@ -90,15 +91,26 @@ def close_for_update(srv):
     srv.shutdown()
 
 
+def try_auto_install(srv, got):
+    """With automatic updates on (the default), a newer version found is downloaded and installed now, unless MCC runs
+    (the bots are loaded into it: the next look, AUTO_EVERY on, tries again). True when it started."""
+    if got["auto"] and got["available"] and got["can_install"] and not paths.wine() and not conflicts.mcc_running():
+        return updater.install(on_start=lambda: close_for_update(srv))
+    return False
+
+
 def auto_update(srv):
-    """At the launcher's start: the update check (at most every 6 hours); with automatic updates on (the player's
-    choice, off by default) a newer version is downloaded and installed, never while MCC runs."""
-    try:
-        got = updater.check()
-        if got["auto"] and got["available"] and got["can_install"] and not paths.wine() and not conflicts.mcc_running():
-            updater.install(on_start=lambda: close_for_update(srv))
-    except Exception:
-        pass                                         # (offline: the page says when it last checked)
+    """The update check while the launcher runs: at its start and every AUTO_EVERY, fresh from GitHub when automatic
+    updates are on (else at most every 6 hours), and a newer version installed as soon as MCC is not running. (It
+    looked once at the start, with a 6-hour-old answer, and never while MCC ran: the player saw the notice, never the
+    update, Nov 11.)"""
+    while True:
+        try:
+            if try_auto_install(srv, updater.check(force=updater.info()["auto"])):
+                return
+        except Exception:
+            pass                                     # (offline: the page says when it last checked)
+        time.sleep(AUTO_EVERY)
 
 
 def pick_folder(start=None):
@@ -297,10 +309,14 @@ class Handler(BaseHTTPRequestHandler):
             appwindow.open_window(url, (1180, 820), "Guide - Project Proving Grounds")
             self.send({"ok": True, "opened": True})
         elif self.path == "/update/check":
-            self.send(dict(updater.check(force=True), wine=paths.wine()))
+            got = updater.check(force=True)
+            try_auto_install(self.server, got)       # (automatic updates on: found, installed)
+            self.send(dict(updater.info(), wine=paths.wine()))
         elif self.path == "/update/auto":
-            self.send(updater.set_auto(bool(body.get("on"))))
-        elif self.path == "/update/install":         # the player pressed Update (never on its own: automatic is opt-in)
+            got = updater.set_auto(bool(body.get("on")))
+            try_auto_install(self.server, got)       # (turned on with an update waiting: it goes in now)
+            self.send(dict(updater.info(), wine=paths.wine()))
+        elif self.path == "/update/install":         # the player pressed Update
             if conflicts.mcc_running():
                 return self.send({"ok": False, "message": "Close MCC first: the bots are loaded into it."}, code=400)
             if paths.wine() or not updater.info()["can_install"]:

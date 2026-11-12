@@ -14,7 +14,7 @@
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
-    font: var(--f-m)/1.4 "Segoe UI", system-ui, sans-serif; }
+    font: var(--f-m)/1.4 "Segoe UI", "Noto Sans", Cantarell, system-ui, sans-serif; }
   button, select { font: inherit; color: var(--text); background: #132232; border: 1px solid var(--line);
     border-radius: var(--r); padding: var(--s1) var(--s2); cursor: pointer; min-height: 28px; }
   button:hover, select:hover { border-color: var(--sky); }
@@ -89,7 +89,10 @@
   #nogames h2 { margin: 0 0 var(--s2); font-size: var(--f-l); }
   #nogames ol { margin: var(--s2) 0; padding-left: 1.4em; }
   .ytab { width: 100%; border-collapse: collapse; font-size: var(--f-s); font-variant-numeric: tabular-nums; margin: var(--s1) 0 var(--s2); }
-  .ytab th { color: var(--dim); font-weight: 600; text-align: right; padding: 2px 3px; white-space: nowrap; }
+  /* (headers wrap and the table scrolls sideways at worst: with Linux's wider fonts "1st look" and "On body" ran
+     past the panel, Steam Deck Nov 11) */
+  .ytab-wrap { overflow-x: auto; }
+  .ytab th { color: var(--dim); font-weight: 600; text-align: right; padding: 2px 3px; vertical-align: bottom; line-height: 1.2; }
   .ytab td { text-align: right; padding: 2px 3px; border-top: 1px solid #1a2a3a; }
   .ytab th:first-child, .ytab td:first-child { text-align: left; }
   .ytab tr.me td { color: var(--gold); font-weight: 600; }
@@ -426,9 +429,12 @@ function renderYou() {
   const src = v.kind === "collect" ? `Data collector: ${v.rate} samples a second, with your guns and shots.`
     : `From the trace: ${v.rate} samples a second (times good to about 0.25 s). Turn on Data collector in the BOTS panel for your shots, guns and exact times.`;
   let h = `<div class="note">${esc(src)}</div>`;
-  h += `<table class="ytab" aria-label="You beside the bots by difficulty"><thead><tr><th scope="col">Who</th>${cols.map(([, l]) => `<th scope="col">${l}</th>`).join("")}</tr></thead><tbody>`;
-  for (const [name, x, me] of rows) h += `<tr${me ? ' class="me"' : ""}><td>${esc(name)}</td>${cols.map(([k, , f]) => `<td>${f(x[k])}</td>`).join("")}</tr>`;
-  h += `</tbody></table>`;
+  // (two tables of four columns: eight in one ran past the panel with Linux's wider fonts, Steam Deck Nov 11)
+  for (const part of [cols.slice(0, 4), cols.slice(4)]) {
+    h += `<div class="ytab-wrap"><table class="ytab" aria-label="You beside the bots by difficulty"><thead><tr><th scope="col">Who</th>${part.map(([, l]) => `<th scope="col">${l}</th>`).join("")}</tr></thead><tbody>`;
+    for (const [name, x, me] of rows) h += `<tr${me ? ' class="me"' : ""}><td>${esc(name)}</td>${part.map(([k, , f]) => `<td>${f(x[k])}</td>`).join("")}</tr>`;
+    h += `</tbody></table></div>`;
+  }
   h += `<div class="note">Aim: seconds from a man coming into view to your aim on him. Hit: from being shot to your aim on someone. Fights: a minute alive. Speed: units a second. Still: time standing. Strafe: sideways speed in fights. 1st look: who aimed first when two players saw each other. On body: trigger time on a body.</div>`;
   h += `<div class="kv">`
     + `<div>First shot</div><div>${r.fire == null ? "needs your shots (Data collector)" : `${n(r.fire, 2, " s")} after he comes into view`}</div>`

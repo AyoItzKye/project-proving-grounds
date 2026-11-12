@@ -931,7 +931,7 @@ class Terrain:
         that spot lets rounds (and sight) through, a fence the map's data does not name (a grate, a railing). Per
         quarter-unit cell and half-unit height, on the SHOT_VOTES-th hit (separate episodes: Bot.learn_hits), up to
         SHOT_MAX cells; s.walls_learned holds them as fence cells [x4, y4, lo, hi] (maps.save_learned:
-        walls_learned.json, loaded as fences). Returns the cells it learned."""
+        shots_learned.json, loaded as fences). Returns the cells it learned."""
         if s.shot_los(a, b) or not math.isfinite(a.x + a.y + a.z + b.x + b.y + b.z):
             return []
         za, zb = a.z + EYE, b.z + CHEST

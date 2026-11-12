@@ -11,8 +11,8 @@
     --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px; --s7: 48px;
     --fs-xs: 12px; --fs-sm: 14px; --fs-md: 16px; --fs-lg: 20px; --fs-xl: 24px;
     --r: 4px; --r-lg: 6px;
-    --font: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
-    --font-display: "Bahnschrift", "Segoe UI", system-ui, sans-serif;
+    --font: "Segoe UI Variable Text", "Segoe UI", "Noto Sans", Cantarell, system-ui, sans-serif;
+    --font-display: "Bahnschrift", "Segoe UI", "Noto Sans", Cantarell, system-ui, sans-serif;
     --font-mono: "Cascadia Mono", Consolas, ui-monospace, monospace;
     --bg: #121417; --surface: #1a1d21; --raised: #24282d; --hover: #2d3238; --sunken: #0d0f11; --border: #353a40;
     --heading: #f1e8d4; --text: #e9e1ce; --text-2: #cdbf9f; --text-3: #aea38b;
@@ -222,7 +222,7 @@
   <p>Open the <strong>LiDAR Simulator</strong> from the launcher. It runs the bots on a map's level data and shows them mapping it in 3D: 16 bots map the floor and call jumps, and 8 aircraft fly the air above it.</p>
   <ul>
     <li><strong>Pick a map</strong> opens the map list; click a map. A map with Forge layouts the bots have played opens a list of its versions.</li>
-    <li><strong>Every map</strong> maps them all in turn, each saved when it finishes. Stopped part way, it goes on from where it stopped next time; <strong>Skip to next map</strong> moves on from a map that takes too long.</li>
+    <li><strong>Every map</strong> maps them all in turn, each saved when it finishes. Stopped part way, it goes on from where it stopped next time; <strong>Skip to next map</strong> moves on from a map that takes too long. Tick <strong>Only maps not scanned yet</strong> to run just the maps never scanned.</li>
     <li><strong>Speed</strong>: 1x (real time) to 16x, or <strong>Max</strong>. Big maps run slower than asked on most PCs; the panel shows the real speed.</li>
     <li><strong>Pause</strong> and <strong>Stop and save</strong>.</li>
     <li><strong>Click spots to cover</strong> (<kbd>C</kbd>): click where the bots should go first. A pink ring turns green once a bot gets there, or a red cross if no bot finds a way within 2 minutes.</li>

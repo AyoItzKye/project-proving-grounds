@@ -597,8 +597,10 @@ def _build(m, window):
     from .terrain import piece_wall_kinds   # and placed pieces' own (a Forge railing, glass, an energy pane)
     pk = piece_wall_kinds(blocks)
     learned = []                         # and spots rounds went through (Terrain.learn_shot_through): fences
+    # (shots_learned.json since Nov 11: the old walls_learned.json is not read, its spots were learned from hits landing
+    # as a man went round a corner, and the bots saw and shot through those walls: Bot.corner_hit)
     for nm in names:
-        learned += list(read_learned(os.path.join(ROOT, nm, "walls_learned.json")))
+        learned += list(read_learned(os.path.join(ROOT, nm, "shots_learned.json")))
     pk["fence"] += [c[:4] for c in learned if not c[4]]
     pk["fence_floor"] += [c[:4] for c in learned if c[4]]
     if any(pk.values()):
@@ -682,7 +684,7 @@ def save_learned(m):
         return
     import json
     for name, data in (("los_learned.json", T.blocked), ("nav_learned.json", T.stuck),
-                       ("walls_learned.json", [tuple(c) for c in getattr(T, "walls_learned", [])])):
+                       ("shots_learned.json", [tuple(c) for c in getattr(T, "walls_learned", [])])):
         if data:
             # (its own temp file, closed before the move: one shared .tmp, left open, held two brains' writes run
             # together; live Boardwalk Nov 10, walls_learned.json of two saves, the next match died loading the map)
