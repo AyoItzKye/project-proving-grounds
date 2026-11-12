@@ -138,6 +138,19 @@ def crouched(p):
     return bool(p is not None and getattr(p, "crouching", False))
 
 
+def hull_between(snap, me, e):
+    """An Elephant's hull between me's eye and man e: his chest and his head both behind it (vehicles.hull_blocks; the
+    Elephant either of them rides left out)."""
+    vs = getattr(snap, "vehicles", None)
+    if not vs:
+        return False
+    skip = tuple(h for h in (getattr(me, "vehicle", -1), getattr(e, "vehicle", -1)) if h not in (None, -1))
+    low, high = (CROUCH_CHEST, CROUCH_HEAD) if crouched(e) else (CHEST, EYE)
+    a = eye(me)
+    return (vehicles.hull_blocks(vs, a, e.pos + Vec(0, 0, low), skip)
+            and vehicles.hull_blocks(vs, a, e.pos + Vec(0, 0, high), skip))
+
+
 TREMOR = 0.0025                       # rad: the hand's wobble per tick while tracking a man (Aim.step)
 COMMIT_S, COMMIT_WEAK_S = 6.0, 10.0   # a fight lasts until the target dies or is unseen this long (shield down: longer)
 TARGET_HOLD = 1.0                      # s a new target in view is kept before another may take over (guide 09 4.5)
@@ -621,6 +634,8 @@ class Perception:
             shooting = sure[0] == e.id and now - sure[1] < 1.5 and d < 30.0
             in_view = (off < PERIPHERAL_HALF and d < SIGHT_RANGE or d < 2.5) and not getattr(s, "blind", False)
             line = in_view and los(me.pos, e.pos)
+            if line and hull_between(snap, me, e):
+                line = False        # an Elephant's hull between (the level data has no vehicles: vehicles.hull_blocks)
             if line:
                 s.clear_at[e.id] = now
             visible = in_view and (shooting or line)
@@ -5598,6 +5613,11 @@ class Bot:
         e = snap.player(tid) if isinstance(tid, int) else None
         if e is None:
             return True
+        if hull_between(snap, me, e):
+            notes = getattr(s, "notes", None)
+            if notes is not None and (not notes or notes[-1] != "an Elephant between: hold fire"):
+                notes.append("an Elephant between: hold fire")
+            return False
         # sight passes windows and fences, a round only fences and glass that breaks (Terrain.sees / shot_los,
         # maps/<map>/wall_kinds.json): a man seen behind bullet-proof glass gets no shot (s.glassed: since when). Only a
         # window between: where the level data has a solid wall too, Perception's line stands (the man shooting us, a

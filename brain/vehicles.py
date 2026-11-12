@@ -428,6 +428,48 @@ def frame_of(v):
     return to_local, to_world
 
 
+# An Elephant's hull as a solid for sight and rounds (Perception, Bot.line_clear): its box (ELEPHANT hull) up to
+# ELEPHANT_WALL over its origin, the bay open front to back (ELEPHANT bay, from its floor up). The level data has no
+# vehicles (the bay lane open its whole length: the rear ramp and the front entrance), and the one check there was (a round's line within 0.9 u of a vehicle's middle) missed nearly all of an 8 u
+# hull: live Sandtrap 20261112-162033, 47% of the bots' trigger ticks at a man went through an Elephant (the player: "they
+# keep trying to shoot enemies through the elephant despite having no line of sight"; 44-47% for walls 1.6-2.9 u high)
+ELEPHANT_SOLID, ELEPHANT_WALL, ELEPHANT_BAY_FLOOR = True, 2.2, 0.5
+
+
+def hull_blocks(vehicles_now, a, b, skip=()):
+    """True when the line a -> b passes through an Elephant's hull (not its open bay). skip: handles left out (the one
+    a party rides)."""
+    if not ELEPHANT_SOLID:
+        return False
+    h0, h1, hw = ELEPHANT["hull"]
+    bw = ELEPHANT["bay"][2]                  # (the bay lane: open its whole length, the ramp and the front entrance)
+    for v in vehicles_now or ():
+        if kind_of(v.get("kind", "")) != "elephant" or v.get("handle") in skip:
+            continue
+        p = v.get("pos")
+        if p is None or min(dist(a, Vec(*p)), dist(b, Vec(*p))) > 40.0 or (
+                max(dist(a, Vec(*p)), dist(b, Vec(*p))) > dist(a, b) + 2 * (h1 - h0 + 2 * hw)):
+            continue                 # (far off the line: a cheap skip)
+        fr = frame_of(v)
+        if fr is None:
+            continue
+        local = fr[0]
+        fa, la, za = local(a)
+        fb, lb, zb = local(b)
+        span = math.hypot(fb - fa, lb - la)
+        n = max(8, int(span / 0.25))
+        edge = min(0.45, 0.5 / max(span, 1e-6))     # (its own 0.5 u at each end: a man on the deck's edge is not walled in)
+        for k in range(1, n):
+            t = k / n
+            if t < edge or t > 1.0 - edge:
+                continue
+            f, l, z = fa + (fb - fa) * t, la + (lb - la) * t, za + (zb - za) * t
+            if h0 <= f <= h1 and abs(l) <= hw and 0.0 <= z <= ELEPHANT_WALL and not (
+                    abs(l) <= bw and z >= ELEPHANT_BAY_FLOOR):
+                return True
+    return False
+
+
 def upright(v):
     """Standing: its up vector's z over 0.5 (under 60 degrees of tilt), or not known (taken as standing). One on its side
     or roof takes a bot in and puts it out a second later, again and again (Halo 4 Exile: 25 of 25 seat spells of 1.5 s
