@@ -5,6 +5,18 @@ What changed in each version. Download the newest one from the [Releases page](h
 Click a version to see what it added and fixed.
 
 <details open>
+<summary><b>0.2.3</b> (November 12, 2026): Author Provided Scans and LiDAR scan import in the launcher</summary>
+
+### + Added
+- <!-- build: 20261112-1342 --> **Author Provided Scans**: the mod author's own LiDAR scans of 129 maps, one zip per game, on the [LiDAR maps release](https://github.com/AyoItzKye/project-proving-grounds/releases/tag/lidar-maps) and linked from each game's folder on the [LiDAR maps page](../lidar-maps/). Bots start a map with what the author's scans found there: its floors, jumps, lifts, man cannons and teleporters.
+- <!-- build: 20261112-1342 --> **LiDAR scans in the launcher**: open **LiDAR scans**, choose a game and press **Import** to download and add the author's scans of it, or press **Import a shared zip ...** to add a zip another player shared (one map's or a whole game's). An import adds to your own scans and never replaces them; importing the same zip twice adds nothing the second time, and a map your version does not have is skipped and named.
+
+### - Fixed
+- <!-- build: 20261112-1342 --> **Exporting a LiDAR scan**: `tools\lidar_share.py export` stopped with an error in an installed copy of the mod; it writes the zip now.
+
+</details>
+
+<details>
 <summary><b>0.2.2</b> (November 6 to 11, 2026): Halo 2 vehicles, the Halo 4 Mantis and Banshee bombs, call bots into your vehicle, follow me and roam chat commands, Firefight bots that follow and respawn, Reach Firefight Versus and Generator Defense with Spartan and Elite bots, ODST characters for bots, an Invasion rework, Sandtrap's Elephants, Halo 2 Anniversary Forge maps</summary>
 
 ### + Added

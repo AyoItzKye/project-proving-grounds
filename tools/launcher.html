@@ -201,6 +201,10 @@
   .input-row { display: flex; gap: var(--s2); }
   input[type="text"] { flex: 1; min-width: 0; font: inherit; color: var(--text); background: var(--sunken);
                        border: 1px solid var(--control); border-radius: var(--r); min-height: 36px; padding: 0 var(--s3); }
+  select { flex: 1; min-width: 0; font: inherit; color: var(--text); background: var(--sunken);
+    border: 1px solid var(--control); border-radius: var(--r); min-height: 36px; padding: 0 var(--s3); }
+  select:hover { border-color: var(--text-3); }
+  select:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
   input[type="text"]::placeholder { color: var(--text-3); }
   input[type="text"]:hover { border-color: var(--text-3); }
 
@@ -408,6 +412,34 @@
         <span id="mcc-state" class="msg" aria-live="polite"></span>
       </div>
     </details>
+
+    <details class="card" id="scans-card">
+      <summary><h2 id="scans-h">LiDAR scans</h2><svg class="i chev" aria-hidden="true"><use href="#i-chev"/></svg>
+        <span class="path">Add the author's scans or a shared scan</span></summary>
+      <div class="folder-body">
+        <p class="help">Bots play a map better the more of it is scanned. Imported scans add to your own; nothing is replaced.</p>
+        <div>
+          <label class="field-label" for="scan-game">Author Provided Scans</label>
+          <div class="input-row">
+            <select id="scan-game">
+              <option value="halo-ce">Halo: CE</option>
+              <option value="halo-2">Halo 2</option>
+              <option value="halo-2-anniversary">Halo 2 Anniversary</option>
+              <option value="halo-3">Halo 3</option>
+              <option value="halo-3-odst">Halo 3: ODST</option>
+              <option value="halo-reach">Halo: Reach</option>
+              <option value="halo-4">Halo 4</option>
+            </select>
+            <button id="scan-fetch"><svg class="i sm spin" aria-hidden="true"><use href="#i-spin"/></svg>Import</button>
+          </div>
+        </div>
+        <div class="actions">
+          <button id="scan-file"><svg class="i sm" aria-hidden="true"><use href="#i-folder"/></svg>Import a shared zip ...</button>
+          <input id="scan-pick" type="file" accept=".zip" hidden>
+        </div>
+        <span id="scan-state" class="msg" aria-live="polite"></span>
+      </div>
+    </details>
   </div>
 
   <section class="card wide tools-sec" aria-labelledby="tools-h">
@@ -612,6 +644,31 @@ $("mcc-path").setAttribute("aria-describedby", "mcc-state");
 $("mcc-browse").onclick = () => chooseMcc({browse: true});
 $("mcc-auto").onclick = () => chooseMcc({auto: true});
 $("mcc-form").onsubmit = e => { e.preventDefault(); chooseMcc({path: $("mcc-path").value}); };
+
+// LiDAR scans: the author's scans of one game (downloaded) or a zip a player shared; both add to this PC's scans
+async function importScans(button, wait, send) {
+  const both = [$("scan-fetch"), $("scan-file")];
+  both.forEach(b => b.disabled = true); button.setAttribute("aria-busy", "true");
+  setText("scan-state", wait, "dim");
+  try {
+    const r = await send();
+    setText("scan-state", r.message, r.ok ? "ok" : "bad");
+  } catch (e) { setText("scan-state", "No answer from the launcher. Close it and open it again.", "bad"); }
+  both.forEach(b => b.disabled = false); button.setAttribute("aria-busy", "false");
+  refresh();
+}
+$("scan-fetch").onclick = () => importScans($("scan-fetch"), "Downloading and adding the scans ...",
+  () => post("/lidar/fetch", {game: $("scan-game").value}));
+$("scan-file").onclick = () => $("scan-pick").click();
+$("scan-pick").onchange = () => {
+  const f = $("scan-pick").files[0];
+  $("scan-pick").value = "";
+  if (!f) return;
+  importScans($("scan-file"), `Adding ${f.name} ...`, async () => {
+    const r = await fetch("/lidar/import", {method: "POST", headers: {"X-Launcher": "1", "Content-Type": "application/zip"}, body: f});
+    return r.json().catch(() => ({ok: false, message: "no answer"}));
+  });
+};
 
 $("play").onclick = async () => {
   if (state && state.wine) { location.href = "steam://rungameid/976730"; setText("play-state", "Steam starts MCC: choose the anti-cheat off option. The bots load as it starts.", "dim"); return; }

@@ -5,28 +5,38 @@ walk, the jumps you land, the lifts and man cannons you ride, the teleporters yo
 Here players share theirs, so a map you have never played can start with what other people found on it: the jump
 nobody's bot would try, the drop that is safe, the ledge you can crouch-jump onto.
 
-| Game | Shared scans |
-|---|---|
-| Halo: Combat Evolved | [halo-ce](halo-ce/) |
-| Halo 2 | [halo-2](halo-2/) |
-| Halo 2 Anniversary | [halo-2-anniversary](halo-2-anniversary/) |
-| Halo 3 | [halo-3](halo-3/) |
-| Halo 3: ODST | [halo-3-odst](halo-3-odst/) |
-| Halo: Reach | [halo-reach](halo-reach/) |
-| Halo 4 | [halo-4](halo-4/) |
+| Game | Author Provided Scans | Shared scans |
+|---|---|---|
+| Halo: Combat Evolved | [18 maps (zip)](https://github.com/AyoItzKye/project-proving-grounds/releases/download/lidar-maps/lidar-maps-halo-ce.zip) | [halo-ce](halo-ce/) |
+| Halo 2 | [25 maps (zip)](https://github.com/AyoItzKye/project-proving-grounds/releases/download/lidar-maps/lidar-maps-halo-2.zip) | [halo-2](halo-2/) |
+| Halo 2 Anniversary | [7 maps (zip)](https://github.com/AyoItzKye/project-proving-grounds/releases/download/lidar-maps/lidar-maps-halo-2-anniversary.zip) | [halo-2-anniversary](halo-2-anniversary/) |
+| Halo 3 | [22 maps (zip)](https://github.com/AyoItzKye/project-proving-grounds/releases/download/lidar-maps/lidar-maps-halo-3.zip) | [halo-3](halo-3/) |
+| Halo 3: ODST | [8 maps (zip)](https://github.com/AyoItzKye/project-proving-grounds/releases/download/lidar-maps/lidar-maps-halo-3-odst.zip) | [halo-3-odst](halo-3-odst/) |
+| Halo: Reach | [28 maps (zip)](https://github.com/AyoItzKye/project-proving-grounds/releases/download/lidar-maps/lidar-maps-halo-reach.zip) | [halo-reach](halo-reach/) |
+| Halo 4 | [21 maps (zip)](https://github.com/AyoItzKye/project-proving-grounds/releases/download/lidar-maps/lidar-maps-halo-4.zip) | [halo-4](halo-4/) |
 
-## Use a shared scan
+**Author Provided Scans** are the mod author's own scans of every map they have mapped, one zip per game (all of them
+on [the LiDAR maps release](https://github.com/AyoItzKye/project-proving-grounds/releases/tag/lidar-maps)).
 
-1. Download the map's zip from its game's folder above.
-2. In the mod's folder (where you installed it), open a command prompt and run:
+## Use a scan
 
-   ```
-   python\python.exe tools\lidar_share.py import "<the downloaded zip>"
-   ```
+In the launcher, open **LiDAR scans**:
 
-It is added to your own scan of that map, never in place of it: floors add up, and every jump, ride and teleporter
+- **Author Provided Scans**: choose the game and press **Import**. The launcher downloads that game's zip and adds it.
+- **Import a shared zip ...**: choose a zip you downloaded (an author zip from the table above, or a player's scan
+  from a game's folder).
+
+Or from a command prompt in the mod's folder:
+
+```
+python\python.exe tools\lidar_share.py fetch halo-3
+python\python.exe tools\lidar_share.py import "<the downloaded zip>"
+```
+
+A scan is added to your own scan of that map, never in place of it: floors add up, and every jump, ride and teleporter
 that differs from yours is kept, even two jumps from nearly the same spot (people take them at different angles).
 Your scan before the import is kept beside it (`maps\<map>\lidar.json.before-import-<date>`), so you can go back.
+Importing the same zip twice adds nothing the second time.
 
 ## Share your scan
 

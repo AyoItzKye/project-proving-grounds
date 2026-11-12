@@ -19,7 +19,7 @@ Everything about where the mod stands is in four places:
 
 | | |
 |---|---|
-| **[Release](https://github.com/AyoItzKye/project-proving-grounds/releases/latest)** | Version **0.2.2**, last updated **November 12, 2026**. Download it from the Releases page. <!-- release --> |
+| **[Release](https://github.com/AyoItzKye/project-proving-grounds/releases/latest)** | Version **0.2.3**, last updated **November 12, 2026**. Download it from the Releases page. <!-- release --> |
 | **[Updates](docs/UPDATES.md)** | What changed in each version (new, fixed, changed, known problems), newest first. |
 | **[Known bugs](docs/KNOWN_BUGS.md)** | Everything known to be broken, by game, and every bug reported on GitHub with its status. |
 | **[Bot status sheet (PDF)](docs/BOT_STATUS.pdf)** | An honest rating of every game, mode and vehicle, from green (good to go) to red (not working yet). |
@@ -128,9 +128,10 @@ what changes is how fast the bots react and how smart they play.
 ## Map the maps (LiDAR)
 
 The bots play better on a map they have mapped: every floor, height, jump and drop. No scans ship with the mod
-(each PC maps its own), and bots play unmapped maps with the map pack's height data in the meantime. Players share
-their scans on the [LiDAR maps page](lidar-maps/), one folder per game: import one and your bots start with what
-other people found on that map.
+(each PC maps its own), and bots play unmapped maps with the map pack's height data in the meantime. To start ahead,
+open **LiDAR scans** in the launcher: choose a game and press **Import** to add the author's own scans of it (Author
+Provided Scans), or import a zip another player shared. Players share their scans on the
+[LiDAR maps page](lidar-maps/), one folder per game. An import adds to your own scan; it never replaces it.
 
 Passive LiDAR is always on: in every match you play, the floor you walk, the jumps you land, the lifts and man cannons
 you ride and the teleporters you take (and whether they work both ways) are added to the map's scan in the background, with nothing on screen and nothing for you to do. Over time the bots learn the spots they

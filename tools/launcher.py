@@ -215,6 +215,36 @@ def status():
                 running={t: p.poll() is None for t, p in procs.items()}, linux_play=linux_play())
 
 
+LIDAR_ZIP_MAX = 64 << 20      # bytes: a shared LiDAR zip larger than this is refused (a game's whole bundle is ~3 MB)
+
+
+def lidar_fetch(slug):
+    """Import LiDAR scans: one game's author scans (tools/lidar_share.py fetch). {ok, message}."""
+    import lidar_share
+    if slug not in lidar_share.SLUGS.values():
+        return {"ok": False, "message": "Choose a game."}
+    try:
+        return {"ok": True, "message": lidar_share.summary(lidar_share.fetch(slug)) + "."}
+    except (OSError, SystemExit, ValueError) as e:
+        return {"ok": False, "message": f"Could not get them ({e}). Check the internet connection and try again."}
+
+
+def lidar_import(data):
+    """Import LiDAR scans: a zip the player chose (a map's or a game's, from the LiDAR maps page). {ok, message}."""
+    import lidar_share
+    import zipfile
+    if not data:
+        return {"ok": False, "message": "That file is empty or too big."}
+    path = os.path.join(ROOT, "user", "downloads", "lidar-import.zip")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "wb") as f:
+        f.write(data)
+    try:
+        return {"ok": True, "message": lidar_share.summary(lidar_share.import_any(path)) + "."}
+    except (SystemExit, zipfile.BadZipFile, ValueError, KeyError) as e:
+        return {"ok": False, "message": f"Not a LiDAR scan zip ({e})." if str(e) else "Not a LiDAR scan zip."}
+
+
 def start(task, clean=False):
     """Starts a task; (ok, message)."""
     if task not in TASKS:
@@ -288,7 +318,11 @@ class Handler(BaseHTTPRequestHandler):
         if self.headers.get("X-Launcher") != "1":    # only the launcher's own page (a plain form post cannot set it)
             return self.send({"error": "refused"}, code=403)
         n = int(self.headers.get("Content-Length") or 0)
+        if self.path == "/lidar/import":             # a shared LiDAR zip the player chose: its bytes, not JSON
+            return self.send(lidar_import(self.rfile.read(n) if 0 < n <= LIDAR_ZIP_MAX else None))
         body = json.loads(self.rfile.read(n) or b"{}") if n else {}
+        if self.path == "/lidar/fetch":              # the author's scans of one game, from the releases page
+            return self.send(lidar_fetch(str(body.get("game", ""))))
         if self.path == "/ping":
             last_ping[0] = time.time()
             self.send({"ok": True})

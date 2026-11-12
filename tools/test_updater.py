@@ -16,7 +16,10 @@ sys.path.insert(0, HERE)
 import release_notes  # noqa: E402
 import updater  # noqa: E402
 
-MD = open(os.path.join(updater.ROOT, "docs", "UPDATES.md"), encoding="utf-8").read()
+REAL = open(os.path.join(updater.ROOT, "docs", "UPDATES.md"), encoding="utf-8").read()
+# the 0.2.2 checks run on UPDATES.md as it was while 0.2.2 was the newest version (the sections of newer versions cut)
+_v022 = REAL.rindex("<details", 0, REAL.index("<b>0.2.2</b>"))
+MD = REAL[:REAL.index("<details")] + REAL[_v022:]
 STALE = updater.BUILD_MARK.sub("", MD)                                  # (an UPDATES.md from before the stamps)
 NEWEST = max(updater.BUILD_MARK.findall(MD))                         # (s181's newest update)
 NEXT = ("<details open>\n<summary><b>0.2.3</b> (December 1, 2026): a test version</summary>\n\n"
@@ -125,9 +128,21 @@ def main():
     st = json.load(open(updater.STATE, encoding="utf-8"))
     assert time.time() - st["checked"] < 60 and st["latest"] == "v0.2.2-s181"
 
-    stamps = updater.BUILD_MARK.findall(MD)                             # the repository's own BUILD: the newest stamp
+    stamps = updater.BUILD_MARK.findall(REAL)                           # the repository's own BUILD: the newest stamp
     build = open(os.path.join(updater.ROOT, "BUILD"), encoding="utf-8").read().strip()
     assert build == max(stamps), (build, max(stamps))
+
+    # the real UPDATES.md once a version follows 0.2.2: a copy of 0.2.2's last build is offered that version whole, and
+    # nothing of 0.2.2 again; that version's own release text names its download
+    newer = [s["name"] for s in updater.parse_updates(REAL) if s["key"][:3] > (0, 2, 2)]   # (newest first)
+    if newer:
+        ver = newer[0]
+        n = updater.news(REAL, "0.2.2-s181", NEWEST)
+        assert [i["title"].split(" (")[0] for i in n] == newer, [i["title"] for i in n]
+        assert updater.is_newer("0.2.2-s181", NEWEST, "v" + ver, build)
+        assert updater.news(REAL, ver, build) == [] and not updater.is_newer(ver, build, "v" + ver, build)
+        body = release_notes.notes(REAL, ver, build)
+        assert f"ProjectProvingGrounds-Setup-{ver}.exe" in body and f"<!-- build: {build} -->" in body, body[:300]
 
     # automatic updates (tools/launcher.py try_auto_install): on by default; a newer version found goes in, unless MCC
     # runs (the next look tries again); off: told only (the player saw the notice and never the update, Nov 11)
