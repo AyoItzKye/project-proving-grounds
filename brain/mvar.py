@@ -705,6 +705,22 @@ def parse_h3(data):
 H3_FORGE_KINDS = ("4", "5")     # the sandbox scenery and teleporter palettes: what Halo 3's Forge places as pieces
 
 
+def h3_map_id(path):
+    """A Halo 3 map variant's map id from its first bytes only (parse_h3's header, no objects), None if not one: find_h3
+    reads only its map's files (all 377 on this PC parsed whole took 1.3 s at every Halo 3 match start)."""
+    with open(path, "rb") as f:
+        data = f.read(0x1000)
+    ch = chunks(data)
+    if "mvar" not in ch or ch["mvar"][2] != 12:
+        return None
+    b = Bits(data, ch["mvar"][0] + 12)
+    b.raw(8)
+    b.wstr(16)
+    b.cstr(128), b.cstr(16), b.u(5), b.u(1), b.raw(24), b.u(32), b.u(32)
+    b.u(32), b.u(4), b.u(3), b.u(16), b.raw(8), b.u(8), b.u(32), b.u(10), b.u(10), b.u(9)
+    return b.u(32)
+
+
 def find_h3(base, pieces, files=None):
     """The Halo 3 map variant file a match on base runs, from its live pieces [(name, pos, axes)] (brain/forge.py
     live_pieces: the running match's scenery and crates by tag name): the live pieces of the map's Forge palettes
@@ -723,6 +739,8 @@ def find_h3(base, pieces, files=None):
         return None, 0.0
     for path in library("h3") if files is None else files:
         try:
+            if h3_map_id(path) != int(pal[0]):
+                continue                        # (another map's file: not parsed)
             v = read_h3(path)
         except (OSError, ValueError, zlib.error, struct.error, IndexError):
             continue

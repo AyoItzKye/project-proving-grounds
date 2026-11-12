@@ -1160,6 +1160,14 @@ class Bot:
                 return
             strays, away = (lambda q: dist(q, goal_pt) > ESCORT_R), dist(me.pos, goal_pt) > 0.5 * ESCORT_R
             urgent = True
+        elif o.role == "escort" and snap.mode == "firefight" and o.point is not None and s.lead(me, snap) is None:
+            # a person's Firefight escort while he is down (no lead: director ff_lead clears with nobody alive): his
+            # leash on where the director last put us, not free to cross the map. Live ODST h100, Nov 12: with pickups on,
+            # escorts set off for the weapon box 37 u away at every respawn of his and broke off when he was back,
+            # item and hunt flipping every 1.5-2 s, no gun ever reached (8% of their decisions)
+            goal_pt = o.point
+            strays, away = (lambda q: dist(q, goal_pt) > ESCORT_R), dist(me.pos, goal_pt) > 0.5 * ESCORT_R
+            urgent = True
         elif o.role == "escort" and s.lead(me, snap) is not None:
             c = s.lead(me, snap).pos
             strays, away = (lambda q: dist(q, c) > ESCORT_R), dist(me.pos, c) > 0.5 * ESCORT_R

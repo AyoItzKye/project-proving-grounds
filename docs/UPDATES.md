@@ -62,6 +62,7 @@ Click a version to see what it added and fixed.
 - **Flight heights from the map**: aircraft pick their attack and travel heights from the ground under them; painting airspace is optional.
 
 ### - Fixed
+- <!-- build: 20261112-1306 --> **Firefight teammates stay with you**: in ODST and Reach Firefight, the bots following you no longer run off for the sniper or rockets across the map and turn back at every wave; they take guns near you, and hold where you were while you respawn.
 - <!-- build: 20261112-0929 --> **Reach Generator Defense** ([#18](https://github.com/AyoItzKye/project-proving-grounds/issues/18)): the bots read the generators again, take their posts at them and lock them down (the last two updates had them play plain Firefight). The same fix brings back the Forge pieces of Reach map variants and the bots' read of Firefight enemies' ranks.
 - <!-- build: 20261112-0833 --> **High Ground CTF**: the base's gate counts as a wall while it is shut (bots kept walking into it and both teams piled up in front of it), and a flag runner close to the enemy flag with a teammate beside it goes for the flag instead of fighting on. The same goes for every Halo 3 door that only a switch opens, such as Orbital's large doors.
 - <!-- build: 20261112-0424 --> **A better gun close by is taken again**: away from their objective, bots pick up a better gun lying a few steps off again (in the last version they walked past it); next to the objective they still stay on the job.

@@ -70,6 +70,7 @@ DEF_FETCH, DEF_FETCH_R = True, 12.0   # CTF: a defender takes an empty ride near
 TERR_SPLIT = True          # Territories: one holder a zone of ours, two on each to take (Director.terr_split)
 SCREEN_BACK, SCREEN_AHEAD, CUTOFF_AHEAD = 8.0, 12.0, 10.0
 POWER_RUN_R = 40.0          # a power weapon lying this near (on its level) sends one of the team for it (power_runs)
+FF_FETCH_R = 12.0           # ... a person's Firefight escort only for one this near where it was put (bot.ESCORT_R, its leash)
 POWER_PRESS_R = 10.0        # ... this near for an attacker whose objective is pressing (Bot.pressing: Invasion's attackers)
 POWER_DETOUR = 12.0         # ... or this much more than its straight way to the objective (press_fetch_ok)
 POWER_EARLY, POWER_WAIT = 10.0, 8.0   # a power spawn due back within this is fetched; the fetcher waits this past its time
@@ -730,6 +731,11 @@ class Director:
                         or getattr(b, "fetch", None) is not None
                         or any(w in power for w in p.weapons) or p.weapon in power or b.urgent(p, snap)
                         or (timed and b.p.map_iq < 0.6)
+                        # (nor a person's Firefight escort for a gun past its leash: live ODST h100 Nov 12, escorts sent to
+                        # the weapon box 37 u off broke off at every wave within 15 u, fetch and hunt flipping every 1.5-2
+                        # s, no gun ever reached, 8-10% of their decisions)
+                        or (snap.mode == "firefight" and b.order.role == "escort" and b.order.point is not None
+                            and dist(q, b.order.point) > FF_FETCH_R)
                         or s.ball_job(b, snap)):
                     continue
                 if b.pressing(p, snap) and not s.press_fetch_ok(p, q, snap):
