@@ -52,6 +52,7 @@ Click a version to see what it added and fixed.
 - **Flight heights from the map**: aircraft pick their attack and travel heights from the ground under them; painting airspace is optional.
 
 ### - Fixed
+- <!-- build: 20261111-2343 --> **Oddball, teammates guard the carrier from anywhere**: a teammate far from your team's ball carrier (yours or a bot's) heads straight back to him, past guns, vehicles and radar dots, and nobody guarding or hunting a carrier is sent off for a power weapon while the ball is held.
 - <!-- build: 20261111-2259 --> **Oddball, the ball and its carrier first**: a bot near the loose ball picks it up before anything else (a man at arm's length aside). Bots hunting the carrier go straight at him in every lobby, two teams or eight, fighting only men who are right on them or shooting them, and no longer walk off to guns or far-away vehicles. Every carrier's teammates, a bot carrier's too, stay with him instead of chasing fights and guns.
 - <!-- build: 20261111-2146 --> **Shooting through walls**: bots fire only when the bullet itself has a line to the part of you they aim at (your head, when only your head shows over cover). They no longer learn see-through spots in solid walls from hits landed as someone went round a corner, and spots learned that way before are dropped.
 - <!-- build: 20261111-2146 --> **Oddball: the carrier is the target**: enemy bots go after the ball carrier in every lobby, fighting his teammates in their way, instead of wandering off to guns and vehicles. Your teammates watching over you stay near you.

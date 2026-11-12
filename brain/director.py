@@ -48,6 +48,7 @@ OWNER_SPLITS, DEFEND_SHARE, THIEF_HUNT = True, 0.25, 0.5
 # no crew job on a Mongoose or an Elephant (a bot rides a Mongoose only to cross the map, Bot.decide MONGOOSE_TRIP), at
 # most two transports crewed (a Warthog for the attack and one for the defence, each with a gunner) and one harasser.
 # False: the play before (every harasser crewed; A/B)
+ODD_NO_FETCH = True        # Oddball, the ball carried: no power weapon runs for its guards and hunters (ball_job)
 ODD_CREW_R = 12.0          # u: Oddball crew jobs only for a vehicle this near (crew_orders): hunters walked 20-45 u to
                            # vehicles while the ball was carried (the player's Triplicate, Nov 11 late: 25% drive orders)
 OWNER_VEHICLES, NO_CREW_KINDS, OWNER_ROLE_MAX = True, ("mongoose", "elephant"), {"transport": 2, "harasser": 1}
@@ -701,7 +702,7 @@ class Director:
             p = snap.player(b.id)
             if now >= f[2] or (spawn and f[3] not in due) or (not spawn and not any(
                     n == f[1] and dist(q, f[0]) < 1.5 for n, q in lying)) or (
-                    p is not None and b.pressing(p, snap) and not s.press_fetch_ok(p, f[0], snap)):
+                    p is not None and b.pressing(p, snap) and not s.press_fetch_ok(p, f[0], snap)) or s.ball_job(b, snap):
                 b.fetch = None
         targets = [(n, q, now + 25.0, None) for n, q in lying] + [(n, q, until, i) for i, (n, q, until) in due.items()]
         for n, q, until, spawn in targets:
@@ -714,7 +715,8 @@ class Director:
                 if (p is None or not p.alive or p.has_flag or p.vehicle not in (None, -1) or b.p.teamwork <= 0
                         or getattr(b, "fetch", None) is not None
                         or any(w in power for w in p.weapons) or p.weapon in power or b.urgent(p, snap)
-                        or (timed and b.p.map_iq < 0.6)):
+                        or (timed and b.p.map_iq < 0.6)
+                        or s.ball_job(b, snap)):
                     continue
                 if b.pressing(p, snap) and not s.press_fetch_ok(p, q, snap):
                     continue
@@ -722,6 +724,13 @@ class Director:
                     near.append((dist(p.pos, q), b))
             if near:
                 min(near, key=lambda x: x[0])[1].fetch = (q, n, until, spawn)
+
+    @staticmethod
+    def ball_job(b, snap):
+        """Oddball with the ball carried: our carrier's guards and the hunters on theirs have a job, no power weapon run
+        (ODD_NO_FETCH; the player's 8v8 Triplicate, Nov 11 late: his watchers ran 15 u+ off him for guns)."""
+        return (ODD_NO_FETCH and snap.mode == "oddball" and snap.ball_carrier is not None
+                and b.order.role in ("escort", "mid", "hunter"))
 
     def press_fetch_ok(s, p, q, snap):
         """May an attacker on the clock (Bot.pressing) go for a power weapon at q? Only one right by it (POWER_PRESS_R) or

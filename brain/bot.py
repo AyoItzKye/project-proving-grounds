@@ -215,6 +215,7 @@ ODD_FIGHT_SEEN, ODD_FIGHT_R = True, 18.0   # an Oddball hunter on their carrier 
 ODD_HUNT_URGENT, ODD_HUNT_ADD = True, 1.0     # an Oddball hunter on their carrier: fights off him at arm's length only
 ODD_ESCORT_URGENT = True            # every Oddball carrier's escort on the person-escort leash (a bot carrier's too)
 ODD_BALL_FIRST, ODD_LOOSE_R = True, 12.0    # the loose ball near us first (Bot.ball_first), u
+ODD_RALLY, ODD_RALLY_W = True, 2.8   # Oddball: our carrier's guards past ODD_WATCH_R go back to him first (keep_role)
 ODD_HUNT_CARRIER = True            # Oddball hunters on their carrier in every lobby (keep_role, live_point)
 ODD_WATCH_R = 18.0                 # u: an Oddball watcher round our carrier: guns and fights past this off him stray
 PRESS_COVER_R = 12.0               # u: an Invasion attacker covering the territory strays past this off its spot (keep_role)
@@ -1124,6 +1125,7 @@ class Bot:
             c = snap.player(snap.ball_carrier)
             goal_pt = o.point
             strays, away = (lambda q: dist(q, c.pos) > ODD_WATCH_R), dist(me.pos, goal_pt) > 0.5 * ODD_WATCH_R
+            urgent = urgent or ODD_ESCORT_URGENT
         elif o.role in ("mid", "escort") and o.point is not None and s.pressing(me, snap):
             # an attacker covering the territory from around it (director.invasion_slots: the overlooks, the escorts with
             # nobody to escort) keeps to its spot as the ones in it do: it had no leash, and items won its choices
@@ -1160,6 +1162,14 @@ class Bot:
                 away = False
         else:
             return
+        # Oddball, our carrier far off (ODD_RALLY): back to him before anything, a power weapon run too. The player's 8v8
+        # Triplicate, Nov 11 late: his watchers 25 u+ off him went back in 36% of their decisions (guns 37%, a fifth
+        # of them 15 u+ off), his escorts 21% (vehicles 17%, radar dots 17%)
+        oc = snap.player(snap.ball_carrier) if snap.mode == "oddball" and snap.ball_carrier is not None else None
+        rally = (ODD_RALLY and oc is not None and oc.alive and oc.team == me.team and oc.id != me.id
+                 and o.role in ("escort", "mid") and dist(me.pos, oc.pos) > ODD_WATCH_R)
+        if rally:
+            urgent, away = True, True
         att = getattr(s.per, "attacker_id", None)
         # (the last man who shot it, only for 3 s: the id stayed until death, and defenders, escorts and territory
         # holders chased him across the map: review)
@@ -1167,7 +1177,7 @@ class Bot:
         fetch = getattr(s, "fetch", None)
         for key in list(scores):
             if (key in getattr(s, "mission_keys", ()) or (fetch is not None and key == ("item", fetch[0]))) \
-                    and o.said not in ("follow", "roam"):
+                    and o.said not in ("follow", "roam") and not rally:
                 continue              # the Grenadier's anti-vehicle mission, a power weapon run: outrank its post
                                       # (an attacker on the clock is sent only for one on its way: director.press_fetch_ok)
                                       # (not under the person's "follow me" / "roam": within its leash
@@ -1233,6 +1243,8 @@ class Bot:
             # blocked by (guide rule, Nov 8); live: guards beside their generator 3-13% of the time)
             blocked = any(dist(me.pos, s.per.beliefs[q].pos) < 4.0 for q in seen if q in s.per.beliefs)   # (in its way)
             back = GEN_BACK if o.said == "gen" and o.role == "defender" and not blocked else 1.2 + 0.6 * k
+            if rally:
+                back, pt = max(back, ODD_RALLY_W), (goal_pt or oc.pos)
             scores[("objective", pt)] = max(scores.get(("objective", pt), 0.0), back)
 
     def answer_calls(s, scores, me, snap):

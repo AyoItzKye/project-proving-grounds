@@ -21,6 +21,9 @@
    teammate nearer and the ball 8 u off: left to him; switch off: the gun
 10. Oddball, eight teams, a hunter on their carrier: a third team's man in view 6 u off (a committed fight 3.2) and a
     gun 3 u off us far from the carrier lose to the carrier; a third team's man at 2 u is still fought
+12. Oddball, the person carries, a watcher 30 u off him with a power weapon run 8 u off it (the 8v8 Triplicate: watchers
+    25 u+ off him went back in 36% of their decisions): back to him first; switch off: the gun
+13. the director gives no power weapon run to a carrier's guard or a hunter while the ball is carried (ball_job)
 11. Oddball, a bot carrier's escort 20 u off him: a third team's man 6 u off the escort (a committed fight) loses to
     the way back
 
@@ -299,6 +302,38 @@ b.per.beliefs = {6: Belief(t11.pos, Vec(0, 0, 0), 50.0, True, "eyes")}
 sc = {("fight", 6): 3.2, ("objective", bcar.pos): 1.0}
 b.keep_role(sc, esc, sn11, [6])
 check("11. a bot carrier's escort goes back to him, not after a man 6 u off it", best(sc)[0] == "objective", sc)
+
+# 12. the person carries at (0, -8); our watcher 30 u off with a fetch for a sniper 8 u off it
+p12 = PlayerState(0, 0, "person", Vec(0.0, -8.0, Z), has_flag=True, is_bot=False)
+w12 = PlayerState(2, 0, "watcher", Vec(0.0, -38.0, Z))
+sn12 = Snapshot(50.0, [p12, w12], mode="oddball")
+sn12.ball, sn12.ball_carrier = p12.pos, 0
+gun12 = Vec(8.0, -38.0, Z)
+
+
+def watcher(on):
+    BB.ODD_RALLY = on
+    try:
+        b = bot(M, 0, "mid", Vec(0.0, -17.0, Z), pid=2)
+        b.fetch = (gun12, "sniper_rifle", 99.0, None)
+        sc = {("item", gun12): 2.6, ("objective", Vec(0.0, -17.0, Z)): 0.5 + 0.7 * b.p.objective}
+        b.keep_role(sc, w12, sn12, [])
+        return best(sc), sc
+    finally:
+        BB.ODD_RALLY = True
+
+
+got, sc = watcher(True)
+check("12. a watcher 30 u off our carrier goes back to him before a power weapon run", got[0] == "objective", sc)
+got, sc = watcher(False)
+check("12. switch off: the power weapon run (as before)", got[0] == "item", sc)
+
+# 13. the director's power weapon runs
+from brain.director import Director  # noqa: E402
+b13 = bot(M, 0, "escort", p12.pos, pid=2)
+check("13. a carrier's escort has a job (no power weapon run)", Director.ball_job(b13, sn12))
+b13.order = Order("free", None)
+check("13. a free bot may still fetch", not Director.ball_job(b13, sn12))
 
 if fails:
     sys.exit("FAIL\n" + "\n".join(fails))
