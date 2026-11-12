@@ -212,6 +212,9 @@ WALL_SHOTS = True                  # line_clear: the round's line to the part ai
 HEAD_ONLY_S = 0.3                   # s: a head-only line seen this recently keeps the aim on the head
 CORNER_S = 0.5                      # s: a hit learned as a shoot-through spot only if no line ran between the two this long
 ODD_FIGHT_SEEN, ODD_FIGHT_R = True, 18.0   # an Oddball hunter on their carrier fights a man in view this near (keep_role)
+ODD_HUNT_URGENT, ODD_HUNT_ADD = True, 1.0     # an Oddball hunter on their carrier: fights off him at arm's length only
+ODD_ESCORT_URGENT = True            # every Oddball carrier's escort on the person-escort leash (a bot carrier's too)
+ODD_BALL_FIRST, ODD_LOOSE_R = True, 12.0    # the loose ball near us first (Bot.ball_first), u
 ODD_HUNT_CARRIER = True            # Oddball hunters on their carrier in every lobby (keep_role, live_point)
 ODD_WATCH_R = 18.0                 # u: an Oddball watcher round our carrier: guns and fights past this off him stray
 PRESS_COVER_R = 12.0               # u: an Invasion attacker covering the territory strays past this off its spot (keep_role)
@@ -931,6 +934,25 @@ class Bot:
             return c.pos if c is not None else None
         return None
 
+    def ball_first(s, me, snap, scores, seen):
+        """Oddball: the loose ball near us is picked up before anything else (ODD_BALL_FIRST): within ODD_LOOSE_R and ours
+        the nearest to it (or within 4 u, whoever is nearer), over every other choice, unless a man of theirs is at arm's
+        length (3 u). The player's Triplicate, Nov 11 late: a bot 2.4 u from the loose ball chose a gun (2.6) over it
+        (1.84); within 4 u of it the bots chose the ball in 11% of their decisions, and it lay loose a median 18 s."""
+        if not ODD_BALL_FIRST or snap.mode != "oddball" or me.has_flag or me.vehicle not in (None, -1) or not scores:
+            return
+        ball = snap.ball if snap.ball_carrier is None else None
+        if ball is None:
+            return
+        d = dist(me.pos, ball)
+        nearest = not any(p.team == me.team and p.alive and p.id != me.id and dist(p.pos, ball) < d - 1.0
+                          for p in snap.players)
+        if not (d < 4.0 or (d < ODD_LOOSE_R and nearest)):
+            return
+        if any(k in s.per.beliefs and dist(me.pos, s.per.beliefs[k].pos) < 3.0 for k in seen):
+            return                              # (a man at arm's length: him first)
+        scores[("objective", ball)] = max(scores.values()) + 0.5
+
     @staticmethod
     def ball_theirs(me, snap):
         """Oddball: the ball's carrier when he is alive and not on our team, else None."""
@@ -980,7 +1002,7 @@ class Bot:
         o, k = s.order, s.p.teamwork
         if k <= 0 or me.has_flag:
             return
-        goal_pt, firm, third_team, fight_free = None, None, None, False
+        goal_pt, firm, third_team, fight_free, rush = None, None, None, False, False
         core_rush = s.urgent(me, snap)
         # (in the team's blitz: director.blitz_tick)
         urgent = core_rush or s.pressing(me, snap) or getattr(s, "blitz_until", 0.0) > snap.time
@@ -1066,6 +1088,12 @@ class Bot:
             # sims, 24 games: with every fight off him weighed down the hunters walked past his guards, a goal of
             # objective never shooting, closeness 0.45 -> 0.37, ball changes 397 -> 329)
             fight_free = mine and ODD_FIGHT_SEEN
+            if mine and ODD_HUNT_URGENT:
+                # the carrier is the job, as the Invasion pile-on: a fight off him only at arm's length or with the man
+                # shooting us, a gun only by him (the player's eight-team Triplicate, Nov 11 late: with every man within
+                # 8 u and every gun within 6 u let through, the hunters' fights went 80% to third teams, guns and vehicles
+                # 37% of their time, the carrier's score 1.9 under fights at 3.2-3.5)
+                urgent = on_clock = rush = True
         elif OWNER_LEASH and o.role == "ferry" and me.vehicle in (None, -1):
             # sent to pick up our carrier but on foot: it stays on him as an escort does (the player's High Ground CTF,
             # Nov 11, 129.7 / 141.8 s: the ferry walked off to a gun at (-28, -6.5) while the carrier waited for it)
@@ -1078,7 +1106,9 @@ class Bot:
         elif o.role == "escort" and s.lead(me, snap) is not None:
             c = s.lead(me, snap).pos
             strays, away = (lambda q: dist(q, c) > ESCORT_R), dist(me.pos, c) > 0.5 * ESCORT_R
-            if not s.lead(me, snap).is_bot:
+            if not s.lead(me, snap).is_bot or (ODD_ESCORT_URGENT and snap.mode == "oddball"):
+                # (Oddball: every carrier's escort, a bot's too: on Triplicate the carrier's mates gave him 6% of their
+                # decisions, guns 30%, fights 34%, a third of their time in vehicles)
                 # a person's escort ("follow me", Firefight): a gun or a chase past the leash loses as on the Invasion
                 # core (live Boardwalk Nov 8: two of three wandered 10-22 u off for pickups and back, 48% within 6 u)
                 urgent = True
@@ -1180,7 +1210,7 @@ class Bot:
                 q = arg
             else:
                 continue
-            if kind == "item" and dist(me.pos, q) < UPGRADE_ON_WAY and not core_rush and not s.out_of_held(me, snap, q):
+            if kind == "item" and dist(me.pos, q) < UPGRADE_ON_WAY and not (core_rush or rush) and not s.out_of_held(me, snap, q):
                 # a gun on its way (a step or two): taken whatever its post; an attacker on the Invasion core run only
                 # under the run (live Spire 20261106-185412, 456-472 s: three of seven runners detoured for guns, item
                 # 1.9-2.1 over the core's 1.8-2.1; flagged: the core was not their priority)
@@ -2363,8 +2393,9 @@ class Bot:
             if me.has_flag:
                 scores[("objective", pt)] = 3.0  # carrying: go home, do not stop to fight
             elif o.role == "hunter" and live is not None:
-                # our flag is out: get it back (its carrier, or stand on it the 15 s Reach's return takes)
-                scores[("objective", pt)] = 1.3 + 0.6 * s.p.teamwork
+                # our flag is out: get it back (its carrier, or stand on it the 15 s Reach's return takes); their ball
+                # carrier: above a gun or a far fight (ODD_HUNT_ADD)
+                scores[("objective", pt)] = 1.3 + 0.6 * s.p.teamwork + (ODD_HUNT_ADD if snap.mode == "oddball" else 0.0)
             elif getattr(s, "blitz_until", 0.0) > now:
                 # the team's blitz (director.blitz_tick): its rally, then the objective, ahead of side trips
                 scores[("objective", pt)] = max(scores[("objective", pt)], 1.3 + 0.6 * s.p.teamwork)
@@ -2479,6 +2510,7 @@ class Bot:
                 # where Halo 4's Flood, with pickups off there, hunted; 1.0 conversions a zombie-minute to 1.5-2.5)
                 for k in [k for k in scores if k[0] in ("item", "vehicle", "retreat", "hold")]:
                     del scores[k]
+        s.ball_first(me, snap, scores, seen)
         s.board_check(me, snap, scores)
         s.stay_on(scores, me, snap, seen)
         bans = getattr(s, "goal_ban", {})

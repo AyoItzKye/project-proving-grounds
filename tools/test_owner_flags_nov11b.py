@@ -16,6 +16,13 @@
 7. a gunner's trigger (Bot.gun_seat_trigger): down 0.6 u off a man 12 u away, held 1.2 u off, held through a 0.2 s
    swing off him, let go after 0.5 s; the mounted gun's aim error is half the hand's (steady)
 8. the learned shoot-through file is shots_learned.json; the old walls_learned.json is not read
+9. Oddball, the loose ball (Triplicate, Nov 11 late: a bot 2.4 u off it chose a gun 2.6 over it 1.84): 2.4 u off it,
+   with a gun 2.6 and a fight 3.2 with a man 10 u off, the ball first; a man of theirs at arm's length: him first; a
+   teammate nearer and the ball 8 u off: left to him; switch off: the gun
+10. Oddball, eight teams, a hunter on their carrier: a third team's man in view 6 u off (a committed fight 3.2) and a
+    gun 3 u off us far from the carrier lose to the carrier; a third team's man at 2 u is still fought
+11. Oddball, a bot carrier's escort 20 u off him: a third team's man 6 u off the escort (a committed fight) loses to
+    the way back
 
 usage: python -I test_owner_flags_nov11b.py      -> "owner flags nov11b OK"
 """
@@ -229,6 +236,69 @@ finally:
     MP._TERRAIN.pop("h3_chill", None)
     shutil.rmtree(tmp, ignore_errors=True)
 check("8. walls_learned.json not read, shots_learned.json read", old == 0 and new == 1, (old, new))
+
+# 9. the loose ball (Sandtrap floor, two teams)
+ballp = Vec(0.0, -27.6, Z)
+me9 = PlayerState(1, 1, "bot", Vec(0.0, -30.0, Z))
+foe9 = PlayerState(9, 0, "foe", Vec(10.0, -30.0, Z))
+
+
+def loose(me_, others, seen, on=True):
+    BB.ODD_BALL_FIRST = on
+    try:
+        sn = Snapshot(50.0, [me_, foe9] + others, mode="oddball")
+        sn.ball, sn.ball_carrier = ballp, None
+        b = bot(M, 1, "hunter", ballp)
+        b.per.beliefs = {9: Belief(foe9.pos, Vec(0, 0, 0), 50.0, True, "eyes")}
+        sc = {("item", Vec(2.0, -31.0, Z)): 2.6, ("fight", 9): 3.2, ("objective", ballp): 1.84}
+        b.ball_first(me_, sn, sc, seen)
+        return best(sc)
+    finally:
+        BB.ODD_BALL_FIRST = True
+
+
+check("9. the loose ball 2.4 u off: first", loose(me9, [], [9]) == ("objective", ballp))
+foe9 = PlayerState(9, 0, "foe", Vec(1.5, -30.0, Z))
+check("9. a man at arm's length: him first", loose(me9, [], [9]) == ("fight", 9))
+foe9 = PlayerState(9, 0, "foe", Vec(10.0, -30.0, Z))
+far9 = PlayerState(1, 1, "bot", Vec(0.0, -35.6, Z))
+mate9 = PlayerState(4, 1, "mate", Vec(0.0, -25.0, Z))
+check("9. a teammate nearer, 8 u off: left to him", loose(far9, [mate9], [9]) != ("objective", ballp))
+check("9. switch off: the fight", loose(me9, [], [9], on=False) == ("fight", 9))
+
+# 10. eight teams: team 0 carries; we (team 1) hunt; a team 2 man in view 6 u off us
+car = PlayerState(0, 0, "carrier", Vec(0.0, -8.0, Z), has_flag=True, is_bot=False)
+me10 = PlayerState(1, 1, "hunter", Vec(0.0, -30.0, Z))
+third = PlayerState(5, 2, "third", Vec(6.0, -30.0, Z))
+rest = [PlayerState(20 + k, 3 + k, f"x{k}", Vec(60.0 + k, 40.0, Z)) for k in range(5)]
+sn10 = Snapshot(50.0, [car, me10, third] + rest, mode="oddball")
+sn10.ball, sn10.ball_carrier = car.pos, 0
+b = bot(M, 1, "hunter", car.pos)
+b.per.beliefs = {5: Belief(third.pos, Vec(0, 0, 0), 50.0, True, "eyes")}
+live = b.live_point(me10, sn10)
+gun10 = Vec(2.0, -32.0, Z)
+sc = {("fight", 5): 3.2, ("item", gun10): 2.6, ("objective", live): 1.3 + 0.6 * b.p.teamwork + BB.ODD_HUNT_ADD}
+b.keep_role(sc, me10, sn10, [5])
+check("10. eight teams: their carrier over a third team's man 6 u off and a gun beside us", best(sc)[0] == "objective", sc)
+third2 = PlayerState(5, 2, "third", Vec(2.0, -30.0, Z))
+sn10b = Snapshot(50.0, [car, me10, third2] + rest, mode="oddball")
+sn10b.ball, sn10b.ball_carrier = car.pos, 0
+b.per.beliefs = {5: Belief(third2.pos, Vec(0, 0, 0), 50.0, True, "eyes")}
+sc = {("fight", 5): 3.2, ("objective", live): 1.3 + 0.6 * b.p.teamwork + BB.ODD_HUNT_ADD}
+b.keep_role(sc, me10, sn10b, [5])
+check("10. a third team's man at 2 u is still fought", sc[("fight", 5)] == 3.2, sc)
+
+# 11. a bot carries for us; our escort 20 u off him, a gun 7 u off the escort
+bcar = PlayerState(3, 0, "botcarrier", Vec(0.0, -8.0, Z), has_flag=True, is_bot=True)
+esc = PlayerState(2, 0, "escort", Vec(0.0, -28.0, Z))
+t11 = PlayerState(6, 2, "third", Vec(6.0, -28.0, Z))
+sn11 = Snapshot(50.0, [bcar, esc, t11], mode="oddball")
+sn11.ball, sn11.ball_carrier = bcar.pos, 3
+b = bot(M, 0, "escort", bcar.pos, target=3, pid=2)
+b.per.beliefs = {6: Belief(t11.pos, Vec(0, 0, 0), 50.0, True, "eyes")}
+sc = {("fight", 6): 3.2, ("objective", bcar.pos): 1.0}
+b.keep_role(sc, esc, sn11, [6])
+check("11. a bot carrier's escort goes back to him, not after a man 6 u off it", best(sc)[0] == "objective", sc)
 
 if fails:
     sys.exit("FAIL\n" + "\n".join(fails))

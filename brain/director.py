@@ -48,6 +48,8 @@ OWNER_SPLITS, DEFEND_SHARE, THIEF_HUNT = True, 0.25, 0.5
 # no crew job on a Mongoose or an Elephant (a bot rides a Mongoose only to cross the map, Bot.decide MONGOOSE_TRIP), at
 # most two transports crewed (a Warthog for the attack and one for the defence, each with a gunner) and one harasser.
 # False: the play before (every harasser crewed; A/B)
+ODD_CREW_R = 12.0          # u: Oddball crew jobs only for a vehicle this near (crew_orders): hunters walked 20-45 u to
+                           # vehicles while the ball was carried (the player's Triplicate, Nov 11 late: 25% drive orders)
 OWNER_VEHICLES, NO_CREW_KINDS, OWNER_ROLE_MAX = True, ("mongoose", "elephant"), {"transport": 2, "harasser": 1}
 DEF_PEOPLE_R = 35.0   # u: people's defend spots this near our stand are our defenders' posts first (defend_posts)
 OWNER_HOLDS, ODD_SAFE_R, ODD_ROOF, ODD_EXIT = True, 30.0, 10.0, 2.0   # carry_point's covered spot (shelter); A/B
@@ -1322,8 +1324,8 @@ class Director:
                          if role in vehicles.roles_of(v["kind"]) for bid, b in free.items()
                          if skip.get((bid, v["handle"]), 0.0) <= now]
                 d, b, v = min(pairs, key=lambda x: x[0], default=(None, None, None))
-                if d is None or d > s.CREW_REACH:
-                    break
+                if d is None or d > (ODD_CREW_R if snap.mode == "oddball" else s.CREW_REACH):
+                    break                       # (Oddball: a vehicle at hand only; the ball is the job, ODD_CREW_R)
                 del free[b.id]
                 b.set_order(Order("drive", Vec(*v["pos"]), target=v["handle"]))
                 if b.order.role != "drive":      # a rogue moment: it plays on its own this round
