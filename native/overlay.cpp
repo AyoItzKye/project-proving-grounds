@@ -14,7 +14,6 @@
 #include "model_view.h"
 #include "bots_panel.h"
 #include "ui_layout.h"
-#include "input_gate.h"
 #include "third_party/minhook/include/MinHook.h"
 #include "third_party/imgui/imgui.h"
 #include "third_party/imgui/imgui_impl_win32.h"
@@ -22,7 +21,7 @@
 
 extern hb_shared* g_shm;
 extern hb_roster g_roster;           // botcore.cpp: the BOTS panel's list
-extern hb_roster g_ff_roster, g_od_roster;   // botcore.cpp: Firefight's lists (Reach: Spartan and Elite teams; ODST: 3, yours)
+extern hb_roster g_ff_roster;        // botcore.cpp: Firefight's list (Reach: up to 7 bots on red and blue; ODST: 3, your team)
 extern uint32_t g_collector;         // botcore.cpp: the brain records the player (Data collector)
 extern uint32_t g_scale_games;       // botcore.cpp: Scaling difficulty's games averaged
 extern uint32_t g_sounds;            // botcore.cpp: the BOTS panel's sound volume, 0-100 (0 off)
@@ -54,12 +53,11 @@ typedef HANDLE(WINAPI* createfile_fn)(LPCWSTR, DWORD, DWORD, LPSECURITY_ATTRIBUT
 // not covered by the carnage report or a menu) is checked on the frame itself (probe_lobby).
 static createfile_fn o_createfile;
 static volatile LONG g_session;      // title of the last custom game lobby opened: 1 CE, 2 Halo 2
-static hb_roster& ff_list() { return g_session == 8 ? g_od_roster : g_ff_roster; }   // (the Firefight lobby's own list)
                                      // Classic, 3 Halo 3, 5 Reach, 6 H2A, 7 H4, 8 ODST (the titles with bots), 4 any other, 0 none
 static volatile DWORD g_lobby_gfx_at;
-static volatile LONG g_ff_lobby;     // the lobby last opened is Firefight's (FirefightCustomGame.gfx): it holds 8 players
+static volatile LONG g_ff_lobby;     // the lobby last opened is Firefight's (FirefightCustomGame.gfx): it holds 4 players
 static bool bots_title(LONG t) { return t >= 1 && t <= 8 && t != 4; }
-extern int hb_panel_firefight;   // (bots_panel.cpp: the roster's cap, 7 bots in Firefight)
+extern int hb_panel_firefight;   // (bots_panel.cpp: the roster's cap, 3 bots in Firefight)
 static const wchar_t* wcsistr(const wchar_t* s, const wchar_t* f) {   // (MCC opens some screens in lower case)
     for (; *s; s++) {
         const wchar_t *a = s, *b = f;
@@ -309,13 +307,13 @@ static void draw_tile(float t) {
     else if (g_shm->bots_enabled)
     {
         // the list in a few words: 7v8 Legendary, 12 bots Mixed (more than two teams), No bots
-        const hb_roster& R = g_ff_lobby ? ff_list() : g_roster;     // (Firefight: its own list)
+        const hb_roster& R = g_ff_lobby ? g_ff_roster : g_roster;   // (Firefight: its own list)
         int teams = 0, tier = -1, n = R.n;
         for (int t = 0; t < HB_TEAMS_MAX; t++) teams += roster_on_team(R, t) > 0;
         for (int i = 0; i < n; i++) tier = tier < 0 || tier == R.bot[i].tier ? R.bot[i].tier : 5;
         const char* d = tier < 0 ? "" : DIFF_NAME[tier < 6 ? tier : 5];
         if (!n) sprintf_s(sum, "No bots");
-        else if (g_ff_lobby && g_session != 5) sprintf_s(sum, "%d %s %s", n, n == 1 ? "bot" : "bots", d);
+        else if (g_ff_lobby && g_session != 5) sprintf_s(sum, "%d %s %s", n, n == 1 ? "bot" : "bots", d);   // (ODST: one team; Reach's reads 3v4 like a custom game)
         else if (teams <= 2) sprintf_s(sum, "%dv%d %s", roster_on_team(R, 0), roster_on_team(R, 1), d);
         else sprintf_s(sum, "%d bots %s", R.n, d);
     }
@@ -377,7 +375,7 @@ static void draw_panel() {
     bots_panel_env e{};
     e.make_texture = make_texture;
     e.render_model = render_model; e.model_has = model_has; e.model_zoom = mv_set_zoom; e.model_head = mv_head; e.model_headroom = mv_set_headroom;
-    e.roster = g_ff_lobby ? &ff_list() : &g_roster;       // (Firefight: its own list; the 16-player list is kept)
+    e.roster = g_ff_lobby ? &g_ff_roster : &g_roster;     // (Firefight: its own list; the 16-player list is kept)
     e.enabled = &g_shm->bots_enabled; e.difficulty = &g_shm->difficulty;
     e.lidar_mode = &g_shm->lidar_mode; e.lidar_players = &g_shm->lidar_players;
     e.collector = &g_collector;
@@ -497,30 +495,6 @@ static void pad_frame() {
     g_pad_held = (g_show_tile && g_panel) || (g_pad_held && any);
 }
 
-// ImGui's failed checks (imconfig.h IM_ASSERT with HB_BOTCORE): one log line per place, the game goes on. The C runtime's
-// assert dialog over MCC was its end (the Bot editor, Nov 7). (A plain lock-free list: checks fail on the render thread)
-void hb_imgui_assert(const char* expr, const char* file, int line) {
-    static int seen[32], n;
-    for (int k = 0; k < n; k++) if (seen[k] == line) return;
-    if (n < 32) seen[n++] = line;
-    const char* f = strrchr(file, '\\');
-    logf("ImGui check failed (game goes on): %s, %s line %d", expr, f ? f + 1 : file, line);
-}
-
-// The person's chat commands in a match (shared.h hb_chat_feed): only "follow me" / "roam" reach the brain (chat[0]
-// a count, chat[1] the command); every other line typed is dropped as it ends, never kept or logged
-static void chat_key(UINT msg, WPARAM wp) {
-    static hb_chat_line line;
-    uint32_t c = msg == WM_KEYDOWN && wp == VK_ESCAPE ? 27 : msg == WM_CHAR ? (uint32_t)wp : 0;
-    int cmd = c ? hb_chat_feed(&line, c, GetTickCount()) : HB_SAY_NONE;
-    if (cmd && g_shm) {
-        g_shm->chat[1] = (char)cmd;
-        MemoryBarrier();
-        g_shm->chat[0] = (char)((uint8_t)g_shm->chat[0] % 255 + 1);
-        logf("chat command: %s", cmd == HB_SAY_FOLLOW ? "follow me" : "roam");
-    }
-}
-
 static DWORD g_esc_eat;              // Esc closed the panel at this tick: its release (and repeats) stay ours
 static LRESULT CALLBACK wndproc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
     if (msg == WM_KEYDOWN || msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN || msg == WM_MOUSEWHEEL) g_pad_last = false;
@@ -544,7 +518,6 @@ static LRESULT CALLBACK wndproc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         if ((g_panel && (mouse || keys)) || (g_hover_tile && mouse && msg != WM_MOUSEMOVE)) return 0;   // ours
     } else if (g_ready && in_match()) {                         // the bug report over a match
         bool typing = g_bug_open && ImGui::GetIO().WantTextInput;
-        if (!g_bug_open) chat_key(msg, wp);                     // (the report's own typing is no chat)
         if (!typing && msg == WM_KEYDOWN && wp == VK_F9 && !(lp & (1 << 30))) { g_bug_open = !g_bug_open; return 0; }
         // ImGui hears the game's input only while the report UI is up: fed in play it queued every key and letter
         // typed, with no frame to take them, and F9's window took the backlog as typing; its WM_SETCURSOR answer put
@@ -662,10 +635,6 @@ static HRESULT __stdcall h_present(IDXGISwapChain* sc, UINT sync, UINT flags) {
             bool bug = match && (pause || g_bug_open);
             g_bug_ui = bug;
             if (!bug) g_bug_hover = false;
-            // ImGui hears the window's input under our UI only (wndproc): keys it had down when that stopped are
-            // forgotten as it starts again (a release lost over the match ran the panel on as if Right were held)
-            static hb_input_gate gate;
-            gate.frame(g_show_tile || bug, ImGui::GetIO());
             if (g_show_tile || notice || bug) {
                 ImGuiIO& gio = ImGui::GetIO();
                 if (bug && g_bug_open && !g_bug_was_open) {          // F9 opened the window: nothing typed before is its text
@@ -704,9 +673,6 @@ static HRESULT __stdcall h_present(IDXGISwapChain* sc, UINT sync, UINT flags) {
                     g_bug_hover = be.hovered;
                 }
                 g_bug_was_open = g_bug_open;
-                // shared.h ui_up: the bug report window is open over the match (typing goes on there). (Not MCC's own
-                // menus: told by the cursor, which shows in play too while MCC has not taken the mouse)
-                if (g_shm) g_shm->ui_up = (bug && g_bug_open) ? 1u : 0u;
                 // the tile draws on the foreground layer, over every window: with the panel open it is
                 // left out (it drew over the panel's header), and takes no clicks
                 if (g_show_tile && !g_panel) draw_tile((float)ImGui::GetTime());
