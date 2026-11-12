@@ -19,6 +19,7 @@ from types import SimpleNamespace
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, ".."))
 from brain import vehicles  # noqa: E402
+import brain.bot as BB  # noqa: E402
 from brain.bot import Bot  # noqa: E402
 from brain.core import FlagState, PlayerState  # noqa: E402
 from brain.director import Director  # noqa: E402
@@ -190,6 +191,8 @@ def main():
     if bot.way_in(PlayerState(1, 0, "bot", world(7.0, 0.0, 0.0), yaw=0.0), goal) is not None:
         fails.append("an Elephant with no facing read was routed")
     # 4. every way in (vehicles.ELEPHANT entries, a player's climbs): from 1.5 u outside its take-off the walker gets in
+    # (the tire wells are no ways in while ELEPHANT_WELLS is off, and a jump costs ENTRY_JUMP_COST, Nov 12: from beside a
+    # well or the ramp's side, the open ramp walked; from the front, the front entrance jumped)
     # by a jump (that way in or a cheaper one beside it) and to the capture spot without walking through the hull
     bot.vehicles_now = [el]
     for name, to, steps in E["entries"]:
@@ -202,8 +205,17 @@ def main():
         bot.entry_try = lambda now, nm, _f=first, _o=orig: (_f.append(nm), _o(now, nm))
         reached, crossed = walk(bot, el, start, goal)
         bot.entry_try = orig
-        if not reached or crossed or not first:
+        if not reached or crossed or (not first and (name == "front jump" or BB.ELEPHANT_WELLS)):   # (by the ramp: up it)
             fails.append(f"from outside the {name}: reached {reached}, through the hull {crossed}, jumps {first[:2]}")
+    # the live case (Sandtrap 20261112-154827, Banshee at 49.6 s): beside the ramp's foot, the capture on the deck: to the
+    # ramp's foot and up it, not a tire well's jump (it took the rear left well's, fell off its top twice, then the rear
+    # right one's)
+    bot.deck_jumps, bot.entry_tries, bot.entry_ban = [], {}, {}
+    wr = bot.way_in(PlayerState(1, 0, "bot", world(-5.2, 0.9, 0.2), yaw=0.0), goal)
+    (af_, al_), _ = E["ramp"]
+    rf, rl, _ = local(wr[0]) if wr else (99.0, 99.0, 0.0)
+    if not wr or (len(wr) > 2 and wr[2]) or math.hypot(rf - af_, rl - al_) > 0.8:
+        fails.append(f"beside the ramp's foot, the capture on the deck: {wr} at ({rf:.1f}, {rl:.1f}) (want the ramp)")
     # every jump way left (banned): from beside its right side to the rear ramp, round the hull's rear corner, never
     # through its side ("the bots need to stop running into the side of the elephant")
     bot.deck_jumps, bot.entry_tries = [], {}
@@ -220,9 +232,9 @@ def main():
     # its take-off on a dune (live Nov 11: an Elephant driven onto one, its wells jumped at from 1 to 2 u up for 56 s):
     # no jump there, that way left
     bot.now, bot.entry_tries, bot.entry_ban = 10.0, {}, {}
-    (wf_, wl_), _ = next(steps for name, _, steps in E["entries"] if name == "front right well")[0]
+    (wf_, wl_), _ = next(steps for name, _, steps in E["entries"] if name == "front jump")[0]
     wd = bot.elephant_entry(PlayerState(1, 0, "bot", world(wf_, wl_, 1.5), yaw=0.0), world, (wf_, wl_, 1.5), (0.3, -0.3, 1.7))
-    if (len(wd) > 2 and wd[2]) or not bot.entry_ban.get("front right well", 0.0) > 10.0:
+    if (len(wd) > 2 and wd[2]) or not bot.entry_ban.get("front jump", 0.0) > 10.0:
         fails.append(f"a take-off on a dune 1.5 u up: {wd}, left {bot.entry_ban} (want no jump, that way left)")
     bot.now, bot.entry_ban = 4.0, {}
     # 3. a stand on an Elephant followed while its flag is away (brain/live.py _in_frame / _on_frame): its place on the

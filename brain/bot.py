@@ -173,6 +173,8 @@ CLOSE_FIGHT_R = 8.0                 # a man in sight this close is fought whatev
 # in front with no aim on anyone 62 s, 26 first hits on foot with a gun never answered (only watched), and a runner
 # walked past the player 3 u off at his flag
 WALK_FIRE, WALK_FIRE_CONE = True, math.radians(60)
+ELEPHANT_WELLS = False              # Bot.elephant_entry: the tire wells' climbs onto the deck as ways in (they failed; the open ways)
+ENTRY_JUMP_COST = 3.0               # u: an Elephant way in with a jump costs this much more walk than the rear ramp
 GLIMPSE_S = 1.5                     # s: a man out of sight no longer than this is still "in sight" to its post (keep_role)
 PRESS_NEAR = 3.0                    # u: a press (press_on) walks in to here; closer, push_in and the melee take over
 POWER_NEAR = 15.0                   # u: a power weapon up this near is not held back by a post (keep_role)
@@ -2532,6 +2534,16 @@ class Bot:
             elif getattr(s, "blitz_until", 0.0) > now:
                 # the team's blitz (director.blitz_tick): its rally, then the objective, ahead of side trips
                 scores[("objective", pt)] = max(scores[("objective", pt)], 1.3 + 0.6 * s.p.teamwork)
+        # (under a ride or seat order the order's point is the vehicle where it was when called, not home: live Sandtrap
+        # 20261112-154827, a carrier told to board the player's Warthog took that spot as his way home)
+        stand = getattr((snap.flags or {}).get(me.team % 2), "home", None) or (s.map.get("flags") or [None, None])[me.team % 2]
+        home = ((stand if s.order.role in ("board", "ride", "drive", "give_seat") else s.objective_point(me)) or stand) \
+            if me.has_flag else None
+        if home is not None and not any(k[0] == "objective" for k in scores):
+            # carrying under any other order (a "board" for a ride that is not there: the seat goal comes first, below):
+            # home on foot. Live Sandtrap Nov 8: a carrier given "board" stood 24 s with no goal, then the ride took him
+            # from 30 u to 47 u from home
+            scores[("objective", home)] = 3.0
         unseen = {k: b for k, b in s.per.beliefs.items() if not (isinstance(k, int) and b.seen)}
         known = list(unseen.values())
         if known and not me.has_flag:
@@ -2663,6 +2675,10 @@ class Bot:
         for k in [k for k in scores if k[0] in ("objective", "item", "hunt", "hold") and bans.get(s._goal_key(k), 0) > now]:
             if k[0] == "objective" and grab is not None and dist(k[1], grab) < 1.0:
                 continue                    # an objective to pick up is never given up (headway; Spire, live)
+            if k[0] == "objective" and me.has_flag:
+                continue                    # nor a carrier's run (headway never bans one; a ban from before the pickup
+                                            # emptied a carrier's choices and he roamed with the flag 35 s, live
+                                            # Sandtrap 20261112-154827)
             del scores[k]                   # gave up on it lately: it could not be reached
             if k[0] == "objective" and s.order.point is not None:
                 # another spot by the objective, not a roam
@@ -2682,7 +2698,9 @@ class Bot:
         s.last_flags = dict(post=round(post, 2), seen=len(seen), friends=friends, avoid=avoid, cracked=cracked,
                             recharge=now < getattr(s, "recharge_until", 0.0), hit=hit_recent)
         if not scores:
-            return ("roam", None)
+            # nothing to weigh: a roam, but a seat or a gun the director called it to still comes first (below; it
+            # returned the roam before the order was read)
+            scores = {("roam", None): 0.0}
         if s.goal in scores and s.goal[0] != "hold":
             scores[s.goal] += 0.2           # humans commit: no flip-flopping between two close goals
                                             # (a camper still gets restless now and then)
@@ -6280,12 +6298,19 @@ class Bot:
         up = gz > E["deck"]
         climb = math.hypot(E["deck_jump"][1][0] - E["deck_jump"][0][0], E["deck_jump"][1][1] - E["deck_jump"][0][1])
         cands = [("ramp", (af, al), (tf, tl, 0.55), "bay", None)]
-        cands += [(name, steps[0][0], steps[-1][1], to, steps[0][1]) for name, to, steps in E["entries"]]
+        # the open ways only: the rear ramp, the front entrance and the ramp's side, into the bay; up from its floor by the
+        # deck jump or the stairs (way_in). Not the tire wells' two-jump climbs onto the deck (ELEPHANT_WELLS): live
+        # Sandtrap Nov 12, 20 tries at an Elephant, 6 in; a bot at the ramp's foot took a well's climb for the deck,
+        # fell off its top twice, and never walked up the ramp (the player: "they'll completely ignore the wide open
+        # front and back")
+        cands += [(name, steps[0][0], steps[-1][1], to, steps[0][1]) for name, to, steps in E["entries"]
+                  if ELEPHANT_WELLS or to == "bay"]
         best = None
         for name, (xf, xl), (lf, ll, lz), to, first in cands:
             if bans.get(name, 0.0) > now:
                 continue
-            cost = math.hypot(bf - xf, bl - xl) + math.hypot(lf - gf, ll - gl) + (climb + 2.0 if up and to == "bay" else 0.0)
+            cost = math.hypot(bf - xf, bl - xl) + math.hypot(lf - gf, ll - gl) + (climb + 2.0 if up and to == "bay" else 0.0) \
+                + (ENTRY_JUMP_COST if first is not None else 0.0)    # (a jump in can miss; the ramp is walked)
             if best is None or cost < best[0]:
                 best = (cost, name, (xf, xl), first)
         if best is None:
