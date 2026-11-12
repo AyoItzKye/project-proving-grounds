@@ -4,7 +4,7 @@
    0.35; both crouched heights land in a crouched body under either size (CE's camera ratio 0.35 / 0.62 and the sim's
    70%), the head one in the head under the first
 2. in the sim, a Legendary bot 15 u from a man who crouches and stands still kills him in 20 s and lands most of its
-   hits (before: every head shot passed over him)
+   hits (before: every head shot passed over him); six seeds pooled, a kill in each
 3. the live snapshot: the person crouches while he holds his crouch key, a bot while its last command crouched, nobody
    dead; the crouch key counts only with MCC in front
 4. the three aims at an enemy pass his stance (fight, a gunner's, a driver's gun)
@@ -56,17 +56,24 @@ def main():
     T = terrain(m)
     a = Vec(70.0, -120.0, T.nav_z(70.0, -120.0))
     b = Vec(85.0, -120.0, T.nav_z(85.0, -120.0))
-    sim = Sim("slayer", per_team=1, seed=5, tiers=["top"])
-    shooter, target = sim.players[0], sim.players[1]
-    shooter.pos, target.pos = a, b
-    shooter.yaw = angles_to(a, b)[0]
-    sim.bots[target.id].think = lambda *x, **k: Action(yaw=angles_to(b, a)[0], pitch=0.0, crouch=True)
-    sim.spawn_point = lambda team: a if team == shooter.team else b      # (back to the same spots)
-    sim.run(20.0)
-    st = sim.stats[shooter.id]
-    if st["kills"] < 1 or st["hits"] < 0.3 * max(1, st["shots"]):
-        fails.append(f"2. 20 s at a crouched man standing still 15 u off: {st['kills']} kills, {st['hits']} hits of "
-                     f"{st['shots']} shots (want a kill and 30%+ hits)")
+    # (six seeds, pooled: one seed's 20 s is 3-16 shots, and a rocket that kills with its first hit reads 1 of 4; seed 5
+    # alone went 4/9 to 1/4 when the bot fired a tick sooner, Nov 12, while the six pooled went 50% to 63% hits and 6 to 8
+    # kills. A kill in every seed)
+    runs = []
+    for seed in range(5, 11):
+        sim = Sim("slayer", per_team=1, seed=seed, tiers=["top"])
+        shooter, target = sim.players[0], sim.players[1]
+        shooter.pos, target.pos = a, b
+        shooter.yaw = angles_to(a, b)[0]
+        sim.bots[target.id].think = lambda *x, **k: Action(yaw=angles_to(b, a)[0], pitch=0.0, crouch=True)
+        sim.spawn_point = lambda team, s=shooter: a if team == s.team else b      # (back to the same spots)
+        sim.run(20.0)
+        st = sim.stats[shooter.id]
+        runs.append((st["kills"], st["hits"], st["shots"]))
+    hits, shots = sum(r[1] for r in runs), sum(r[2] for r in runs)
+    if any(r[0] < 1 for r in runs) or hits < 0.3 * max(1, shots):
+        fails.append(f"2. 20 s at a crouched man standing still 15 u off, six seeds: kills {[r[0] for r in runs]}, "
+                     f"{hits} hits of {shots} shots (want a kill in each and 30%+ hits)")
     # 3
     import live_bots
     import crouch_key
@@ -103,8 +110,8 @@ def main():
         for f in fails:
             print(f)
         raise SystemExit(1)
-    print(f"crouch aim OK (crouched head {core.CROUCH_HEAD}, chest {core.CROUCH_CHEST}; sim: {st['kills']} kills, "
-          f"{st['hits']}/{st['shots']} hits on a crouched man)")
+    print(f"crouch aim OK (crouched head {core.CROUCH_HEAD}, chest {core.CROUCH_CHEST}; sim, six seeds: {sum(r[0] for r in runs)} kills, "
+          f"{hits}/{shots} hits on a crouched man)")
 
 
 if __name__ == "__main__":

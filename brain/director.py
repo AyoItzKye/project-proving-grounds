@@ -44,6 +44,9 @@ RUNNER_KEEP, KEEP_RUNNERS = 3.0, True
 # the rest attack; our flag taken with theirs home, THIEF_HUNT of us hunt the thief and the rest attack (One Flag: all),
 # and nobody guards an empty stand. False: the play before (research 12 sections 1.4, 3.5; A/B)
 OWNER_SPLITS, DEFEND_SHARE, THIEF_HUNT = True, 0.25, 0.5
+# ... and when ahead: one more defender from two points up, none for one, and the runs go on (the lead management before
+# put three to four of seven on defence after one capture: the player, Nov 12, "more than half the team isnt attacking")
+LEAD_KEEPS_SPLIT = True
 # The player's vehicle rules (his flagged games, Nov 11: Mongooses taken far too often, an Elephant ridden in Oddball):
 # no crew job on a Mongoose or an Elephant (a bot rides a Mongoose only to cross the map, Bot.decide MONGOOSE_TRIP), at
 # most two transports crewed (a Warthog for the attack and one for the defence, each with a gunner) and one harasser.
@@ -1897,7 +1900,11 @@ class Director:
             keep = n - 2 if n >= 3 else n - 1
             if now < s.defend_until:
                 defenders = max(defenders, min(keep, defenders + 1))
-            if lead >= 1:
+            if OWNER_SPLITS and LEAD_KEEPS_SPLIT:
+                # the player's 75 / 25 holds when ahead too: one more defender from two points up, none for one (live
+                # Sandtrap 20261112-135123: after the first capture three to four of seven defended, one runner)
+                defenders = min(n - 1, defenders + (1 if lead >= 2 else 0))
+            elif lead >= 1:
                 defenders = min(n - 1 if lead >= 2 else max(defenders, keep), defenders + (1 if lead == 1 else 2))
             if s.is_one_flag(snap):
                 defenders = max(defenders, n - min(2, n // 2))
@@ -1905,7 +1912,8 @@ class Director:
             for q in s.defend_posts(own.home if getattr(own, "home", None) is not None else s.map["flags"][s.side],
                                     defenders):
                 slots.append(("defender", q, "camping"))
-        if theirs is not None and not carrier and (lead < 2 or s.posture.state == "all_in"):
+        if theirs is not None and not carrier and (lead < 2 or s.posture.state == "all_in"
+                                                   or (OWNER_SPLITS and LEAD_KEEPS_SPLIT)):
             rest = n - len(slots)
             nr = 2 if rest >= 5 or (split and rest >= 4) else 1
             nr = max(nr, len(s.kept_runners))     # (a death does not take a living runner's slot away)

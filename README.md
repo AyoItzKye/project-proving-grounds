@@ -15,7 +15,7 @@ Reach and ODST Firefight (bots fill your team). Up to 15 bots: the game holds 16
 
 ## Status, updates and bugs
 
-Everything about where the mod stands is in four places:
+Everything about where the mod stands is in five places:
 
 | | |
 |---|---|
@@ -23,6 +23,7 @@ Everything about where the mod stands is in four places:
 | **[Updates](docs/UPDATES.md)** | What changed in each version (new, fixed, changed, known problems), newest first. |
 | **[Known bugs](docs/KNOWN_BUGS.md)** | Everything known to be broken, by game, and every bug reported on GitHub with its status. |
 | **[Bot status sheet (PDF)](docs/BOT_STATUS.pdf)** | An honest rating of every game, mode and vehicle, from green (good to go) to red (not working yet). |
+| **[LiDAR maps](lidar-maps/)** | Map scans by game: the author's own (Author Provided Scans, one zip per game) and the ones players share. Import them from the launcher's **LiDAR scans**. |
 
 [![How the bots play each game: summary](docs/bot_status.png)](docs/BOT_STATUS.pdf)
 

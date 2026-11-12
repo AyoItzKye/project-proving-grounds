@@ -167,6 +167,12 @@ STAY_SCORE = 1.4     # staying on it: over all but a fight (a man in sight 1.5 +
 DEFEND_R, ESCORT_R = 15.0, 12.0     # how far a defender strays from its post, an escort from our flag carrier (keep_role)
 DEFEND_HOLD = 6.0                   # a CTF defender closes on a man only this near its post (fight): from cover otherwise
 CLOSE_FIGHT_R = 8.0                 # a man in sight this close is fought whatever the role (decide)
+# Bot.walk_fire: on foot, a gun in hand, on its way somewhere else (the objective, a gun, a seat, a hunt), it shoots a man
+# in view within WALK_FIRE_CONE of the way it walks and in its gun's reach (or hurting it) and walks on, as a person runs
+# at the flag shooting the man in front of him. Live Sandtrap 20261112-135123: on those goals bots had a man within 6 u
+# in front with no aim on anyone 62 s, 26 first hits on foot with a gun never answered (only watched), and a runner
+# walked past the player 3 u off at his flag
+WALK_FIRE, WALK_FIRE_CONE = True, math.radians(60)
 GLIMPSE_S = 1.5                     # s: a man out of sight no longer than this is still "in sight" to its post (keep_role)
 PRESS_NEAR = 3.0                    # u: a press (press_on) walks in to here; closer, push_in and the melee take over
 POWER_NEAR = 15.0                   # u: a power weapon up this near is not held back by a post (keep_role)
@@ -1599,10 +1605,13 @@ class Bot:
                 if (math.hypot(act.forward, act.strafe) > 0.5 and s.att and s.att[0] in ("watch", "post", "flank")
                         and not str(s.att[1]).endswith("hit") and s.att[1] != "teleporter"):
                     look = s.walk_cone(me, look, act.yaw + math.atan2(act.strafe, act.forward))
-                act.yaw, act.pitch = s.aim.step(now, dt, me, None, look, Vec(), False)
-                if (abs(math.atan2(act.strafe, act.forward)) > math.radians(60) and not s.notes
-                        and abs(act.forward) + abs(act.strafe) > 0.1):
-                    act.forward, act.strafe = act.forward * 0.3, act.strafe * 0.3
+                if s.walk_target(now, me, act) is not None:
+                    s.walk_fire(now, dt, me, snap, act, nav)   # a man in front on the way to it: shot on the way (its
+                else:                                          # aim the fight's: one aim step a tick)
+                    act.yaw, act.pitch = s.aim.step(now, dt, me, None, look, Vec(), False)
+                    if (abs(math.atan2(act.strafe, act.forward)) > math.radians(60) and not s.notes
+                            and abs(act.forward) + abs(act.strafe) > 0.1):
+                        act.forward, act.strafe = act.forward * 0.3, act.strafe * 0.3
                 s.enter_riders = v.get("riders", 0)     # who was in it: tells our seat once in (drive)
                 s.enter_want = want                     # the seat it asks for (drive: where that is the one it gets)
                 if dist(me.pos, vp) < 1.6 or dist(me.pos, Vec(*v["pos"])) < 2.2:
@@ -1743,7 +1752,11 @@ class Bot:
                 look = s.walk_cone(me, look, act.yaw + math.atan2(act.strafe, act.forward))
             # (the quick turn also when it is told to walk but slowed by the turn rule below: under 1 u/s it never came)
             s.aim.quick_ok = (me.vel.flat() > 1.0 or walking) and not s.per.pending
-            act.yaw, act.pitch = s.aim.step(now, dt, me, None, look, Vec(), False)
+            # a man to shoot on the way (walk_fire): its aim is the fight's, one aim step a tick (a second one, the look's
+            # first, spoilt the swing's timing: the looser trigger's early shot, test_fluidity_fixes 9)
+            shoot = gate is None and s.walk_target(now, me, act) is not None
+            if not shoot:
+                act.yaw, act.pitch = s.aim.step(now, dt, me, None, look, Vec(), False)
             arr = getattr(s, "arrive", None)       # Heroic and up: a grenade onto a landing he is 0.8-2.5 s from (a lift
             if (arr is not None and s.att and s.att[1] == "landing" and s.p.tier in ("strong", "top")   # exit: INTER-LIFT-02)
                     and now >= s.grenade_ready_at and 0.8 <= arr[1] - now <= 2.5 and 6.0 < dist(me.pos, arr[0]) < 18.0
@@ -1757,9 +1770,11 @@ class Bot:
             # at 0.3, 200 s on the top; the attackers' last steps onto the core's stand ring were too slow to hop it)
             off = abs(math.atan2(act.strafe, act.forward)) if abs(act.forward) + abs(act.strafe) > 0.1 else 0.0
             # (75 degrees before: walking 60+ degrees off the view 16% of the time to the player's 9%, live Spire)
-            if off > math.radians(60) and not s.notes and now >= getattr(s, "exact_until", 0.0) and gate is None:
+            if (off > math.radians(60) and not s.notes and now >= getattr(s, "exact_until", 0.0) and gate is None
+                    and not shoot):
                 act.forward, act.strafe = act.forward * 0.3, act.strafe * 0.3
-            if kind == "hold":
+            fired = shoot and s.walk_fire(now, dt, me, snap, act, nav)   # a man in front: shot on the way
+            if kind == "hold" and not fired:
                 act.crouch = s.p.crouchy > 0.5 and dist(me.pos, point) < 1.5
             if (kind == "objective" and snap.mode != "slayer" and s.p.tactics > 0.15 and now >= s.grenade_ready_at
                     and not me.has_flag and me.weapon not in LUNGE      # (a Flood: 15 throws into its run, live Adrift)
@@ -4254,6 +4269,48 @@ class Bot:
                 best = (it["pos"], score)
         return best
 
+    def walk_target(s, now, me, act):
+        """WALK_FIRE: the man to shoot on the way (the nearest in view within WALK_FIRE_CONE of the walk and in the gun's
+        reach, max(its band's far end, CLOSE_FIGHT_R), or the man hurting it now at any range), None for none. Not
+        carrying (no gun), not in a seat, not with a sword or hammer (that is a run at him), not a man last seen over
+        0.3 s ago or behind glass (fight goes round for those, and that walk is not this one)."""
+        if (not WALK_FIRE or me.has_flag or me.vehicle not in (None, -1) or me.weapon in LUNGE
+                or me.weapon in (None, "", "none")):
+            return None
+        heading = act.yaw + math.atan2(act.strafe, act.forward) if math.hypot(act.forward, act.strafe) > 0.3 else act.yaw
+        reach = max(WEAPON_RANGE.get(me.weapon, (5.0, 25.0))[1], CLOSE_FIGHT_R)
+        hurt = getattr(s.per, "attacker_id", None) if now - getattr(s.per, "attacker_t", -9.0) < 1.5 else None
+        glass = getattr(s, "glassed", {})
+        best = None
+        for k in s.per.visible_enemies():
+            b = s.per.beliefs[k]
+            d = dist(me.pos, b.pos)
+            if (now - s.per.last_seen.get(k, -9.0) > 0.3 or k in glass
+                    or abs(wrap(angles_to(me.pos, b.pos)[0] - heading)) > WALK_FIRE_CONE or (d > reach and k != hurt)):
+                continue
+            if best is None or d < best[0]:
+                best = (d, k)
+        return best[1] if best else None
+
+    def walk_fire(s, now, dt, me, snap, act, nav):
+        """WALK_FIRE: aim and fire at walk_target as a fight does (fight: its aim, trigger, grenade and melee) and keep the
+        walk it was on (the same way over the ground, whatever way it now faces; no crouch, no sprint while firing). The
+        fight's own state (engaged_since: its strafe, grenade and press draws) carries over while it stays on one man."""
+        tid = s.walk_target(now, me, act)
+        if tid is None:
+            s.walk_fire_on = None
+            return False
+        c, sn = math.cos(act.yaw), math.sin(act.yaw)
+        mx, my = c * act.forward - sn * act.strafe, sn * act.forward + c * act.strafe      # (strafe + = left)
+        on = getattr(s, "walk_fire_on", None)
+        s.engaged_since = on[1] if on is not None and on[0] == tid and now - on[2] < 0.5 else None
+        s.fight(now, dt, me, snap, tid, act, nav)
+        s.walk_fire_on = (tid, s.engaged_since, now)
+        c, sn = math.cos(act.yaw), math.sin(act.yaw)
+        act.forward, act.strafe = c * mx + sn * my, -sn * mx + c * my
+        act.crouch = act.sprint = False
+        return True
+
     def fight(s, now, dt, me, snap, tid, act, nav):
         b = s.per.beliefs.get(tid)
         if not b:
@@ -5114,11 +5171,16 @@ class Bot:
 
     def blocked_way(s, T, me, snap, yaw):
         """What stops a step along yaw: "wall" (a wall or placed object nearer than REDIRECT_D, Terrain.clearance),
-        "vehicle" (one within 1.5 u ahead and 0.9 u to the side: the level data has none), else None."""
+        "vehicle" (one within 1.5 u ahead and 0.9 u to the side: the level data has none), else None. Not an Elephant: its
+        middle is beside its own bay and deck, where the flags are (way_in and round_hull walk its hull). Live Sandtrap
+        20261112-135123: a bot on the deck 1 u from the capture was turned "round" the Elephant it stood on, off the deck,
+        three times in 26 s."""
         if T.clearance(s.feet(me), yaw, 1.0) < s.REDIRECT_D:
             return "wall"
         c, sn = math.cos(yaw), math.sin(yaw)
         for v in getattr(snap, "vehicles", ()) or ():
+            if vehicles.kind_of(v.get("kind", "")) == "elephant":
+                continue
             q = vpos(v)
             dx, dy = q.x - me.pos.x, q.y - me.pos.y
             if 0.0 < dx * c + dy * sn < 1.5 and abs(dy * c - dx * sn) < 0.9 and abs(q.z - me.pos.z) < 1.5:

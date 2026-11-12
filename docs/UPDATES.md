@@ -12,6 +12,9 @@ Click a version to see what it added and fixed.
 - <!-- build: 20261112-1342 --> **LiDAR scans in the launcher**: open **LiDAR scans**, choose a game and press **Import** to download and add the author's scans of it, or press **Import a shared zip ...** to add a zip another player shared (one map's or a whole game's). An import adds to your own scans and never replaces them; importing the same zip twice adds nothing the second time, and a map your version does not have is skipped and named.
 
 ### - Fixed
+- <!-- build: 20261112-1507 --> **Bots shoot the man in front of them**: a bot on its way to the flag, a gun, a vehicle or a hunt no longer walks past an enemy right in front of it, only looking at him. It shoots him and keeps going, as a player runs at the flag firing at the defender in his way. Shots it takes from in front are answered the same way.
+- <!-- build: 20261112-1507 --> **Sandtrap's Elephants**: bots inside an Elephant's bay or up on its deck, on their way to the flag capture, are no longer turned around the Elephant they stand in and walked off the deck.
+- <!-- build: 20261112-1507 --> **CTF when ahead**: after a capture the team keeps attacking. One point up, a quarter of the team still defends and the rest go for the flag; two points up, one more stays home. Before, three or four of seven sat at home with one runner.
 - <!-- build: 20261112-1342 --> **Exporting a LiDAR scan**: `tools\lidar_share.py export` stopped with an error in an installed copy of the mod; it writes the zip now.
 
 </details>
