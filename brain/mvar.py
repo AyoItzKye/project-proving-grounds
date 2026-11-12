@@ -17,7 +17,7 @@ Objects are named by (palette folder, item): maps/_shapes/reach_palettes.json (t
 map's scenario "map variant palettes"). Multiplayer object type (5 bits): 1 weapon, 12..14 teleporters, 15 spawn point,
 16 respawn zone, 17/18 objectives, 19 named location, 25 safe volume, 26 kill volume, ...
 
-python -I brain/mvar.py <file.mvar | file.bin> [--json]   lists the objects (Reach, Halo 3) or the options
+python -I brain/mvar.py <file.mvar | file.bin> [--json]   lists the objects (Reach, Halo 3, Halo 4, H2A) or the options
 """
 import glob
 import json
@@ -95,14 +95,15 @@ def chunks(data):
     return out
 
 
-def _pos_bits(bounds, bitcount=21):
-    """Bits per position axis for a variant's Forge bounds (reach-mvar-viewer-js _sub4DC8E0)."""
+def _pos_bits(bounds, bitcount=21, cap=0x800000):
+    """Bits per position axis for a variant's Forge bounds (reach-mvar-viewer-js _sub4DC8E0; Halo 4 and H2A cap the
+    step count at 0x400000)."""
     step = MIN16 / (1 << (bitcount - 16)) if bitcount > 16 else (1 << (16 - bitcount)) * MIN16
     if step < 0.0001:
         return [26, 26, 26]
     out = []
     for lo, hi in bounds:
-        n = min(0x800000, int(math.ceil((hi - lo) / (step * 2))))
+        n = min(cap, int(math.ceil((hi - lo) / (step * 2))))
         hb = n.bit_length() - 1
         out.append(min(26, hb + (1 if n & ((1 << hb) - 1) else 0)) if n else 0)
     return out
@@ -293,6 +294,7 @@ USER_DIRS = {"reach": "HaloReach", "h3": "Halo3", "h4": "Halo4", "h2a": "Halo2A"
 GAME_DIRS = {"reach": "haloreach", "h3": "halo3", "h4": "halo4", "h2a": "groundhog"}  # in MCC's install folder
 SAME = 0.6            # share of the live Forge pieces a file must place (same name within NEAR) to be the match's
 NEAR = 0.3
+MIN_PIECES = 3        # Forge pieces a Halo 3 file must place to be a layout (find_h3; variants.MIN_OWN)
 
 
 def library(game="reach", mcc=None, home=None, kind="map"):
@@ -362,7 +364,8 @@ def find(base, pieces, files=None):
         for o in v["objects"]:
             by.setdefault(o["name"], []).append(o["pos"])
         share = sum(1 for n, p in live if any(math.dist(p, q) <= NEAR for q in by.get(n, ()))) / len(live)
-        key = (round(share, 3), os.path.getmtime(path))
+        key = (round(share, 3), "LocalFiles" in path, os.path.getmtime(path))   # (the player's own, not the copy MCC
+        # writes to Temporary/UserContent under a new name at every match start)
         if share >= SAME and (best is None or key > best[0]):
             best = (key, v)
         best_share = max(best_share, share)
@@ -699,6 +702,47 @@ def parse_h3(data):
                 scenario_objects=n_scen, objects=objects, quotas=quotas, ok=ok)
 
 
+H3_FORGE_KINDS = ("4", "5")     # the sandbox scenery and teleporter palettes: what Halo 3's Forge places as pieces
+
+
+def find_h3(base, pieces, files=None):
+    """The Halo 3 map variant file a match on base runs, from its live pieces [(name, pos, axes)] (brain/forge.py
+    live_pieces: the running match's scenery and crates by tag name): the live pieces of the map's Forge palettes
+    (H3_FORGE_KINDS; its own scenery is in other palettes) the file places within NEAR, as a share of those live pieces,
+    the best at SAME or more, on a tie the player's own (LocalFiles), then the newest; a file needs MIN_PIECES of
+    them. -> (read_h3 variant, share) or (None, best share). Halo 3's map exports list no scenery, so a layout is
+    known by its file, not by the base's."""
+    pal = next(((k, v) for k, v in ((json.load(open(H3_PALETTES, encoding="utf-8")) if os.path.exists(H3_PALETTES)
+                                     else {}).items()) if v["map"] == base), None)
+    if not pal:
+        return None, 0.0
+    names = {n for k in H3_FORGE_KINDS for n in pal[1]["kinds"].get(k, [])}
+    live = [(n, p) for n, p, _ in pieces if n in names]
+    best, best_share = None, 0.0
+    if not live:
+        return None, 0.0
+    for path in library("h3") if files is None else files:
+        try:
+            v = read_h3(path)
+        except (OSError, ValueError, zlib.error, struct.error, IndexError):
+            continue
+        if not v["ok"] or v["map"] != base:
+            continue
+        by = {}
+        for o in v["objects"]:
+            if o["placed"] and o["name"] in names:
+                by.setdefault(o["name"], []).append(o["pos"])
+        if sum(len(q) for q in by.values()) < MIN_PIECES:
+            continue
+        share = sum(1 for n, p in live if any(math.dist(p, q) <= NEAR for q in by.get(n, ()))) / len(live)
+        key = (round(share, 3), "LocalFiles" in path, os.path.getmtime(path))   # (the player's own, not the copy MCC
+        # writes to Temporary/UserContent under a new name at every match start)
+        if share >= SAME and (best is None or key > best[0]):
+            best = (key, v)
+        best_share = max(best_share, share)
+    return (best[1], best[0][0]) if best else (None, best_share)
+
+
 def read_h3(path):
     """parse_h3() of a file with each object's name ("name", None when its palette is not exported) and the base map's
     folder ("map"), plus the objective objects (goals palette, kind 6) as "objectives" [(name, pos, team)]."""
@@ -711,6 +755,159 @@ def read_h3(path):
         names = (pal or {}).get("kinds", {}).get(str(kind), [])
         o["kind"], o["name"] = kind, names[idx] if idx is not None and idx < len(names) else None
     v["objectives"] = [(o["name"], o["pos"], o["team"]) for o in v["objects"] if o["kind"] == 6 and o["placed"]]
+    return v
+
+
+# --- Halo 4 (mvar chunk version 50) and Halo 2 Anniversary (52) map variants: the chunk's bitstream from byte 36, a
+# content header, then Reach's layout with wider fields: 651 slots, palette index 8 bits (flat over the scenario's
+# "map variant palettes" entries) + variant index 5 bits, Reach's position and rotation coding (axis steps capped at
+# 0x400000), parent 10, scale 6, lock 1, shape (16-bit values), object type 6, placement flags 10 (H2A 11), then the
+# type's tail; the quota table after the slots ({min, max, placed}: Halo 4 8 bits each, H2A 10). H2A adds a third byte
+# after user data and a bsp index (2 bits) on an out-of-bounds position; MCC's own Forge saves body version 51 (Halo 4)
+# / 53 (H2A) with a 16-byte map GUID before the slots. Field order and widths from Sopitive's HaloMapStudio notes
+# (crates/hms-app/src/h4/mvar.rs; read only, reference/HaloMapStudio). The check: every quota's placed count equals the
+# objects read with that palette index (tools/test_mvar_h4.py runs it on every file MCC has). Objects are named from
+# maps/_shapes/h4_palettes.json / h2a_palettes.json (tools/forge_palette.py --h4h2a).
+H4_TYPES = {1: "weapon", 2: "grenade", 5: "equipment", 7: "light vehicle", 8: "heavy vehicle", 9: "flying vehicle",
+            11: "device", 12: "dominion pad", 13: "teleporter sender", 14: "teleporter receiver", 15: "teleporter 2-way",
+            16: "player spawn", 17: "respawn zone", 26: "safe area", 27: "kill area", 31: "trait zone",
+            32: "initial ordnance", 33: "random ordnance", 34: "objective ordnance"}
+# placement bits 6-7 (not Reach's order): 3 on every Forge structure piece of the 452 files (shipped maps build on them:
+# fixed), 0 on crates, vehicles, spawns (normal), 1 on some crates and spawn points (phased by elimination; unproven live,
+# so the nav keeps those pieces solid: a wall missed walks bots into it, a phased crate kept costs a detour)
+H4_PHYSICS = ("normal", "phased", "?", "fixed")
+
+
+def expand(data):
+    """A BLF file with its _cmp chunk (zlib, the mvar chunk inside) inflated in place; the file itself when none."""
+    ch = chunks(data)
+    if "_cmp" in ch and "mvar" not in ch:
+        off, size, _ = ch["_cmp"]
+        data = data[:off] + zlib.decompress(data[off + 17:off + size])
+    return data
+
+
+def _idx(b, n):
+    return None if b.u(1) else b.u(n)
+
+
+def parse_h4(data):
+    """A Halo 4 or H2A map variant: dict(game, title, map_id, version, bounds, objects, quotas, ok); objects [{slot,
+    quota, variant, pos, up, forward, yaw, parent, object_type, mp_type, placement, team, spawn_sequence, user_data,
+    shape, placed}] (placed: drawn at the start, not a "place later" object)."""
+    data = expand(data)
+    ch = chunks(data)
+    off, size, ver = ch.get("mvar", (0, 0, 0))
+    if ver not in (50, 52):
+        raise ValueError(f"not a Halo 4 / H2A map variant (mvar chunk version {ver})")
+    h2a = ver == 52
+    body = data[off:off + size] + bytes(max(0, 0x7428 - size))     # (a short H2A file: the rest is zeros)
+    b = Bits(body, 36)
+    ctype = b.u(4) - 1
+    b.u(32), b.raw(32)                          # (file size; uid, parent, root, game ids)
+    activity, _, engine = b.u(2), b.u(3), b.u(3)
+    header_map, _ = b.u(32), b.u(8)
+    authors = []
+    for _ in range(2):
+        b.raw(16)
+        authors.append(b.cstr(16))
+        b.u(1)
+    title, description = b.wstr(128), b.wstr(128)
+    b.u({3: 32, 4: 32, 6: 8}.get(ctype, 0))
+    if activity == 2:
+        b.u(16)
+    b.u({3: 52, 4: 34}.get(engine, 0))
+    version = b.u(8)
+    b.u(32), b.u(32)
+    n_quota, map_id = b.u(9), b.u(32)
+    b.u(2)
+    xs = [b.f32() for _ in range(6)]
+    bounds = [(xs[0], xs[1]), (xs[2], xs[3]), (xs[4], xs[5])]
+    budget = (b.u(32), b.u(32))
+    n_labels = b.u(9)
+    offs = [b.u(12) if b.u(1) else None for _ in range(n_labels)]
+    labels = []
+    if n_labels:
+        length, packed = b.u(13), b.u(1)
+        buf = zlib.decompress(b.raw(b.u(13))[4:]) if packed else b.raw(length)
+        labels = [None if o is None or o >= len(buf) else buf[o:buf.index(b"\0", o)].decode("latin-1") for o in offs]
+    if version >= (53 if h2a else 51):
+        b.raw(16)                               # (map GUID)
+    nb = _pos_bits(bounds, cap=0x400000)
+    objects = []
+    for slot in range(OBJECTS):
+        if not b.u(1):
+            continue
+        o = dict(slot=slot, flags=b.u(2), quota=_idx(b, 8), variant=_idx(b, 5))
+        inb = b.u(1)
+        if h2a and not inb:
+            _idx(b, 2)                          # (bsp index: the axes then count from that bsp's box, not kept)
+        o["in_bounds"] = bool(inb)
+        o["pos"] = [round((0.5 + b.u(n)) * ((hi - lo) / (1 << n)) + lo, 4) for n, (lo, hi) in zip(nb, bounds)]
+        up = (0.0, 0.0, 1.0) if b.u(1) else _up(b.u(20))
+        yaw = b.u(14) * 0.0003834952 - 3.1415927 + 0.0001917476
+        f = _forward(up, yaw)
+        o.update(up=[round(c, 5) for c in up], forward=[round(c, 5) for c in f], yaw=round(math.degrees(yaw), 3))
+        o["parent"], o["scale_q"], o["locked"] = b.u(10) - 1, b.u(6), bool(b.u(1))
+        st = b.u(2)
+        vals = [b.u(16) / 256.0 for _ in range((0, 1, 3, 4)[st])]
+        o["shape"] = None if not st else dict(zip((None, ("radius",), ("radius", "top", "bottom"),
+                                                  ("width", "length", "top", "bottom"))[st], vals), shape=SHAPES[st])
+        t = o["object_type"] = b.u(6)
+        o["mp_type"] = H4_TYPES.get(t, "ordinary" if t == 0 else t)
+        o["placement"] = b.u(11 if h2a else 10)
+        o.update(team=-1, spawn_sequence=0, user_data=0, labels=[])
+        if t == 32:
+            o["team"], o["ordnance"] = b.u(4) - 1, [b.u(8)]
+            b.u(16)
+        elif t in (33, 34):
+            if t == 34:
+                b.u(8)
+            o["ordnance"] = [b.u(8) for _ in range(8)]
+        elif t != 35:
+            o["team"], o["spawn_time"], o["color"] = b.u(4) - 1, b.u(8), _idx(b, 3)
+            seq, ud = b.u(8), b.u(8)
+            o["spawn_sequence"], o["user_data"] = seq - 256 if seq >= 128 else seq, ud - 256 if ud >= 128 else ud
+            if h2a:
+                b.u(8)
+            o["labels"] = [labels[i] if i < len(labels) else None for i in (_idx(b, 8) for _ in range(4))
+                           if i is not None]
+            b.u(8 if t in (1, 12, 20) else 16 if t == 11 and h2a else 5 if t == 31 else 10)   # (type's tail)
+        o["placed"] = not o["placement"] & 0x10          # (bit 4: not placed at the start; set in no file read)
+        o["physics"] = H4_PHYSICS[o["placement"] >> 6 & 3]
+        objects.append(o)
+    w = 10 if h2a else 8
+    quotas = [dict(min=b.u(w), max=b.u(w), placed=b.u(w)) for _ in range(n_quota)]
+    counts = {}
+    for o in objects:
+        if o["quota"] is not None:
+            counts[o["quota"]] = counts.get(o["quota"], 0) + 1
+    m = (1 << w) - 1
+    ok = b.p <= len(body) * 8 and all(q["placed"] == counts.get(i, 0) & m for i, q in enumerate(quotas))
+    return dict(game="h2a" if h2a else "h4", title=title, description=description, authors=authors, map_id=map_id,
+                header_map_id=header_map, version=version, bounds=bounds, budget=budget, labels=labels,
+                objects=objects, quotas=quotas, ok=ok)
+
+
+_H4PAL = {}
+
+
+def read_h4(path):
+    """parse_h4() of a file with each object's name ("name": the palette variant's object, short; None when the
+    palette is not exported or the slot is empty), its palette entry ("entry") and the base map's folder ("map")."""
+    v = parse_h4(open(path, "rb").read())
+    g = v["game"]
+    if g not in _H4PAL:
+        f = os.path.join(ROOT, "_shapes", g + "_palettes.json")
+        _H4PAL[g] = json.load(open(f, encoding="utf-8")) if os.path.exists(f) else {}
+    pal = _H4PAL[g].get(str(v["map_id"]))
+    v["map"], v["path"] = pal["map"] if pal else None, path
+    ents = pal["entries"] if pal else []
+    for o in v["objects"]:
+        e = ents[o["quota"]] if o["quota"] is not None and o["quota"] < len(ents) else None
+        objs = e[2] if e else []
+        i = o["variant"] or 0
+        o["entry"], o["name"] = e[1] if e else None, (objs[i] or None) if i < len(objs) else None
     return v
 
 
@@ -763,6 +960,15 @@ def _main(argv):
             if o["placed"]:
                 print(f"{o['slot']:3} {o['name'] or '?'} kind={o['kind']} team={o['team']} "
                       f"engine_flags=0x{o['engine_flags']:x} pos={o['pos']} yaw={o['yaw']} shape={o['shape']}")
+        return
+    if chunks(expand(open(path, "rb").read())).get("mvar", (0, 0, 0))[2] in (50, 52):
+        v = read_h4(path)
+        print(f"{v['game']} {v['title']!r} on {v['map']} ({v['map_id']}), {len(v['objects'])} objects, parse "
+              f"{'OK' if v['ok'] else 'FAILED'}")
+        for o in v["objects"]:
+            print(f"{o['slot']:3} {o['name'] or '?'} ({o['entry']}) {o['mp_type']} team={o['team']} "
+                  f"physics={o['physics']} seq={o['spawn_sequence']} labels={o['labels']} pos={o['pos']} "
+                  f"yaw={o['yaw']} up={o['up']} shape={o['shape']}")
         return
     v = read(path)
     if "--json" in argv:

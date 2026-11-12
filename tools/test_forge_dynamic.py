@@ -1,7 +1,8 @@
 """A map variant's pieces that come and go in a match (brain/forge.py PieceWatch; GitHub issue 2, Tempest Invasion: a
 wall the game put back for round 2 was open floor to the bots, who pressed into it for minutes): a Forge wall standing
 up after the nav was built is a wall on the nav while it stands and open again once it is gone; a piece the nav was
-built with that goes missing is filed as dynamic once, and the next match's nav leaves it out (brain/maps.py).
+built with that goes missing is filed as dynamic once, and the next match's nav leaves it out (brain/maps.py); a piece
+never seen live this match (one only its .mvar file lists: a vehicle, a spawn) never counts as gone.
 
 usage: python -I test_forge_dynamic.py      -> "forge dynamic OK"
 """
@@ -48,6 +49,12 @@ def main():
     # filed dynamic: the next match's watch has it as a wall while it stands (maps.py leaves it out of the stamps)
     w2 = PieceWatch([crate], dynamic={piece_key(*crate[:2])}, game="reach")
     assert piece_key(*crate[:2]) not in w2.built
+    # a piece from the variant's .mvar that live reads never return (a vehicle, a spawn, a door: live Halo 3 filed 56
+    # of those gone in 2 s): never seen, never gone
+    hog = ("warthog", (50.0, 50.0, 0.0), AXES)
+    w3 = PieceWatch([crate, hog], game="reach")
+    assert not any(w3.update([crate], T) for _ in range(5)), "a piece live reads never return filed as gone"
+    assert w3.update([], T) == set() and w3.update([], T) == {piece_key(*crate[:2])}, "a seen piece that went: not gone"
     zone_checks(T, a)
     print("forge dynamic OK")
 

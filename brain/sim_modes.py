@@ -22,8 +22,13 @@ Rules, simplified from Reach's built-in variants (it checks behaviour, not balan
                carrier dies; back to its spawn after BALL_RESET_S loose.
   vip          each team has one VIP (snap.vips); killing the other team's VIP scores 1, then that team picks a new one
                (INFERRED from Halo 3 VIP's goal, its point values not read). Other kills score nothing.
-Infection and Juggernaut are not simulated (a player's side changes on death or with the Juggernaut: the sim's directors
-are fixed per team); Infection's live roles are checked by tools/test_modes.py.
+  juggernaut   Halo 3's: one Juggernaut (picked at random at the start, as Reach does; Halo 3's first kill makes one),
+               team 1 alone with an overshield, everyone else team 0 (as the live brain re-teams a free for all: modes.
+               Watch); his kills score 1 (team 1), killing him scores 1 (team 0) and the killer is the next Juggernaut.
+               The bots see him as snap.vips. The sides change with Sim.switch_team.
+  infection    zombies (team 1, INFECT_SHARE of the lobby, one at least) carry swords (reach MELEE_REACH); a survivor
+               killed by a zombie comes back a zombie (1 point to the zombies), a zombie killed scores the survivors 1; no
+               survivor left: a new round with new zombies. snap.infected is the zombies' team.
 """
 from . import invasion, modes
 from .core import TICK, Vec, dist
@@ -36,6 +41,7 @@ CORE_RETURN_S = 30.0
 # a moving hill's stay; a loose ball's time before it goes home (INFERRED: Halo 3 and Reach's ball reset default, not
 # read from a variant); a zone's height (as territories)
 HILL_MOVE_S, BALL_RESET_S, ZONE_DZ = 60.0, 30.0, 2.5
+JUGG_SHIELD, INFECT_SHARE = 2.0, 0.125   # the Juggernaut's overshield; the share of the lobby zombie at a start
 SPOT_MODES = ("king", "crazy_king", "oddball", "vip")
 
 
@@ -100,6 +106,8 @@ class SimModes:
             s.last_holder = None
             s.vips = {}                            # VIP: team -> its VIP (picked on the first tick: the sim makes its
             #                                        players after its modes)
+        elif s.mode in ("juggernaut", "infection"):
+            s.ready, s.jugg, s.rounds = False, None, 0
         else:
             s.lay = modes.layout(objs)
             s.owner, s.held, s.next_score = {}, {}, 10.0
@@ -159,6 +167,8 @@ class SimModes:
 
     def step(s):
         now = s.sim.now
+        if s.mode in ("juggernaut", "infection"):
+            return s.step_sides()
         if s.mode == "invasion":
             return s.step_invasion(now)
         if s.mode in SPOT_MODES:
@@ -335,7 +345,63 @@ class SimModes:
                 p.has_flag = False
             s.round_start()
 
-    def on_kill(s, e):
+    # --- Juggernaut and Infection (the sides change: Sim.switch_team)
+    def side_start(s):
+        sim = s.sim
+        everyone = sorted(p.id for p in sim.players)
+        if s.mode == "juggernaut":
+            s.jugg = sim.rng.choice(everyone)
+            for pid in everyone:
+                sim.switch_team(pid, 1 if pid == s.jugg else 0)
+            s.make_jugg(s.jugg)
+        else:
+            k = max(1, round(INFECT_SHARE * len(everyone)))
+            zombies = set(sim.rng.sample(everyone, k))
+            for pid in everyone:
+                sim.switch_team(pid, 1 if pid in zombies else 0)
+            s.rounds += 1
+            s.events.append((round(sim.now, 1), f"infection round {s.rounds}: {k} zombies"))
+        s.ready = True
+
+    def make_jugg(s, pid):
+        p = next(q for q in s.sim.players if q.id == pid)
+        p.shield = JUGG_SHIELD
+
+    def step_sides(s):
+        sim = s.sim
+        if not s.ready:
+            s.side_start()
+        if s.mode == "infection":
+            for p in sim.players:
+                if p.team == 1:
+                    p.weapon, p.weapons = "sword", ["sword"]
+            if all(p.team == 1 for p in sim.players):
+                s.events.append((round(sim.now, 1), "infection: no survivor left"))
+                s.ready = False
+
+    def on_kill(s, e, src=None):
+        if s.mode == "juggernaut" and src is not None:
+            sim = s.sim
+            if e.id == s.jugg and src.id != e.id:
+                sim.score[0] += 1
+                sim.switch_team(e.id, 0)
+                sim.switch_team(src.id, 1)
+                s.jugg = src.id
+                s.make_jugg(src.id)
+            elif src.id == s.jugg:
+                sim.score[1] += 1
+            return
+        if s.mode == "infection" and src is not None:
+            sim = s.sim
+            if e.team == 0 and src.team == 1:
+                sim.score[1] += 1
+                sim.switch_team(e.id, 1)          # (back a zombie at his respawn)
+            elif e.team == 1 and src.team == 0:
+                sim.score[0] += 1
+            return
+        s.on_kill_obj(e)
+
+    def on_kill_obj(s, e):
         if s.mode == "invasion" and s.core["carrier"] == e.id:
             s.core["carrier"], e.has_flag = None, False
         if s.mode in ("assault", "stockpile"):
@@ -355,6 +421,12 @@ class SimModes:
 
     def snapshot(s, snap):
         snap.mode = "king" if s.mode == "crazy_king" else s.mode
+        if s.mode == "juggernaut":
+            snap.vips = (s.jugg,) if s.jugg is not None else ()
+            return
+        if s.mode == "infection":
+            snap.infected = 1
+            return
         if s.mode in ("king", "crazy_king"):
             snap.hill, snap.hill_r = s.hills[s.hill_k]
             return

@@ -2906,6 +2906,16 @@ def level_data(map_name, live=None):
                 name = identify(map_name, live_pieces(live), base_placed(objs), game="reach", area=base_area(objs))
             except Exception as e:
                 print("could not read the game's placed objects:", e, flush=True)
+        elif live is not None and type(live).__name__ == "LiveH3":
+            try:                     # Halo 3: the variant file placing the live Forge pieces (brain/mvar.py find_h3)
+                from brain.forge import live_pieces
+                from brain import mvar
+                import h3_forge_import
+                v, _ = mvar.find_h3(map_name, live_pieces(live))
+                got = h3_forge_import.file_one(v["path"], "h3") if v is not None else None
+                name = got[2] if got else name
+            except Exception as e:
+                print("could not read the game's placed objects:", e, flush=True)
         m = get_map(name)
         T = terrain(m)
         if "variant" in m:

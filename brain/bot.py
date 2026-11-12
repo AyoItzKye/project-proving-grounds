@@ -221,6 +221,7 @@ FF_KITE_R, FF_FLANK_R, FF_BEHIND, FF_KITE_FLIP = 9.0, 14.0, 4.0, 2.0   # u, u, u
 FF_FRONT_W, FF_BACK_W = 0.6, 2.0    # a bruiser's threat facing us / its back to us
 OBJ_FLOOR = 0.6                     # an objective mode's objective scored as if every personality cared this much
 OBJ_FIRST, OBJ_DETOUR, OBJ_POWER_DETOUR, OBJ_ITEM_K = True, 3.0, 8.0, 0.25   # Bot.objective_first
+OBJ_NEAR = 12.0   # ... only this near the job: farther, a better gun close by is taken (Invasion, test_invasion_pileon 10)
 SNIPER_SPOTS, SNIPER_SPOT_R = True, 35.0   # a sniper in hand: to the best overwatch within this (brain/spots.py)
 ODD_RALLY, ODD_RALLY_W = True, 2.8   # Oddball: our carrier's guards past ODD_WATCH_R go back to him first (keep_role)
 ODD_HUNT_CARRIER = True            # Oddball hunters on their carrier in every lobby (keep_role, live_point)
@@ -944,8 +945,8 @@ class Bot:
 
     def objective_first(s, me, snap, scores):
         """An objective job first (OBJ_FIRST): a bot with one (runner, defender, escort, hunter, screen, mid with a point,
-        in an objective mode) takes a gun only out of ammo, on its way (OBJ_DETOUR more than the straight way to the job)
-        or a power weapon within OBJ_POWER_DETOUR; a vehicle only by the director's order. Anything else is weighed by
+        in an objective mode) within OBJ_NEAR of its job takes a gun only out of ammo, on its way (OBJ_DETOUR more than the
+        straight way to the job) or a power weapon within OBJ_POWER_DETOUR; a vehicle only by the director's order. Anything else is weighed by
         OBJ_ITEM_K. The player's live games, Nov 11-12: within 10 u of their job, Oddball escorts chose guns 25% (the
         job 19%), CTF defenders 13% (the job 34%), runners by the loose ball 13%; the guns a median 7-13 u off the job."""
         o = s.order
@@ -954,6 +955,8 @@ class Bot:
             return
         job = s.live_point(me, snap) or s.objective_point(me) or o.point
         straight = dist(me.pos, job)
+        if straight > OBJ_NEAR:
+            return              # (away from the job a better gun close by is taken: the player's Invasion rule)
         for k in [k for k in scores if k[0] in ("item", "vehicle")]:
             if k[0] == "vehicle":
                 if o.role != "drive":

@@ -26,6 +26,8 @@ SPEED = 2.3          # world units/s (UNVERIFIED for CE, tune in-game)
 CANNON_PAD_R, CANNON_LINK_R, CANNON_SPEED, CANNON_ARC = 1.0, 2.0, 6.7, 6.0
 BODY_DMG = {"pistol": 0.45, "assault_rifle": 0.09, "sniper": 1.1, "rockets": 2.5, "fuelrod": 1.5,
             "plasma_pistol": 0.12, "plasma_rifle": 0.08, "needler": 0.07, "shotgun": 0.9, "flamethrower": 0.05}
+MELEE_REACH = {"sword": 2.25, "gravity_hammer": 1.35}   # the lunge weapons' reach (brain/bot.py LUNGE): no hit past it
+BODY_DMG.update(sword=2.0, gravity_hammer=2.0)        # (one lunge kills)
 HIT_SIZE = {"rockets": 3.0, "fuelrod": 2.0}   # splash: a near miss still hits
 AMMO = {"rockets": 4, "sniper": 8, "fuelrod": 5}
 SHIELD_DELAY, SHIELD_REFILL = 5.0, 4.0   # CE: 5 s delay, about 4 s to refill (docs/research/05)
@@ -67,7 +69,7 @@ class Sim:
         s.los, s.nav = s.T.sees, s.T.nav     # (sight: through windows and fences; shots: T.shot_los)
         s.objmodes = None
         if mode in ("invasion", "territories", "assault", "stockpile", "headhunter", "king", "crazy_king", "oddball",
-                    "vip", "race"):
+                    "vip", "race", "juggernaut", "infection"):
             from .sim_modes import SimModes          # objective rules (brain/sim_modes.py)
             s.objmodes = SimModes(s)
         s.players, s.bots = [], {}
@@ -105,7 +107,12 @@ class Sim:
 
     def spawn_point(s, team):
         pts = s.m["spawns"]["ctf" if s.mode == "ctf" else "slayer"][team] or s.m["spawns"]["ctf"][team]
-        if len(pts) < 4:
+        group = s.m["spawns"]["ctf" if s.mode == "ctf" else "slayer"]
+        sizes = sorted(len(group.get(t, ())) for t in (0, 1))
+        # (one side's list a handful against the other's lot: the labels carry no team, both sides get the halves.
+        # High Ground reads 94 and 2: team 0 spawned all over the map, beside the other flag too, and every run met
+        # its respawns head on at the middle ridge: 0 pickups in 300 s)
+        if len(pts) < 4 or (sizes[0] < 4 and sizes[1] > 5 * max(1, sizes[0])):
             # a map whose spawn points carry no team (Halo 3's: Construct reads 135 and 2): the half of all its spawns
             # nearer this team's flag
             every = [p for g in s.m["spawns"].values() for side in g.values() for p in side]
@@ -366,13 +373,16 @@ class Sim:
         if not e or s.gear.blocked(p, e):    # (a dome between us stops the shot)
             return
         d = max(dist(p.pos, e.pos), 0.5)
+        if w in MELEE_REACH and d > MELEE_REACH[w]:
+            return                                # (a sword or hammer reaches no farther than its lunge)
+        e_at = e.pos
         # where the shot crosses him: sideways off his middle, and how high above his feet. A Spartan's body is
         # about 0.12 to each side and 0.08-0.58 up, the head 0.07 to each side and 0.58-0.70 up (the player's
         # Reach games: well-aimed shots crossing 0.3-0.5 up hit 60-78%, 0.6 40%, 0.7 18%); crouched, 70% of
         # that. The old box (0.3 to each side, 0.54 up and down) counted almost every shot a bot fired
-        y = angles_to(eye(p), e.pos)[0]
+        y = angles_to(eye(p), e_at)[0]
         side = abs(d * math.sin(wrap(p.yaw - y)))
-        h = eye(p).z + d * math.tan(p.pitch) - e.pos.z
+        h = eye(p).z + d * math.tan(p.pitch) - e_at.z
         k = (0.7 if getattr(e, "crouching", False) else 1.0) * HIT_SIZE.get(w, 1.0)
         if s.now < s.state.get(e.id, {}).get("airborne_until", 0.0):   # (a hologram has no state)
             k *= 0.85   # a jumping target is a little harder to track
@@ -421,6 +431,18 @@ class Sim:
             if had_shield and e.shield <= 0:
                 s.report(src.team, s.now, src.id, "one_shot" if e.health < 0.5 else "cracked", e.pos, e.id, True)
 
+    def switch_team(s, pid, team):
+        """A player's side changes (Juggernaut, Infection): his bot moves to that team's director, its plan reset."""
+        p = next(q for q in s.players if q.id == pid)
+        b = s.bots[pid]
+        if p.team == team:
+            return
+        s.directors[p.team].bots.pop(pid, None)
+        s.directors[p.team].roles.pop(pid, None)
+        p.team = b.team = team
+        s.directors[team].bots[pid] = b
+        b.per.beliefs.clear()
+
     def kill(s, e, src):
         e.alive = False
         s.state[e.id]["respawn_at"], s.state[e.id]["flight"] = s.now + 5.0, None
@@ -432,7 +454,7 @@ class Sim:
         s.report(e.team, s.now, e.id, "died", src.pos, src.id, killer_weak=src.shield <= 0, died_at=e.pos)
         s.bots[e.id].on_death(src.id)
         if s.objmodes is not None:
-            s.objmodes.on_kill(e)
+            s.objmodes.on_kill(e, src)
         if e.has_flag:
             e.has_flag = False
             f = s.flags[1 - e.team]

@@ -62,6 +62,7 @@ GETAWAY, GETAWAY_D = True, 16.0
 KING_TAKE, KING_TAKE_HOLD = True, 4.0
 # CTF's attack wave (wave_tick): gather at the rally WAVE_GATHER_S at most, then all in WAVE_GO_S, WAVE_COOL_S between
 WAVE = True
+WAVE_FAILS, WAVE_SKIP_S = 2, 60.0   # waves that never gathered, running: the waves pause this long
 WAVE_GATHER_S, WAVE_GO_S, WAVE_COOL_S = 6.0, 20.0, 4.0
 POWER_SPOTS = True         # Oddball carriers hold the map's best ball spot (brain/spots.py; Director.ball_spot)
 SPOT_W, SPOT_FOE, SPOT_WALK, SPOT_KEEP = 6.0, 0.6, 0.25, 4.0   # spot score weight, per u from them, per u to walk, keep
@@ -543,7 +544,16 @@ class Director:
             for b in s.bots.values():
                 if b.id in w.get("ids", ()):
                     b.blitz_until = 0.0
-            s.wave, s.wave_cool, s.next_roles = None, now + WAVE_COOL_S, now
+            cool = WAVE_COOL_S
+            if w["go"] is not None:
+                s.wave_fails = 0
+            elif (live or getattr(s, "blitz", None) is not None):   # (ended still gathering, a blitz
+                # taking over too: a wave that never went, WAVE_FAILS)
+                s.wave_fails = getattr(s, "wave_fails", 0) + 1
+                if s.wave_fails >= WAVE_FAILS:
+                    s.wave_fails, cool = 0, WAVE_SKIP_S
+                    s.event(now, "wave", "attack waves paused: no gather")
+            s.wave, s.wave_cool, s.next_roles = None, now + cool, now
             return
         if not live or (w is None and now < getattr(s, "wave_cool", 0.0)):
             return
@@ -567,7 +577,7 @@ class Director:
             at = sum(1 for b in team if dist(snap.player(b.id).pos, w["rally"]) < 8.0
                      or dist(snap.player(b.id).pos, w["target"]) <= ahead)
             if now - w["t0"] >= WAVE_GATHER_S or at >= BLITZ_READY * len(team):
-                w["go"] = now
+                w["go"], s.wave_fails = now, 0
                 s.event(now, "wave", "attack wave: go")
         if w["go"] is None:
             for b in team:                      # gathering: to the rally, one already nearer stays where it is

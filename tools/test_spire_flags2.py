@@ -104,8 +104,10 @@ def main():
     # 4. the focus rifle held at 20 u (Blood Gulch's open ground)
     bg = get_map("bloodgulch")
     Tb = terrain(bg)
-    at = Vec(70.0, -120.0, Tb.nav_z(70.0, -120.0))
-    foe_at = at + Vec(-20.0, 0, 0)
+    # (a clear line: from (70, -120) a rise 1.0-1.3 u high lay between, over a CE eye at 0.62, and since the wall-shot
+    # check, build 20261111-2146, a bot rightly holds its fire into a hill; the man on his own ground)
+    at = Vec(50.0, -90.0, Tb.nav_z(50.0, -90.0))
+    foe_at = Vec(30.0, -90.0, Tb.nav_z(30.0, -90.0))
     fb = Bot(1, 0, make_profile("top", "rusher", random.Random(3)), bg, random.Random(3))
     fb.can_pickup = False
     t, yaw, pitch, fires, ticks = 0.0, math.pi, 0.0, 0, 0

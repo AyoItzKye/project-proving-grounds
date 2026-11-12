@@ -26,8 +26,9 @@ ROOT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
 # per game (the live reader's TAG_GAME): the object types read (scenery, crate; machines: doors and lifts move, left
 # out) and the object's position, forward and up (Halo 4 / H2A: tools/forge_dump.py on the player's ALL ITEMS maps;
 # their crates hold the Forge pieces and a map's own crates, Adrift's included)
-TYPES = {"reach": (6, 10), "h4": (6, 11), "h2a": (6, 11)}
-AXES_AT = {"reach": (0x44, 0x50, 0x5C), "h4": (0x64, 0x70, 0x7C), "h2a": (0x64, 0x70, 0x7C)}
+TYPES = {"reach": (6, 10), "h4": (6, 11), "h2a": (6, 11), "h3": (6, 10)}
+AXES_AT = {"reach": (0x44, 0x50, 0x5C), "h4": (0x64, 0x70, 0x7C), "h2a": (0x64, 0x70, 0x7C),
+           "h3": (0x50, 0x5C, 0x68)}     # (Halo 3: LiveH3; its crates type 10, the Assault bomb stand's)
 # never solid, by name (brain/placed.py's list: markers, beacons, spawns ...), for the games whose scenery is read whole
 SKIP = ("door", "lift", "light", "camera", "cinematic", "skybox", "fx_", "sound", "hologram", "decal", "kill_volume",
         "danger_zone", "spawn", "marker", "beacon", "mp_circle", "flag_base", "flag_stand", "drop_point", "respawn",
@@ -256,19 +257,22 @@ class PieceWatch:
     standing that the nav was not built with is a wall (its box's four sides, Terrain.set_barriers) while it stands; a
     piece the nav was built with that goes missing is dynamic: update returns it for variant.json "dynamic", and the
     next match's nav is built without it (brain/maps.py), so it is a wall here only while it stands. (A piece stamped in
-    at this match's start that goes stays a wall until the match ends: the nav has no way to take a stamp out.)"""
+    at this match's start that goes stays a wall until the match ends: the nav has no way to take a stamp out.) Only a
+    piece seen live this match can go: a variant filed from its .mvar (tools/h3_forge_import.py) also lists what live
+    reads never return (vehicles, spawns, doors, equipment), and live Halo 3 filed 56 of those gone in 2 s."""
 
     def __init__(s, built, dynamic=(), game="reach"):
         s.dynamic = set(dynamic)
         s.built = {piece_key(n, p) for n, p, _ in built} - s.dynamic   # stamped into this match's nav
-        s.game, s.missing, s.walls, s.absent = game, {}, {}, {}
+        s.game, s.missing, s.walls, s.absent, s.seen = game, {}, {}, {}, set()
 
     def update(s, pieces, T):
         """pieces: this read's [(name, pos, axes)]. Puts the walls on T; returns the built-in keys newly gone."""
         here = {piece_key(n, p): (n, p, a) for n, p, a in pieces}
-        for k in s.built:
+        s.seen |= s.built & here.keys()
+        for k in s.seen:
             s.missing[k] = 0 if k in here else s.missing.get(k, 0) + 1
-        gone = {k for k in s.built if s.missing[k] == GONE_READS} - s.dynamic
+        gone = {k for k in s.seen if s.missing[k] == GONE_READS} - s.dynamic
         s.dynamic |= gone
         items = {}
         for k, (n, p, a) in here.items():

@@ -955,13 +955,22 @@ def main():
     # Halo 4 / H2A: on their Forge canvases only (exported bare: tools/reach_export.py --h4 / --h2a); a built-in map's
     # game-type crates are its own placements there (tools/placed_refresh.py), not a layout
     canvas = o.game in ("h4", "h2a") and "forge" in MAP["name"]
-    if (o.game == "reach" or canvas) and not FIREFIGHT:   # a Forge map variant: filed under its base map with a navmesh
-        try:                                  # of its own, its pieces read live and named by tag id (brain/forge.py,
-            from brain.forge import live_pieces   # brain/variants.py)
+    if (o.game in ("reach", "h3") or canvas) and not FIREFIGHT:   # a Forge map variant: filed under its base map with a
+        try:                                  # navmesh of its own, its pieces read live and named by tag id
+            from brain.forge import live_pieces   # (brain/forge.py, brain/variants.py)
             from brain.variants import base_area, base_placed, identify
             pieces = live_pieces(live)
-            name = identify(MAP["name"], pieces, base_placed(MAP["objects"]), game=o.game,
-                            area=base_area(MAP["objects"]))
+            if o.game == "h3":                # Halo 3: its exports list no scenery, so a layout is the file placing the
+                from brain import mvar        # live Forge pieces (mvar.find_h3), filed with that file's pieces
+                import h3_forge_import
+                v, share = mvar.find_h3(MAP["name"], pieces)
+                got = h3_forge_import.file_one(v["path"], "h3") if v is not None else None
+                name = got[2] if got else MAP["name"]
+                print(f"Halo 3 map variant: {len(pieces)} live pieces, file "
+                      f"{os.path.basename(v['path']) + ' ' + repr(v['title']) if v else 'none'} ({share:.0%})", flush=True)
+            else:
+                name = identify(MAP["name"], pieces, base_placed(MAP["objects"]), game=o.game,
+                                area=base_area(MAP["objects"]))
             if name != MAP["name"] and o.game == "reach":
                 try:                                # its own .mvar file (brain/mvar.py): Forge labels, Invasion phases,
                     from brain import mvar          # kill boundaries, which the game's memory does not give

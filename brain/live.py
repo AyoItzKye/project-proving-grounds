@@ -682,6 +682,7 @@ class LiveH3(LiveH2):
     # object layout for flags(): TLS offset of the object headers, the entry's type byte, object position; unit slots
     OBJECTS_AT, TYPE_AT, POS_AT, SLOTS_AT = 0x38, 3, 0x50, 0x268
     CACHE_HEADER = 0x20A9058
+    TAG_GAME = "h3"         # the map's tag names for its live scenery and crates (brain/forge.py live_pieces)
 
     def __init__(s):
         import tls
@@ -1819,6 +1820,7 @@ class LiveODST(LiveH3):
     # its guns by its .map file's tag names (h100.map: assault_rifle, automag, smg_silenced ...): its exported maps place
     # none, so every gun, held or loose, read "unknown" and bots never chose a secondary nor took a gun (GitHub #17)
     OWN_GUNS = "odst"
+    TAG_GAME = "odst"
     VEH_VITAL = (0xE8, False)   # (Live.vehicle_left: the unit health field players() reads)
     DEAD_AT = 0x104             # (Live.vehicle_dead; ghidra/odst_object_get_health.c)
     MAG_NAMES = {}        # (Halo 3's magazine sizes are not this game's)
