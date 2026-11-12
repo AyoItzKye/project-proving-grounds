@@ -246,7 +246,8 @@ check("10. not one 6 s old", answer(6.0, 10.0)[0] != "hunt", answer(6.0, 10.0))
 check("10. not one 30 u off him", answer(2.0, 30.0)[0] != "hunt", answer(2.0, 30.0))
 check("10. Easy does not listen", answer(2.0, 10.0, "novice")[0] != "hunt", answer(2.0, 10.0, "novice"))
 
-# 11. shelter
+# 11. shelter (the pick before power spots: brain/spots.py replaces it, tools/test_power_spots.py)
+Dmod.POWER_SPOTS = False
 for name in ("h3_shrine", "h3_construct"):
     MM = get_map(name)
     foe = Snapshot(5.0, [PlayerState(9, 1, "f", MM["flags"][1] + Vec(0.0, 0.0, 0.0))], mode="oddball")
@@ -268,6 +269,7 @@ for name in ("h3_shrine", "h3_construct"):
             old = max(cands, key=lambda h: (h - foe.players[0].pos).flat())
             check(f"11. {name} off: the farthest spot", got == old, got)
 
+Dmod.POWER_SPOTS = True
 if fails:
     sys.exit(f"FAIL {len(fails)}")
 print("owner play OK")

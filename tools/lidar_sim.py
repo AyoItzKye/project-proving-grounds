@@ -713,6 +713,11 @@ def main():
     ap.add_argument("--hold", type=float, default=0.0)
     ap.add_argument("--no-director", action="store_true", help="bots pick their own goals (no LiDAR director): A/B runs")
     o = ap.parse_args()
+    try:                     # the player's own Halo 3 Forge maps filed with their pieces first (tools/h3_forge_import.py)
+        import h3_forge_import
+        h3_forge_import.main()
+    except Exception as e:
+        print(f"Halo 3 Forge maps not filed: {type(e).__name__}: {e}")
     every = sorted(lidar.map_list_names(), key=lambda d: (GAMES.index(J.game_of(d.partition("/")[0])), d))
     names = o.maps or (mass_run(every, o.game) if o.all else [])
     if o.game and o.maps:

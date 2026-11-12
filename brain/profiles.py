@@ -120,9 +120,23 @@ class Profile:
     extra: dict = None
 
 
+# Personalities on (PERSONALITY): each bot's traits are its personality's; off, every bot gets the traits' mean over the
+# seven (the review of Nov 12: whether personalities cost objective play more than they add)
+PERSONALITY = True
+# hands by tier on top of HANDS / SHARP (aim error, reaction, aim lag times this): over 1 slower and looser, under 1
+# sharper. Nov 12 sims, Normal 4v4 Legendary Slayer on 6 maps of 4 games: Legendary took 61% of the kills (H2A 52%)
+HANDS_K = {"novice": 1.0, "average": 1.2, "strong": 1.0, "top": 0.85}   # (sims: share 0.61 -> 0.63; live is the test)
+OBJ_FLOOR = 0.0          # A/B only (on the profile: every use); the shipped floor is brain/bot.py OBJ_FLOOR
+NEUTRAL = {k: sum(d[k] for d in PERSONALITIES.values()) / len(PERSONALITIES) for k in PERSONALITIES["rusher"]}
+
+
 def make_profile(tier, personality, rng=random):
     """Tier + personality, each value jittered +-10% so no two bots are identical."""
-    vals = {**TIERS[tier], **CRAFT[tier], **PERSONALITIES[personality]}
+    vals = {**TIERS[tier], **CRAFT[tier], **(PERSONALITIES[personality] if PERSONALITY else NEUTRAL)}
+    vals["objective"] = max(vals["objective"], OBJ_FLOOR)
+    k = HANDS_K.get(tier, 1.0)                 # the tiers' hands spread apart (HANDS_K: the difficulty review, Nov 12)
+    for key in ("aim_err", "reaction", "lag"):
+        vals[key] *= k
     jit = {k: v * rng.uniform(0.9, 1.1) for k, v in vals.items()}
     return Profile(tier=tier, personality=personality, turn=TURN[tier], **jit)
 

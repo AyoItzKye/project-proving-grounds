@@ -215,6 +215,13 @@ ODD_FIGHT_SEEN, ODD_FIGHT_R = True, 18.0   # an Oddball hunter on their carrier 
 ODD_HUNT_URGENT, ODD_HUNT_ADD = True, 1.0     # an Oddball hunter on their carrier: fights off him at arm's length only
 ODD_ESCORT_URGENT = True            # every Oddball carrier's escort on the person-escort leash (a bot carrier's too)
 ODD_BALL_FIRST, ODD_LOOSE_R = True, 12.0    # the loose ball near us first (Bot.ball_first), u
+FF_KITE = True                      # Firefight: kite a melee bruiser facing us, flank one that is not (Bot.ff_kite)
+FF_BRUISERS = ("hunter", "chieftain", "brute_major", "elite_specops")
+FF_KITE_R, FF_FLANK_R, FF_BEHIND, FF_KITE_FLIP = 9.0, 14.0, 4.0, 2.0   # u, u, u, s
+FF_FRONT_W, FF_BACK_W = 0.6, 2.0    # a bruiser's threat facing us / its back to us
+OBJ_FLOOR = 0.6                     # an objective mode's objective scored as if every personality cared this much
+OBJ_FIRST, OBJ_DETOUR, OBJ_POWER_DETOUR, OBJ_ITEM_K = True, 3.0, 8.0, 0.25   # Bot.objective_first
+SNIPER_SPOTS, SNIPER_SPOT_R = True, 35.0   # a sniper in hand: to the best overwatch within this (brain/spots.py)
 ODD_RALLY, ODD_RALLY_W = True, 2.8   # Oddball: our carrier's guards past ODD_WATCH_R go back to him first (keep_role)
 ODD_HUNT_CARRIER = True            # Oddball hunters on their carrier in every lobby (keep_role, live_point)
 ODD_WATCH_R = 18.0                 # u: an Oddball watcher round our carrier: guns and fights past this off him stray
@@ -934,6 +941,31 @@ class Bot:
             c = s.ball_theirs(me, snap)
             return c.pos if c is not None else None
         return None
+
+    def objective_first(s, me, snap, scores):
+        """An objective job first (OBJ_FIRST): a bot with one (runner, defender, escort, hunter, screen, mid with a point,
+        in an objective mode) takes a gun only out of ammo, on its way (OBJ_DETOUR more than the straight way to the job)
+        or a power weapon within OBJ_POWER_DETOUR; a vehicle only by the director's order. Anything else is weighed by
+        OBJ_ITEM_K. The player's live games, Nov 11-12: within 10 u of their job, Oddball escorts chose guns 25% (the
+        job 19%), CTF defenders 13% (the job 34%), runners by the loose ball 13%; the guns a median 7-13 u off the job."""
+        o = s.order
+        if (not OBJ_FIRST or me.has_flag or snap.mode in ("slayer", "firefight", "race") or o.point is None
+                or o.role not in ("runner", "defender", "escort", "hunter", "screen", "mid") or s.dry(me)):
+            return
+        job = s.live_point(me, snap) or s.objective_point(me) or o.point
+        straight = dist(me.pos, job)
+        for k in [k for k in scores if k[0] in ("item", "vehicle")]:
+            if k[0] == "vehicle":
+                if o.role != "drive":
+                    scores[k] *= OBJ_ITEM_K
+                continue
+            q = k[1]
+            if not isinstance(q, Vec):
+                continue
+            detour = dist(me.pos, q) + dist(q, job) - straight
+            if detour <= OBJ_DETOUR or (detour <= OBJ_POWER_DETOUR and s.power_spawn(q)):
+                continue
+            scores[k] *= OBJ_ITEM_K
 
     def ball_first(s, me, snap, scores, seen):
         """Oddball: the loose ball near us is picked up before anything else (ODD_BALL_FIRST): within ODD_LOOSE_R and ours
@@ -1824,6 +1856,7 @@ class Bot:
             # (after the kit's dash, the give-way and the grenade step: live B15 holders still left 1.4-2.4 u fighting
             # with the clamp in the fight alone; the evade and the give-way stepped them out after it)
             s.keep_in_zone(me, snap, act)
+            s.ff_kite(now, me, snap, act)
         s.obstacle_guard(now, me, act, snap)
         press = getattr(s.kit, "press", None)
         if act.equipment and press is not None and press[0] == "sprint" and abs(act.strafe) > 0.1:
@@ -2079,7 +2112,45 @@ class Bot:
             v *= s.kit.threat_mod(s, now, me, e, snap)   # armor lock, decoys, sprinters, jetpacks (guide 08)
         if e is not None and snap.mode == "firefight":
             v *= s.ff_threat(me, snap, e, d)
+            if FF_KITE and e.name == "ai" and any(r in (e.rank or "") for r in FF_BRUISERS) and d > 2.0:
+                # a bruiser facing us is kept off while the small fry go (handbook: pick off the Grunts, juke the Hunter);
+                # one with its back to us is the shot (its back and neck, FF-HUNTER-01)
+                v *= FF_BACK_W if s.facing_away(e, me) else FF_FRONT_W
         return v
+
+    @staticmethod
+    def facing_away(e, me):
+        """e's back is to me (I am more than 120 degrees off where he faces)."""
+        return abs(wrap(math.atan2(me.pos.y - e.pos.y, me.pos.x - e.pos.x) - e.yaw)) > 2.1
+
+    def ff_kite(s, now, me, snap, act):
+        """Firefight, a melee bruiser near (FF_BRUISERS: a Hunter, a hammer Brute, a sword Elite; the player's ask, Nov 12:
+        keep distance from the Hunter, pick off the Grunts, juke its wild attacks, get behind it and shoot its back).
+        Facing us within FF_KITE_R: back off on a curve (the side flips every FF_KITE_FLIP s), the aim left where it is.
+        Its back to us within FF_FLANK_R (Heroic and up, tactics 0.5+): round to FF_BEHIND u behind it."""
+        if not FF_KITE or snap.mode != "firefight" or me.vehicle != -1:
+            return
+        near = [e for e in snap.players if e.alive and e.team != me.team and e.name == "ai"
+                and any(r in (e.rank or "") for r in FF_BRUISERS) and dist(e.pos, me.pos) < FF_FLANK_R]
+        if not near:
+            return
+        e = min(near, key=lambda e: dist(e.pos, me.pos))
+        d = dist(e.pos, me.pos)
+        mag = max(0.8, math.hypot(act.forward, act.strafe))
+        if not s.facing_away(e, me) and d < FF_KITE_R:
+            side = 1.0 if int(now / FF_KITE_FLIP) % 2 else -1.0
+            way = math.atan2(me.pos.y - e.pos.y, me.pos.x - e.pos.x) + side * 0.7
+            s.note("firefight: kiting a bruiser")
+        elif s.facing_away(e, me) and s.p.tactics >= 0.5:
+            behind = e.pos - Vec(math.cos(e.yaw), math.sin(e.yaw), 0.0) * FF_BEHIND
+            if dist(me.pos, behind) < 1.0:
+                return
+            way = math.atan2(behind.y - me.pos.y, behind.x - me.pos.x)
+            s.note("firefight: round its back")
+        else:
+            return
+        rel = way - act.yaw
+        act.forward, act.strafe = mag * math.cos(rel), mag * math.sin(rel)
 
     GEN_REACH = 2.6           # u from a generator a guard presses its lockdown switch from
     GEN_ACT = 8.0             # u from it a guard goes in to lock it (a defender holds 3-8 u off its post)
@@ -2393,7 +2464,10 @@ class Bot:
         if o.role in ("runner", "escort", "defender", "hunter", "mid", "screen") and o.point:
             live = s.live_point(me, snap)
             pt = live or s.objective_point(me)
-            scores[("objective", pt)] = 0.5 + 0.7 * s.p.objective
+            # (no personality under OBJ_FLOOR on an objective, the review of Nov 12; Slayer's posts as they were: a
+            # rusher's floor kept a paired bot on its post past a radar dot, test_brain_tactics 14)
+            trait = max(s.p.objective, OBJ_FLOOR) if snap.mode not in ("slayer", "firefight") else s.p.objective
+            scores[("objective", pt)] = 0.5 + 0.7 * trait
             if o.role == "runner" and dist(me.pos, o.point) < 10:
                 # at the stand: grab it, unless a defender is right there (clear the room first;
                 # a CE carrier cannot shoot back)
@@ -2459,6 +2533,16 @@ class Bot:
                 and s.order.role not in ("runner", "escort", "defender", "hunter")):
             spot = min(s.map["holds"][s.team], key=lambda h: dist(h, me.pos))
             scores[("hold", spot)] = 0.2 + 0.6 * s.p.camping
+        if (SNIPER_SPOTS and me.weapon in SNIPERS and s.p.map_iq > 0.15 and not me.has_flag and me.vehicle in (None, -1)
+                and not seen and not s.per.pending      # (a man in view or being noticed: scoped on him where it
+                and not any(isinstance(k, int) and now - b.t < 5.0 for k, b in s.per.beliefs.items())   # stands)
+                and s.order.role not in ("runner", "escort", "defender", "ferry", "screen") and s.map is not None):
+            # a sniper rifle in hand: up to the best overwatch near (brain/spots.py "sniper": long sight lines, high, a
+            # wall at its back, little death there), held from there; a man in view still wins (fight 1.5+)
+            from .spots import best_near
+            got = best_near(s.T(), s.map, "sniper", me.pos, SNIPER_SPOT_R)
+            if got:
+                scores[("hold", got[0][1])] = max(scores.get(("hold", got[0][1]), 0.0), 1.0 + 0.5 * s.p.tactics)
         if not me.has_flag and getattr(s, "can_pickup", True):   # H2A / H4: pickups not decoded: no trips
             it = s.best_item(now, me)
             if it:
@@ -2522,6 +2606,7 @@ class Bot:
                 # where Halo 4's Flood, with pickups off there, hunted; 1.0 conversions a zombie-minute to 1.5-2.5)
                 for k in [k for k in scores if k[0] in ("item", "vehicle", "retreat", "hold")]:
                     del scores[k]
+        s.objective_first(me, snap, scores)
         s.ball_first(me, snap, scores, seen)
         s.board_check(me, snap, scores)
         s.stay_on(scores, me, snap, seen)

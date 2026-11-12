@@ -63,6 +63,10 @@ KING_TAKE, KING_TAKE_HOLD = True, 4.0
 # CTF's attack wave (wave_tick): gather at the rally WAVE_GATHER_S at most, then all in WAVE_GO_S, WAVE_COOL_S between
 WAVE = True
 WAVE_GATHER_S, WAVE_GO_S, WAVE_COOL_S = 6.0, 20.0, 4.0
+POWER_SPOTS = True         # Oddball carriers hold the map's best ball spot (brain/spots.py; Director.ball_spot)
+SPOT_W, SPOT_FOE, SPOT_WALK, SPOT_KEEP = 6.0, 0.6, 0.25, 4.0   # spot score weight, per u from them, per u to walk, keep
+DEF_FETCH, DEF_FETCH_R = True, 12.0   # CTF: a defender takes an empty ride near it to fetch our carrier
+TERR_SPLIT = True          # Territories: one holder a zone of ours, two on each to take (Director.terr_split)
 SCREEN_BACK, SCREEN_AHEAD, CUTOFF_AHEAD = 8.0, 12.0, 10.0
 POWER_RUN_R = 40.0          # a power weapon lying this near (on its level) sends one of the team for it (power_runs)
 POWER_PRESS_R = 10.0        # ... this near for an attacker whose objective is pressing (Bot.pressing: Invasion's attackers)
@@ -1185,6 +1189,28 @@ class Director:
         return (sp is not None and sp["move"] == "ground" and k not in vehicles.TANKS and v.get("riders", 0) < len(sp["seats"])
                 and ("passenger" in sp["seats"] or bool(vehicles.REACH_SEATS.get(k, {}).get("passenger"))))
 
+    def defender_fetch(s, snap, alive, players):
+        """A defender on foot within DEF_FETCH_R of an empty vehicle with a seat for our carrier (ferry_seat) is sent to drive
+        it (Order "drive"); once at the wheel, ferry_orders sends it to him whatever the distance (s.fetcher)."""
+        if any(b.id == getattr(s, "fetcher", None) and b.order.role in ("drive", "ferry") for b in alive):
+            return
+        empty = [v for v in snap.vehicles if not v.get("occupied") and s.ferry_seat(v)]
+        best = None
+        for b in alive:
+            p = players.get(b.id)
+            if (p is None or p.vehicle != -1 or b.order.role != "defender" or b.p.teamwork <= 0
+                    or b.goal[0] == "fight"):
+                continue
+            for v in empty:
+                dv = dist(p.pos, Vec(*v["pos"]))
+                if dv < DEF_FETCH_R and (best is None or dv < best[0]):
+                    best = (dv, b, v)
+        if best is None:
+            return
+        _, b, v = best
+        b.set_order(Order("drive", Vec(*v["pos"]), target=v["handle"]), sure=True)
+        s.roles[b.id], s.fetcher = "drive", b.id
+
     def getaway_park(s, snap, start):
         """Where the getaway ride waits (CTF, their flag on its stand with our runners going for it, or ours carrying
         it not yet aboard): on the vehicles' way from their stand home (Terrain.vnav, which starts on the vehicle ground
@@ -1261,10 +1287,16 @@ class Director:
             cb.order = Order("board", Vec(*lift[1]["pos"]), target=lift[1]["handle"])
             s.roles[cb.id] = "board"
             return
-        if not drivers:
-            return
+        if not drivers or all(x[0] > 45.0 for x in drivers):
+            # nobody driving near him: a defender with an empty transport at hand takes it to fetch him (the player's
+            # rule, Nov 12: a defender with a vehicle, the attack without one, goes and brings the carrier back)
+            if DEF_FETCH and snap.mode == "ctf":
+                s.defender_fetch(snap, alive, players)
+            if not drivers:
+                return
         d, b, v = min(drivers, key=lambda x: x[0])
-        ride = next((x for x in drivers if getattr(x[1], "vjob", None) == "getaway"), None)
+        ride = next((x for x in drivers if getattr(x[1], "vjob", None) == "getaway"
+                     or x[1].id == getattr(s, "fetcher", None)), None)
         if ride is not None:                 # the getaway ride waiting for him goes, whatever the distance
             d, b, v = ride
         elif d > 45.0:
@@ -1969,6 +2001,29 @@ class Director:
         cache[key] = (out + [home] * n)[:n]
         return cache[key]
 
+    def terr_split(s, snap, zones, n, seen, centre):
+        """Territories as people split it (TERR_SPLIT): one holder on each zone we own (two on one of ours they are in),
+        two on every zone not ours, the nearest and emptiest of theirs first, the rest onto the zone with the most of
+        theirs seen. Short of bots the holds go first only while two are left to take a zone. The player's rule: three
+        zones, two a zone; a zone secured, one stays and the other helps take the next."""
+        ours = sorted([(z, r) for z, r, o in zones if o == s.team], key=lambda zr: -seen(zr[0]))
+        todo = sorted([(z, r) for z, r, o in zones if o != s.team], key=lambda zr: (seen(zr[0]), dist(zr[0], centre)))
+        slots = []
+        hold = ours[:max(0, n - 2)] if todo else ours
+        for z, r in hold:
+            slots.append(("defender", z, "camping"))
+            if seen(z):                                  # (they are on it: a second holder)
+                slots.append(("defender", s.spread(z, 1, 0.6 * r), "camping"))
+        for z, r in todo:
+            slots += [("defender", s.spread(z, k, 0.6 * r), "objective") for k in range(2)]
+        if todo:
+            z, r = max(todo, key=lambda zr: seen(zr[0]))
+            slots += [("escort", z, "aggression")] + [("defender", s.spread(z, k, 0.6 * r), "objective")
+                                                      for k in range(2, 2 + n)]
+        else:
+            slots += [("defender", s.spread(z, 1 + k, 0.6 * r), "camping") for k, (z, r) in enumerate(ours * n)]
+        return slots[:max(n, 1)] + [("mid", q, "aggression") for q in s.overlooks((todo or ours)[0][0], n)]
+
     def mode_slots(s, now, snap, n):
         """Roles for brain/modes.py's game types (Reach). Territories: two take the nearest zone not ours (the one
         with the fewest enemies seen), one holds each zone we own while we have the numbers, the rest cover the
@@ -1998,6 +2053,8 @@ class Director:
                     z, r = ours[k % len(ours)]
                     slots.append(("defender", s.spread(z, k // len(ours), 0.6 * r), "camping"))
                 return slots + [("mid", q, "camping") for q in s.overlooks(ours[0][0], n)]
+            if TERR_SPLIT and len(zones) > 1:
+                return s.terr_split(snap, zones, n, seen, c)
             slots += [("defender", s.spread(target, k, 0.6 * tr), "objective") for k in range(2)]
             for z, r in ours[:max(0, n - 3)]:
                 slots.append(("defender", z, "camping"))
@@ -2476,6 +2533,8 @@ class Director:
                 return spot
         if OWNER_HOLDS:
             s.terrain()    # (built first: building it snaps the map's hold points to its floor)
+        if POWER_SPOTS:
+            return s.ball_spot(snap, foes)
         cands = s.map["holds"][s.side] + [s.map["points"]["mid"]]
         if OWNER_HOLDS:
             # no people's spot here: as the player holds the ball, a covered spot with ways out, away from them (the
@@ -2484,6 +2543,27 @@ class Director:
                              + s.shelter(h))
             return s.odd_spot
         s.odd_spot = max(cands, key=lambda h: min((dist(h, f) for f in foes), default=0.0))
+        return s.odd_spot
+
+    def ball_spot(s, snap, foes):
+        """Oddball with no people's spot: the best of the map's power spots for a ball (brain/spots.py: walls round it, a
+        roof, one or two ways in, little death there) by SPOT_W, plus the foes' distance up to ODD_SAFE_R by SPOT_FOE,
+        less the carrier's walk to it by SPOT_WALK; the spot is kept while no foe is within ODD_FREE_R of it and nothing
+        beats it by SPOT_KEEP (it was picked afresh every 2 s and the carrier ran from spot to spot: the player, Nov 12)."""
+        from .spots import spots
+        T = s.terrain()
+        cands = [(sc, p) for sc, p in spots(T, s.map, "ball")[:60]] + [(1.5, h) for h in s.map["holds"][s.side]]
+        me = next((p for p in snap.players if p.team == s.team and p.has_flag and p.alive), None)
+        at = me.pos if me is not None else (snap.ball or s.map["points"]["mid"])
+        value = lambda sp: (SPOT_W * sp[0] + SPOT_FOE * min(min((dist(sp[1], f) for f in foes), default=ODD_SAFE_R),
+                                                            ODD_SAFE_R) - SPOT_WALK * dist(at, sp[1]))
+        best = max(cands, key=value)
+        cur = getattr(s, "ball_kept", None)
+        if (cur is not None and all(dist(cur[1], f) > ODD_FREE_R for f in foes)
+                and value(cur) >= value(best) - SPOT_KEEP):
+            best = cur
+        s.ball_kept = best
+        s.odd_spot = best[1]
         return s.odd_spot
 
     def shelter(s, h):
