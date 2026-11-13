@@ -59,6 +59,7 @@ The overlay (`overlay.cpp`) hooks DXGI `Present` and `ResizeBuffers`, `CreateFil
 |---|---|
 | `shared.h` | Shared memory layout (`hb_shared`) and inline helpers both the DLL and its tests use |
 | `botcore.cpp` | DLL entry, main thread, settings (`botcore.ini`), brain process control, Halo: CE hooks and bot creation |
+| `ce_ragdoll.cpp` | Halo: CE: Halo 2 style ragdolls for dead bodies in multiplayer (a solver over the cyborg skeleton) |
 | `inject.exe` / `inject.cpp` | Loads `botcore.dll` into MCC with `LoadLibraryW` in a remote thread; refuses with anti-cheat running |
 | `h2.cpp` | Halo 2 Classic: players-update hook, bot creation, action writer, weapon pickup |
 | `h3.cpp` | Halo 3: the same, plus vehicle boarding and the CTF flag pickup |
@@ -136,6 +137,18 @@ Other globals defined here and used elsewhere: `g_shm`, `g_roster` (the panel's 
 - A hand-assembled stub on CE's "unit to local player index" function. The weapon update asks it before creating bullets for client-predicted weapons; a non-local player's bullets are expected to arrive from his own machine, so a bot's pistol spent ammo and fired nothing. `make_unit_local_stub()` emits machine code (not C++) because the caller relies on the original clobbering only `rax`, `rdx` and `r8`: it compares the return address against the two known bullet call sites and, if the unit in `ecx` is in `g_bot_units`, returns 0 (local); otherwise it jumps to the MinHook trampoline. A `ponytail:` comment notes the known gap: a bot on a vehicle turret still produces no turret bullets.
 
 **CE commands.** `run_command()` handles `ADD_BOT`, `ADOPT` and `SET_TEAM` on the game thread. `add_bot()` clones the local player's 0x4C-byte network record, sets the name (from `cmd_name`, else `Bot N`), a service tag derived from the name (`bot_service_tag` in `report.cpp`) and any look bytes, and calls the game's own `player_new` for the given machine. On success it notes the bot for MCC's report (`report_note_bot`), writes the bot's own identifier, adopts it into a free slot and applies the team. `adopt()` drives an existing player; `set_team()` writes the team field, which takes effect on the next spawn. `ce_player_numbers()` reads a player's kills, assists, deaths, suicides and the game variant's engine type for `report.cpp`, because CE does not give MCC rows for bots.
+
+### `native/ce_ragdoll.cpp`
+
+Ragdolls for Halo: CE, modelled on Halo 2's (Halo 2 builds 10 Havok bodies from the biped's physics model, joins them with cone constraints and knee and elbow hinges, pushes them along the killing hit and writes their poses into the node matrices each tick). CE has no ragdolls, so this file runs its own position-based solver on the same plan.
+
+- **Where the pose goes.** A biped's node matrices sit at object + the u16 at +0x1AE (one 0x34-byte matrix a node: scale, forward, left, up, position, world space); the renderer skins from them. `FUN_180b3a614(handle)` rebuilds an object's matrices each tick (found with a hardware write watch). `ce_ragdoll_install()` hooks it (after a 24-byte prologue check; any other build: off) and, after the game's pass, writes a ragdolled body's pose over the death animation. `ce_ragdoll_tick()`, from botcore's CE tick hook, steps every body and writes its pose too: a corpse at rest (+0x10 bit 0x800000) is no longer rebuilt by the game, so that write stays.
+- **When.** +0x10 bit 0x10000 marks the tick a biped dies. The solver starts 3 ticks later, so the death animation chosen from the hit's side has begun: its motion gives the particles their start velocities and the push its direction. A body seen dead without being seen alive (a woken old corpse) is left to the game. Multiplayer only (the variant's engine at halo1 +0x2E9F770 + 0x30 above 0).
+- **Skeleton.** Matched by node name from the biped's model tag (16 `bip01` nodes needed); other nodes turn with their nearest named parent. 17 particles (15 joints, the middle of the head, a point in front of the chest); 10 bodies as Halo 2's: a rigid torso (shape matching), head, upper arms, forearms, thighs, calves.
+- **Solver.** 2 substeps a tick, 6 passes: bone lengths, cones (head 35 deg, hips, shoulders, from Halo 2's `masterchief.physics_model`), hinges (knees -7.5..80 deg, elbows 95 deg wide, each widened to the pose at death), the torso fit, the floor (the corpse object's own height) with friction. The ragdoll follows the corpse object across the floor and upward (explosions); downward it falls by itself. Asleep after 20 still ticks.
+- **Drawing.** Node matrices come from the bodies' turns by forward kinematics out from the torso, so a limb keeps its length whatever the solver leaves.
+- **Limits.** No wall collision (Halo CE's collision test was not found): a limb can reach into a wall the body lies against. Halo 2's push strengths are scaled by 0.3 (set by eye; unscaled, bodies flipped head over heels). 24 bodies move at once; the oldest is dropped (it keeps its last pose).
+- **Checking it live.** `tools/ce_ragdoll_check.py [seconds]` reads every corpse (read only) and prints NaN counts, axis error, height over the floor and bone stretch.
 
 ### `native/inject.cpp`
 
@@ -2786,7 +2799,8 @@ python -I tools\launcher.py
    `tools\map_tools`, or point `HB_MAP_TOOLS` at the folder holding the two programs.
 3. `native\build.bat [tag]` finds Visual Studio with `vswhere`, loads `vcvars64.bat`, and builds
    `native\bin\botcore.dll` (from `botcore.cpp`, `overlay.cpp`, `bots_panel.cpp`, `model_view.cpp`, the per-game files
-   `h2.cpp`, `h3.cpp`, `reach.cpp`, `odst.cpp`, `h4f.cpp`, plus `spawnhook.cpp`, `report.cpp`, `film.cpp`, Dear ImGui
+   `ce_ragdoll.cpp`, `h2.cpp`, `h3.cpp`, `reach.cpp`, `odst.cpp`, `h4f.cpp`, plus `spawnhook.cpp`, `report.cpp`,
+   `film.cpp`, Dear ImGui
    and MinHook from `native\third_party`, static runtime) and `native\bin\inject.exe`. A tag builds
    `botcore_<tag>.dll` instead: a new file name while a running MCC still holds an older DLL. The launcher and
    `tools/play.py` load the newest `botcore*.dll` by date, and `tools/clean_bin.py` removes old ones. After compiling,

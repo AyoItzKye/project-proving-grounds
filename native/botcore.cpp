@@ -269,6 +269,9 @@ static void ce_own_ids() {
     }
 }
 
+void ce_ragdoll_tick();                    // ce_ragdoll.cpp
+bool ce_ragdoll_install(uint8_t* h1);
+
 static void __fastcall tick_hook(void* a, void* b, void* c, void* d) {
     g_tick_orig(a, b, c, d);
     if (!g_shm) return;
@@ -277,6 +280,7 @@ static void __fastcall tick_hook(void* a, void* b, void* c, void* d) {
     run_command();
     update_bot_units();
     ce_own_ids();
+    ce_ragdoll_tick();
 }
 
 // A player's HUD message (pickups: "picked up 4 grenades", power-ups, their sounds), FUN_180ada904(player, ...). In a
@@ -311,6 +315,7 @@ static void hook(uint8_t* h1) {
         for (int i = 0; i < HB_MAX_PLAYERS; i++) g_shm->bot_player_index[i] = -1;
     }
     g_h1 = h1;
+    ce_ragdoll_install(h1);                   // (its own hook, enabled with these; it drops the old copy's)
     void* stub = make_unit_local_stub();
     if (!stub ||
         MH_CreateHook(g_h1 + RVA_GAME_TICK, (void*)&tick_hook, (void**)&g_tick_orig) != MH_OK ||

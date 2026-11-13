@@ -29,6 +29,7 @@ For everything that works, game by game, see the [bot status sheet](BOT_STATUS.p
 
 - **Capture the Flag**: Both teams have captured flags in real matches, but on Blood Gulch the bots rarely make it to the flag.
 - **Race**: Bots race the flags in order and finish laps; on Blood Gulch they drive, but often get stuck at one flag up on a rock.
+- **Ragdolls**: a body that dies against a wall can lie with an arm or leg inside the wall, and on stairs or a slope part of a body can sink into the step or float over it.
 
 ## Halo 2
 
