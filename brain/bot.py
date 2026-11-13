@@ -188,6 +188,8 @@ CLOSE_FIGHT_R = 8.0                 # a man in sight this close is fought whatev
 WALK_FIRE, WALK_FIRE_CONE = True, math.radians(60)
 ELEPHANT_WELLS = False              # Bot.elephant_entry: the tire wells' climbs onto the deck as ways in (they failed; the open ways)
 ENTRY_JUMP_COST = 3.0               # u: an Elephant way in with a jump costs this much more walk than the rear ramp
+TAKE_TAP, TAKE_TAP_S = ("h2",), 0.3   # games whose objectives are taken on a press of Use (Bot.take taps it), s a beat
+SEAT_ORDER = True                   # Bot.seat_ok: driver, then gunner, then passenger (not the objective's holder)
 GLIMPSE_S = 1.5                     # s: a man out of sight no longer than this is still "in sight" to its post (keep_role)
 PRESS_NEAR = 3.0                    # u: a press (press_on) walks in to here; closer, push_in and the melee take over
 POWER_NEAR = 15.0                   # u: a power weapon up this near is not held back by a post (keep_role)
@@ -1608,6 +1610,12 @@ class Bot:
         if kind == "vehicle":
             v = next((v for v in snap.vehicles if v["handle"] == arg), None)
             want = {"ride": "gunner", "board": "passenger"}.get(s.order.role, "driver")   # (board: a passenger seat)
+            if v is not None and want != "driver" and not s.seat_ok(v, me):
+                s.next_decide = now           # its driver gone, or never there: no gun or passenger seat in it (SEAT_ORDER)
+                return act
+            if (v is not None and SEAT_ORDER and want == "passenger" and not me.has_flag
+                    and vehicles.needs_gunner(v, snap)):
+                want = "gunner"               # the gun before a passenger seat (the player's order: driver, gunner, passenger)
             # (a teammate's on its side or roof is no ride either, nor a wreck or a dud: vehicles.usable)
             if v and s.dud_check(now, dt, me, v) and (not v["occupied"] or (want != "driver" and v.get("team") == me.team)):
                 # (the other side's door every 3 s it does not get in: a Falcon's second gun)
@@ -2729,13 +2737,13 @@ class Bot:
             # (drive: the team's pick for a role, director.crew_orders, from up to its CREW_REACH)
             v = next((v for v in snap.vehicles if v["handle"] == s.order.target), None)
             if v is not None and dist(me.pos, Vec(*v["pos"])) < (50 if s.order.role == "drive" else 30) \
-                    and vehicles.usable(v, now, s.duds()) and not s.veh_banned(v, now):
+                    and vehicles.usable(v, now, s.duds()) and not s.veh_banned(v, now) and s.seat_ok(v, me):
                 s.vehicle_until = max(getattr(s, "vehicle_until", 0.0), now + 4.0)
                 return ("vehicle", v["handle"])
         if s.goal[0] == "vehicle" and best[0] != "fight" and not urgent:
             v = next((v for v in snap.vehicles if v["handle"] == s.goal[1]), None)
             if (v and (not v["occupied"] or s.order.role in ("ride", "board")) and now < getattr(s, "vehicle_until", 0.0)
-                    and vehicles.usable(v, now, s.duds()) and not s.veh_banned(v, now)):
+                    and vehicles.usable(v, now, s.duds()) and not s.veh_banned(v, now) and s.seat_ok(v, me)):
                 return s.goal                  # committed to this vehicle run
             if now >= getattr(s, "vehicle_until", 0.0):
                 s.vehicle_retry_at = now + 20.0   # could not get in: walk for a while
@@ -2836,6 +2844,16 @@ class Bot:
         if h is not None and now - s.seat_since < PUT_OUT_S and now - getattr(s, "seat_use_t", -9.0) > 1.0:
             s.duds()[h] = now + vehicles.DUD_FOR
             s.note("vehicle: it put me out at once, leaving it")
+
+    def seat_ok(s, v, me):
+        """SEAT_ORDER: a gun or passenger seat (a "ride" or "board" order) only in a vehicle somebody is in (its driver:
+        the player's order, driver, then gunner, then passenger); the objective's holder takes a seat in an empty one
+        (he waits there for his ride). Its own "drive" order, or a turret (a gun and nothing else): always. Live Triplicate
+        Oddball 20261112-204733: 13 spells, 62 s, of bots on a Warthog's gun or passenger seat with nobody driving."""
+        if not SEAT_ORDER or s.order.role not in ("ride", "board") or me.has_flag:
+            return True
+        sp = vehicles.spec(v["kind"]) or {}
+        return "driver" not in sp.get("seats", ("driver",)) or v.get("riders", 0) >= 1
 
     def dud_check(s, now, dt, me, v):
         """Whether v may still be gone for: vehicles.usable, and the time this bot has stood within DUD_NEAR of it on the
@@ -3022,16 +3040,20 @@ class Bot:
         f = (snap.flags or {}).get(1 - me.team % 2)
         return f.pos if f is not None and f.state != "carried" and dist(me.pos, f.pos) < reach else None
 
-    @staticmethod
-    def take(me, act, pos):
+    def take(s, me, act, pos):
         """Pick up the objective at pos: Use held with the view on it. Reach's Use takes what the view is on: with a gun
         lying on the CTF stand it swapped guns instead (Boardwalk, live: a runner 50 s on the flag), and a Spire runner
         0.6 u off the core held Use 45 s looking past it (live; the pickups came as a view swept over it). The walk
-        keeps its way under the turned view."""
+        keeps its way under the turned view. Halo 2 takes on a press, not a hold (TAKE_TAP): Use tapped there. Live
+        Triplicate Oddball 20261112-204733: all 26 bot pickups came on a fresh press; in all 9 spells of a bot on the loose
+        ball 2.8-8.9 s with no pickup Use was held throughout (one press had swapped its gun for a sword lying there)."""
         move, sp = act.yaw + math.atan2(act.strafe, act.forward), math.hypot(act.forward, act.strafe)
         act.yaw, act.pitch = angles_to(eye(me), pos)
         act.forward, act.strafe = sp * math.cos(move - act.yaw), sp * math.sin(move - act.yaw)
-        act.action = True
+        if s.game in TAKE_TAP:
+            act.action = (getattr(s, "now", 0.0) % TAKE_TAP_S) < TAKE_TAP_S / 2   # down half the beat, up half
+        else:
+            act.action = True
 
     @staticmethod
     def seat_point(v, seat, side=1):
