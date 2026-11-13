@@ -283,6 +283,31 @@ static void __fastcall h_update(uint8_t* actions) {
     o_update(actions);
 }
 
+// Ragdolls in every Halo 2 Classic game, however many players (a player's request; the separate "Halo 2 Ragdolls" mod,
+// Oct 29, is part of the bot mod now). halo2.dll (MCC 1.3528) gives a dead body its ragdoll only while 8 or fewer players are in the
+// game: its ragdoll budget check (RVA 0x6A5BB0) jumps to "no ragdoll" at 9 or more (cmp esi, 8 / jge, the jump at RVA
+// 0x6A5BFA); bodies froze in their death pose in a 16-player game. The jump becomes two NOPs, in memory only, after the
+// ten bytes there are checked against the decoded build's (any other MCC build: nothing is written). The game's own limit
+// of 2 bodies moving at once (3 forced) stays. As one 16-bit store: a thread running the check sees the old jump or the
+// NOPs, never half of each.
+static void h2_ragdolls(uint8_t* h2) {
+    static const uint8_t STOCK[10] = {0x83, 0xFE, 0x08, 0x48, 0x8B, 0x74, 0x24, 0x50, 0x7D, 0x39};
+    static const uint8_t DONE[10] = {0x83, 0xFE, 0x08, 0x48, 0x8B, 0x74, 0x24, 0x50, 0x90, 0x90};
+    uint8_t* p = h2 + 0x6A5BF2;
+    __try {
+        if (!memcmp(p, DONE, sizeof DONE)) { logf("h2 ragdolls: already on at halo2 %p", h2); return; }
+        if (memcmp(p, STOCK, sizeof STOCK)) { logf("h2 ragdolls: not the MCC 1.3528 build decoded: left alone"); return; }
+        DWORD old;
+        if (!VirtualProtect(p + 8, 2, PAGE_EXECUTE_READWRITE, &old)) { logf("h2 ragdolls: could not unprotect (%lu)", GetLastError()); return; }
+        *(volatile uint16_t*)(p + 8) = 0x9090;
+        VirtualProtect(p + 8, 2, old, &old);
+        FlushInstructionCache(GetCurrentProcess(), p + 8, 2);
+        logf("h2 ragdolls: on at any player count (halo2 %p)", h2);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        logf("h2 ragdolls: unreadable at halo2 %p", h2);
+    }
+}
+
 // called from botcore's main loop: hook halo2.dll when it is loaded (again)
 void h2_watch() {
     uint8_t* h2 = (uint8_t*)GetModuleHandleW(L"halo2.dll");
@@ -304,4 +329,5 @@ void h2_watch() {
     memcpy(g_h2_patch, h2 + H2_PLAYERS_UPDATE, 5);
     g_shm->game = 2;
     logf("h2 hooks on at halo2 %p: players update +0x%llx", h2, (unsigned long long)H2_PLAYERS_UPDATE);
+    h2_ragdolls(h2);
 }

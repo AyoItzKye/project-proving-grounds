@@ -158,7 +158,9 @@
   .howto li::before { content: counter(step); width: 20px; height: 20px; border-radius: var(--r-sm); display: grid;
                       place-items: center; font: 700 var(--fs-xs)/1 var(--font-display); color: var(--sand-ink);
                       background: var(--sand); margin-top: 1px; }
-  .howto b { color: var(--text); font-weight: 600; white-space: nowrap; }
+  .howto { min-width: 0; }
+  .howto li > span { min-width: 0; overflow-wrap: anywhere; }
+  .howto b { color: var(--text); font-weight: 600; }   /* (it wraps: "Multiplayer > Custom Multiplayer" ran out of the box on the Steam Deck's narrow window) */
   .log { margin-top: var(--s4); background: var(--sunken); border: 1px solid var(--border); border-radius: var(--r);
          padding: var(--s2) var(--s3); max-height: 160px; overflow: auto; font: var(--fs-xs)/1.5 var(--font-mono);
          white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text); }
