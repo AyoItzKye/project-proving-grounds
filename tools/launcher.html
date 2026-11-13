@@ -738,6 +738,8 @@ function showUpdate(u) {
     $("updmsg").textContent = `Downloading version ${u.latest.replace(/^v/, "")} ... ${pct}%`;
   } else if (job.state === "installing") {
     $("updmsg").textContent = "Installing the update. The launcher closes and opens again when it is done.";
+  } else if (u.available && job.state === "ready") {
+    $("updmsg").textContent = `Version ${u.latest.replace(/^v/, "")} is downloaded. It installs when you close MCC: the bots are loaded into it.`;
   } else if (job.state === "failed") {
     $("updmsg").textContent = job.error;
   } else {
@@ -746,7 +748,7 @@ function showUpdate(u) {
       : `Version ${u.latest.replace(/^v/, "")} is available. You have ${u.current}.`;
   }
   $("updnow").disabled = job.state === "downloading" || job.state === "installing";
-  $("updnow").hidden = u.wine || !u.can_install;
+  $("updnow").hidden = !u.can_install;
   $("updnow").textContent = job.state === "failed" ? "Try again" : "Update";
   $("updstate").textContent = (u.available ? `Update available` : u.latest ? "Up to date" : "Updates") +
     ` · checked ${ago(u.checked)}` + (u.error ? `. ${u.error}` : "");
@@ -763,7 +765,8 @@ function playUpd(u, job) {
     busy: job.state === "downloading" ? `Downloading version ${v}` + (job.total ? ` ... ${Math.round(100 * job.done / job.total)}%` : " ...")
       : "Installing the update ...",
     failed: (job.error || "The update failed.") + " Click to try again.",
-    new: u.wine || !u.can_install ? `Version ${v} is out: click to open the releases page` : `Download and install version ${v}`,
+    new: !u.can_install ? `Version ${v} is out: click to open the releases page`
+      : job.state === "ready" ? `Version ${v} is downloaded. It installs when you close MCC.` : `Download and install version ${v}`,
     ok: `Up to date (${u.current}), checked ${ago(u.checked)}. Click to check again.`,
     wait: "Click to check for updates",
   }[st];
@@ -776,7 +779,7 @@ function playUpd(u, job) {
 $("play-upd").onclick = async () => {
   const st = $("play-upd").dataset.state;
   if (st === "new" || st === "failed") {
-    if (upd && (upd.wine || !upd.can_install)) { post("/open", { url: upd.url }); return; }
+    if (upd && !upd.can_install) { post("/open", { url: upd.url }); return; }
     $("updnow").click();
   } else if (st !== "busy") {
     $("play-upd").dataset.state = "busy";

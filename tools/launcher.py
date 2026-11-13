@@ -37,6 +37,7 @@ PORT = 8793
 PY = os.path.join(os.path.dirname(sys.executable), "python.exe") \
     if os.path.basename(sys.executable).lower() == "pythonw.exe" else sys.executable
 AUTO_EVERY = 1800        # seconds between update checks while the launcher runs (automatic updates: fresh each time)
+MCC_WAIT = 20            # seconds between looks while a downloaded update waits for MCC to close (no network)
 IDLE_STOP = 20.0          # seconds without a ping from the window before the server stops (no task running)
 LOGS = os.path.join(ROOT, "logs", "launcher")
 # task: (script and its arguments, keeps running on its own after it opened its window, its window's port)
@@ -87,30 +88,40 @@ def close_for_update(srv):
     """The update's installer runs: everything of the mod closes (the tools, their windows, this launcher) so it can
     replace the files; it opens the launcher again when done (installer: LauncherUpdate)."""
     time.sleep(1.5)                                  # (the page shows "Installing" first)
-    conflicts.stop_inside(ROOT, keep={os.getpid()})
+    conflicts.stop_inside(ROOT, keep={os.getpid(), *updater.keep_pids()})   # (Linux: the helper that opens it again)
     srv.shutdown()
 
 
 def try_auto_install(srv, got):
-    """With automatic updates on (the default), a newer version found is downloaded and installed now, unless MCC runs
-    (the bots are loaded into it: the next look, AUTO_EVERY on, tries again). True when it started."""
-    if got["auto"] and got["available"] and got["can_install"] and not paths.wine() and not conflicts.mcc_running():
-        return updater.install(on_start=lambda: close_for_update(srv))
-    return False
+    """With automatic updates on (the default), a newer version found is downloaded and installed now. While MCC runs
+    (the bots are loaded into it: nothing is replaced under it) it is only downloaded, and installs the moment MCC is
+    closed (auto_update looks every MCC_WAIT s until then). True when the install started."""
+    if not (got["auto"] and got["available"] and got["can_install"]) or not updater.retry_ok():
+        return False
+    if conflicts.mcc_running():
+        updater.stage()
+        return False
+    return updater.install(on_start=lambda: close_for_update(srv))
 
 
 def auto_update(srv):
     """The update check while the launcher runs: at its start and every AUTO_EVERY, fresh from GitHub when automatic
-    updates are on (else at most every 6 hours), and a newer version installed as soon as MCC is not running. (It
-    looked once at the start, with a 6-hour-old answer, and never while MCC ran: the player saw the notice, never the
-    update, Nov 11.)"""
+    updates are on (else at most every 6 hours); a newer version is downloaded at once and installed as soon as MCC is
+    not running (while it waits for MCC to close, every MCC_WAIT s, from the answer already read: no GitHub traffic).
+    (It looked once at the start, with a 6-hour-old answer, and never while MCC ran: the player saw the notice, never
+    the update, Nov 11; then it did not even download while MCC ran, Nov 12.)"""
+    waiting = False
     while True:
         try:
-            if try_auto_install(srv, updater.check(force=updater.info()["auto"])):
+            got = updater.info() if waiting else updater.check(force=updater.info()["auto"])
+            if try_auto_install(srv, got):
                 return
+            if not got["available"]:
+                updater.clean()                      # (the last update went in: its download is not kept)
+            waiting =bool(got["auto"] and got["available"] and got["can_install"])
         except Exception:
-            pass                                     # (offline: the page says when it last checked)
-        time.sleep(AUTO_EVERY)
+            waiting = False                          # (offline: the page says when it last checked)
+        time.sleep(MCC_WAIT if waiting else AUTO_EVERY)
 
 
 def pick_folder(start=None):
@@ -351,10 +362,12 @@ class Handler(BaseHTTPRequestHandler):
             try_auto_install(self.server, got)       # (turned on with an update waiting: it goes in now)
             self.send(dict(updater.info(), wine=paths.wine()))
         elif self.path == "/update/install":         # the player pressed Update
-            if conflicts.mcc_running():
-                return self.send({"ok": False, "message": "Close MCC first: the bots are loaded into it."}, code=400)
-            if paths.wine() or not updater.info()["can_install"]:
+            if not updater.info()["can_install"]:
                 return self.send({"ok": False, "message": "Download the new version from the releases page."}, code=400)
+            if conflicts.mcc_running():              # (downloaded now; it installs when MCC is closed: auto_update)
+                updater.stage()
+                return self.send({"ok": False, "message": "The update is downloading. It installs when you close MCC: "
+                                  "the bots are loaded into it."}, code=400)
             self.send({"ok": updater.install(on_start=lambda: close_for_update(self.server))})
         elif self.path == "/open":                   # a link out of the guide, in the default browser: web pages only
             url = str(body.get("url", ""))
@@ -384,7 +397,8 @@ def watch_idle(srv):
     """Stops the server once the window has been closed a while and no task of its own is still working."""
     while True:
         time.sleep(2)
-        busy = any(p.poll() is None and not TASKS[t][1] for t, p in procs.items())
+        busy = any(p.poll() is None and not TASKS[t][1] for t, p in procs.items()) \
+            or updater.busy()                                    # (a download is not cut off by the window closing)
         if not busy and time.time() - last_ping[0] > IDLE_STOP:
             srv.shutdown()
             return

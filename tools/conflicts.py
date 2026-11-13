@@ -171,7 +171,28 @@ def process_path(name):
 
 
 def mcc_running():
-    return process_running("MCC-Win64-Shipping.exe")
+    if process_running("MCC-Win64-Shipping.exe"):
+        return True
+    return linux_mcc_running()
+
+
+def linux_mcc_running(proc=r"Z:\proc"):
+    """Steam Deck / Linux: MCC runs in Steam's own Proton session, not in the mod's Wine prefix, so the process list above
+    cannot see it; the system's own (Wine shows the Linux root as Z:) is read for a process whose command line names
+    MCC's program. False where there is no such folder (Windows) or it cannot be read. Best effort: not tested under Wine."""
+    try:
+        names = os.listdir(proc)
+    except OSError:
+        return False
+    for n in names:
+        if n.isdigit():
+            try:
+                with open(os.path.join(proc, n, "cmdline"), "rb") as f:
+                    if b"mcc-win64-shipping.exe" in f.read(4096).lower():
+                        return True
+            except OSError:
+                pass
+    return False
 
 
 def restore_after_mcc(start_wait=180):
