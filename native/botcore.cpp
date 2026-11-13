@@ -271,6 +271,7 @@ static void ce_own_ids() {
 
 void ce_ragdoll_tick();                    // ce_ragdoll.cpp
 bool ce_ragdoll_install(uint8_t* h1);
+void ce_ragdoll_folder(const wchar_t* dll_dir);
 
 static void __fastcall tick_hook(void* a, void* b, void* c, void* d) {
     g_tick_orig(a, b, c, d);
@@ -516,6 +517,7 @@ static DWORD WINAPI main_thread(LPVOID self) {
     GetModuleFileNameW((HMODULE)self, path, MAX_PATH);
     wcscpy_s(g_dir, path);
     *(wcsrchr(g_dir, L'\\') + 1) = 0;
+    ce_ragdoll_folder(g_dir);                 // (the launcher's settings: Halo: CE ragdolls on / off)
     {   // this install's 15 bots for the BOTS panel's new names (tools/launch.py makes the file before injecting)
         wchar_t prof[MAX_PATH];
         swprintf_s(prof, L"%sbot_profiles.ini", g_dir);

@@ -27,6 +27,7 @@ sys.path.insert(0, ROOT)
 import appwindow  # noqa: E402
 import conflicts  # noqa: E402
 import setup  # noqa: E402
+import settings  # noqa: E402
 import updater  # noqa: E402
 from brain import paths  # noqa: E402
 
@@ -319,6 +320,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send(dict(updater.info(), wine=paths.wine()))
         elif path == "/status":
             self.send(status())
+        elif path == "/settings":                    # the Settings card (tools/settings.py)
+            self.send(settings.load())
         elif path.startswith("/log/"):
             skip = int(query.split("=")[1]) if query.startswith("from=") and query[5:].isdigit() else 0
             self.send(log_lines(path[5:], skip))
@@ -357,6 +360,11 @@ class Handler(BaseHTTPRequestHandler):
             got = updater.check(force=True)
             try_auto_install(self.server, got)       # (automatic updates on: found, installed)
             self.send(dict(updater.info(), wine=paths.wine()))
+        elif self.path == "/settings":
+            try:
+                self.send(dict(settings.save(body), ok=True))
+            except ValueError as e:
+                self.send({"ok": False, "message": str(e)}, code=400)
         elif self.path == "/update/auto":
             got = updater.set_auto(bool(body.get("on")))
             try_auto_install(self.server, got)       # (turned on with an update waiting: it goes in now)

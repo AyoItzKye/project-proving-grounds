@@ -265,6 +265,10 @@
   footer .upd button.quiet { min-height: 28px; font-size: var(--fs-xs); padding: 0 var(--s2); }
   .updauto { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; color: var(--text-2); }
   .updauto input { accent-color: var(--ember); width: 16px; height: 16px; }
+  .setting { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; min-width: 0; }
+  .setting input { accent-color: var(--ember); width: 18px; height: 18px; margin-top: 2px; flex: none; }
+  .setting-name { display: block; font-weight: 600; }
+  .setting .help { display: block; margin: 2px 0 0; overflow-wrap: anywhere; }
   button#uninstall:hover { color: var(--bad); }
 
   /* uninstall confirmation */
@@ -440,6 +444,20 @@
           <input id="scan-pick" type="file" accept=".zip" hidden>
         </div>
         <span id="scan-state" class="msg" aria-live="polite"></span>
+      </div>
+    </details>
+
+    <details class="card" id="settings-card">
+      <summary><h2 id="settings-h">Settings</h2><svg class="i chev" aria-hidden="true"><use href="#i-chev"/></svg>
+        <span class="path">Options for the mod in your games</span></summary>
+      <div class="folder-body">
+        <label class="setting" for="set-ce-ragdolls">
+          <input type="checkbox" id="set-ce-ragdolls" checked>
+          <span><span class="setting-name">Halo: CE ragdolls</span>
+            <span class="help">Bodies in Halo: CE multiplayer go limp and fall like they do in Halo 2. Off: Halo: CE's own
+              death animations. Changes take effect in a running game.</span></span>
+        </label>
+        <span id="settings-state" class="msg" aria-live="polite"></span>
       </div>
     </details>
   </div>
@@ -790,6 +808,16 @@ $("play-upd").onclick = async () => {
   }
 };
 async function loadUpdate() { try { showUpdate(await (await fetch("/update")).json()); } catch (e) {} }
+// Settings (user/settings.json, tools/settings.py): botcore reads the file within 2 s, in a running game too
+async function loadSettings() {
+  try { const s = await (await fetch("/settings")).json(); $("set-ce-ragdolls").checked = s.ce_ragdolls !== false; } catch (e) {}
+}
+$("set-ce-ragdolls").onchange = async (e) => {
+  const s = await post("/settings", { ce_ragdolls: e.target.checked });
+  if (s.ok === false) { e.target.checked = !e.target.checked; setText("settings-state", s.message || "Not saved.", "bad"); }
+  else setText("settings-state", e.target.checked ? "Halo: CE ragdolls on." : "Halo: CE ragdolls off.", "ok");
+};
+loadSettings();
 $("updcheck").onclick = async () => { $("updstate").textContent = "Checking ..."; showUpdate(await post("/update/check")); };
 $("updauto").onchange = async (e) => { showUpdate(await post("/update/auto", { on: e.target.checked })); };
 const laterKey = u => u.latest + " " + (u.latest_build || "");     // (Later hides this update, not the next one)
