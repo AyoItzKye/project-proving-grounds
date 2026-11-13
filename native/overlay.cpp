@@ -88,6 +88,8 @@ static HANDLE WINAPI h_createfile(LPCWSTR name, DWORD a, DWORD s, LPSECURITY_ATT
             logf("lobby file %ls", name);
         }
         if (wcsstr(name, L"\\Screens\\")) {
+            static int screens_logged;                   // (the screens opened while a lobby is up: evidence for the panel's visibility)
+            if (g_session && screens_logged < 120) { screens_logged++; logf("screen %ls", name); }
             if (wcsistr(name, L"MultiplayerCustomGame.gfx")) { g_lobby_gfx_at = GetTickCount(); g_ff_lobby = 0; hb_panel_firefight = 0; }
             else if (wcsistr(name, L"FirefightCustomGame.gfx")) { g_lobby_gfx_at = GetTickCount(); g_ff_lobby = 1; hb_panel_firefight = 1; }
         } else if (wcsstr(name, L"game_variants\\") || wcsstr(name, L"\\maps\\info\\")) {
@@ -97,6 +99,7 @@ static HANDLE WINAPI h_createfile(LPCWSTR name, DWORD a, DWORD s, LPSECURITY_ATT
                 g_lobby_gfx_at = 0;
                 logf("lobby title %ld", title);
             } else if (title != g_session) {
+                if (g_session) logf("lobby left: opened %ls (title %ld, the lobby was %ld)", name, title, g_session);
                 g_session = 0;                                                  // other titles: we left
             }
         }
@@ -117,6 +120,7 @@ static ID3D11Texture2D* g_probe;
 static UINT g_probe_h;
 static DXGI_FORMAT g_probe_fmt;
 static bool g_lobby_visible;
+static const int PROBE_MISSES = 6;       // misses in a row before the lobby counts as gone (see probe_lobby)
 
 static bool frame_pixel(const uint8_t* p, DXGI_FORMAT f) {
     int r, g, b;
@@ -185,7 +189,10 @@ static void probe_lobby(IDXGISwapChain* sc) {
         // a line down the tile height, not a blue band: the carnage report's blue team rows are blue straight across
         // (the tile showed over the scoreboard, live H2A Nov 6); in the lobby the strip is solid in 37% of rows at most
         // (its video behind the tiles; "a line only" made the tile blink there, s175-s176)
-        ok = rows > h * 7 / 10 && solid < h * 6 / 10;
+        // OPTIONS' strip is never filled in a lobby (0-11 solid rows of 192 in every probe logged Nov 12-13), the
+        // carnage report's is; START's strip is filled now and then (95-192 solid) by the lobby's video and focus, which
+        // took the panel away while the player cycled game types and edited options: only its line is asked of it
+        ok = rows > h * 7 / 10 && (e == 1 || solid < h * 6 / 10);
     }
     // Firefight's post-game report has the lobby's tile row (map, time, waves, difficulty, skull combo, and a 6th, TIME
     // MULTIPLIER, under the BOTS tile till s179) and opens no file on Back: its title tells them apart (ui_layout.h)
@@ -215,13 +222,25 @@ static void probe_lobby(IDXGISwapChain* sc) {
         ok = title * 100 > tw * th * 3;                   // (letters: 9.6% of the box in the lobby, 0 after a match)
     }
     back->Release();
-    if (ok != g_lobby_visible || g_ff_lobby != g_probe_ff_logged) {      // (evidence: which row was read, what it found)
+    // The strips read a solid blue line down the tile edge; the lobby's own video behind them (and a focused tile) made
+    // START's strip "solid" in 100-190 of 192 rows now and then while the player cycled game types and maps, and the
+    // panel vanished for a probe or two (live Nov 12-13: 0 to 192 solid on neighbouring probes, no screen change). A
+    // lobby is only taken as gone after PROBE_MISSES misses in a row (a probe every 8 frames); it shows at the first hit.
+    static bool raw_seen;
+    static int misses;
+    if (ok) misses = 0; else misses++;
+    bool shown = ok || (g_lobby_visible && misses < PROBE_MISSES);
+    if (ok != raw_seen || g_ff_lobby != g_probe_ff_logged) {      // (evidence: which row was read, what it found)
+        raw_seen = ok;
         logf("lobby probe: %s lobby, %ux%u, OPTIONS %u (%u solid) START %u (%u solid) of %u rows, title %u -> %s",
              g_ff_lobby ? "Firefight" : "custom game", bd.Width, bd.Height, g_probe_rows0, g_probe_solid0, g_probe_rows1,
              g_probe_solid1, h, title, ok ? "on screen" : "not seen");
         g_probe_ff_logged = g_ff_lobby;
     }
-    g_lobby_visible = ok;
+    if (shown != g_lobby_visible)                      // (the panel's own state, with the numbers behind it)
+        logf("lobby %s (OPTIONS %u rows %u solid, START %u rows %u solid, of %u)", shown ? "shown" : "hidden", g_probe_rows0,
+             g_probe_solid0, g_probe_rows1, g_probe_solid1, h);
+    g_lobby_visible = shown;
 }
 
 static bool in_ce_menus() {
@@ -404,7 +423,26 @@ static bool in_match() {
     return bots_title(g_session) && mcc_menu_state() == 1 && !g_playback;
 }
 
+// Is the pause menu up? On Windows the game shows the cursor there and hides it in play. Under Wine / Proton (Steam Deck)
+// the cursor reads as showing all the time, which kept the "Report bot bug" tab up through the whole match; there the
+// pause menu is what stops the game: no game tick for a third of a second (the tick counter botcore counts in every game).
+static bool on_wine() {
+    static int wine = -1;
+    if (wine < 0) {
+        HMODULE nt = GetModuleHandleW(L"ntdll.dll");
+        wine = nt && GetProcAddress(nt, "wine_get_version") ? 1 : 0;
+    }
+    return wine == 1;
+}
+
 static bool cursor_up() {
+    if (on_wine()) {
+        static uint32_t last_tick;
+        static ULONGLONG last_move;
+        ULONGLONG now = GetTickCount64();
+        if (g_shm->game_tick != last_tick || !last_move) { last_tick = g_shm->game_tick; last_move = now; }
+        return now - last_move > 330;
+    }
     CURSORINFO ci{ sizeof ci };
     return GetCursorInfo(&ci) && (ci.flags & CURSOR_SHOWING) && GetForegroundWindow() == g_hwnd;
 }
@@ -636,6 +674,7 @@ static HRESULT __stdcall h_present(IDXGISwapChain* sc, UINT sync, UINT flags) {
                 make_rtv(sc);
                 o_wndproc = (WNDPROC)SetWindowLongPtrW(g_hwnd, GWLP_WNDPROC, (LONG_PTR)wndproc);
                 g_ready = true;
+                CreateEventW(nullptr, TRUE, TRUE, L"Local\\PPG_overlay_ready");   // (tools/loading_tag.py: the "Loading mod" tag closes)
                 logf("overlay ready (window %p)", g_hwnd);
             }
         }

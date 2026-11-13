@@ -44,15 +44,22 @@ void logf(const char* fmt, ...);
 namespace {
 
 const uintptr_t RVA_NODE_MATRICES = 0xB3A614;       // void (object handle)
+const uintptr_t RVA_OBJECT_UPDATE = 0xB3A06C;       // bool (object handle): one object's whole update each tick (FUN_180b3a06c)
+const uintptr_t RVA_SNAPSHOT = 0xB3AF10;            // void (object handle): copies the nodes for the renderer (FUN_180b3af10)
 const uintptr_t RVA_COLLISION_TEST = 0xB913FC;      // bool (flags, point*, vector*, ignore object, result*)
+const uintptr_t RVA_GC_VETO = 0xB394F8;            // bool (object handle): the garbage collector's veto, true = keep it
+const uintptr_t RVA_PLAYERS = 0x1C40480;           // the players array's header pointer
 const uintptr_t RVA_SET_POSITION = 0xB359E8;        // object_set_position (handle, position*, forward*, up*)
 const uintptr_t RVA_OBJECT_HEADERS = 0x1C42248, RVA_OBJECT_POOL = 0x2D9CDF8, RVA_TAGS = 0x2D9CE10;
 // the running game variant, +0x30 its engine (1 CTF, 2 Slayer ...): multiplayer only (campaign's Marines and Elites
 // and its Anniversary graphics were never tried; Tab does nothing in a multiplayer game: classic graphics only)
 const uintptr_t RVA_VARIANT = 0x2E9F770;
 const uint32_t TAG_BASE = 0x50000000;
+const uint8_t SNAPSHOT_PROLOGUE[16] = {0x48, 0x8B, 0xC4, 0x48, 0x89, 0x58, 0x08, 0x48, 0x89, 0x68, 0x10, 0x48, 0x89, 0x70, 0x18, 0x48};
+const uint8_t UPDATE_PROLOGUE[16] = {0x48, 0x89, 0x5C, 0x24, 0x10, 0x48, 0x89, 0x6C, 0x24, 0x18, 0x48, 0x89, 0x74, 0x24, 0x20, 0x57};
 const uint8_t NODES_PROLOGUE[24] = {0x48, 0x8B, 0xC4, 0x48, 0x89, 0x58, 0x10, 0x48, 0x89, 0x70, 0x18, 0x48, 0x89,
                                     0x78, 0x20, 0x55, 0x41, 0x54, 0x41, 0x55, 0x41, 0x56, 0x41, 0x57};
+const uint8_t GC_VETO_PROLOGUE[16] = {0x48, 0x8B, 0xC4, 0x48, 0x89, 0x58, 0x08, 0x48, 0x89, 0x70, 0x18, 0x48, 0x89, 0x78, 0x20, 0x55};
 const uint8_t SET_POSITION_PROLOGUE[16] = {0x48, 0x8B, 0xC4, 0x48, 0x89, 0x58, 0x08, 0x48, 0x89, 0x68, 0x10, 0x48, 0x89,
                                           0x70, 0x18, 0x48};
 const uint8_t COLLISION_PROLOGUE[16] = {0x48, 0x8B, 0xC4, 0x48, 0x89, 0x58, 0x20, 0x55, 0x56, 0x57, 0x41, 0x54, 0x41,
@@ -64,10 +71,21 @@ const uint32_t F_DEAD = 0x10000;
 const int START_TICKS = 3, MAX_NODES = 64, SLOTS = 24, AWAKE_MAX = 8, CACHE = 2048, RELAX_TICKS = 15;
 const int SUB = 10;                                  // substeps a tick (1/300 s)
 const float TICK = 1.0f / 30.0f, H = TICK / SUB;
-const float GRAVITY = 1.4f * 3.22f;                  // world units (10 ft) a second squared
+const float GRAVITY_BASE = 1.547f * 3.22f;             // the baseline: 1.547 x CE's (32.2 ft/s^2 in world units of 10 ft); the launcher's slider scales it
+float GRAVITY = GRAVITY_BASE;                  // world units (10 ft) a second squared
 const float PUSH_SCALE = 0.3f;                       // Halo 2's push strengths, scaled (set by eye, live)
-const float MU_STATIC = 0.9f, MU_SLIDE = 0.6f, JOINT_DAMP = 5.0f, SPIN_DAMP = 0.3f, ROLL_DAMP = 8.0f;
+const float MU_STATIC = 0.83f, MU_SLIDE = 0.83f, JOINT_DAMP = 5.0f, SPIN_DAMP = 0.3f, ROLL_DAMP = 8.0f;
+// Limb inertia: a body blown through the air
+// kept the pose it died in until it hit something (every part had the same velocity). Real limbs trail: the air drags light
+// parts harder than the torso (drag acceleration k |v| v, k per body, airborne parts only), an explosion's kick (the corpse
+// object's speed jumping) goes into the torso first and reaches the limbs through the joints (LIMB_KICK of it directly),
+// and a body that starts out flying (an explosion killed it in the air) starts with its limbs lagging behind the torso.
+const float BODY_DRAG[10] = {0.03f, 0.10f, 0.22f, 0.30f, 0.22f, 0.30f, 0.16f, 0.24f, 0.16f, 0.24f};   // torso, head, arms, legs
+const float BODY_LAG[10] = {0.0f, 0.5f, 0.7f, 1.0f, 0.7f, 1.0f, 0.6f, 1.0f, 0.6f, 1.0f};              // share of the start lag
+const float LIMB_KICK = 0.45f, LIMB_LAG_MAX = 0.7f, LIMB_LAG_FROM = 1.5f, LIMB_LAG_FULL = 7.5f;
 const float REST_SPEED = 0.06f;                     // u/s: every part slower for 10 ticks = at rest
+const float CREEP_SPEED = 0.9f;                     // u/s: a limb slower than this beside a still torso is creeping, not falling
+const int CORE_TICKS = 8;
 const float DEG = 3.14159265f / 180.0f;
 
 struct V { float x, y, z; };
@@ -178,7 +196,7 @@ struct Contact { V p, n; bool on; };
 struct Rag {
     uint32_t handle;
     bool used, awake;
-    int still, age, moving;                          // moving: ticks since it started or a kick woke it
+    int still, age, moving, core;                          // moving: ticks since it started or a kick woke it
     uint32_t born;
     const Skeleton* sk;
     Body b[NB];
@@ -188,6 +206,8 @@ struct Rag {
     Q ref_q[NJ];                                     // ball: the reference node's frame in the parent's body frame
     float twist0[NJ], slack0[NJ], hinge_lo0[NJ], hinge_hi0[NJ], axle0[NJ];
     V obj_v;                                         // the corpse object's last velocity (kicks)
+    V psp[NS];                                       // the spheres' world positions a tick ago (the sudden-move diagnostic)
+    bool have_psp;
     bool no_touch[NS][NS];                           // sphere pairs that never collide (joint neighbours, touching at death)
     int nodes;
     float local[MAX_NODES][13];                      // each node in its body's frame (scale, axes, position)
@@ -199,6 +219,9 @@ uint8_t* g_h1;
 typedef void(__fastcall* nodes_fn)(uint64_t handle);
 typedef char(__fastcall* collide_fn)(uint64_t flags, float* point, float* vector, uint32_t ignore, void* result);
 nodes_fn g_nodes_orig;
+typedef uint64_t(__fastcall* update_fn)(uint64_t handle);
+update_fn g_update_orig;
+update_fn g_snapshot_orig;
 collide_fn g_collide;
 typedef void(__fastcall* set_position_fn)(uint64_t handle, float* position, float* forward, float* up);
 set_position_fn g_set_position;
@@ -209,13 +232,28 @@ set_position_fn g_set_position;
 wchar_t g_settings[MAX_PATH];
 FILETIME g_settings_time;
 bool g_enabled = true;
+bool g_limb = true;                                  // limb inertia: part of the ragdolls (the tests turn it off to compare)
+bool g_keep = true;                                  // "keep_bodies": dead bodies stay until their player dies again
+
+// the flag "key": true / false in the settings text (a missing key: on)
+bool flag_in(const char* text, const char* key, bool missing = true) {
+    char quoted[40];
+    sprintf_s(quoted, "\"%s\"", key);
+    const char* k = strstr(text, quoted);
+    if (!k) return missing;
+    k = strchr(k + strlen(quoted), ':');
+    if (!k) return missing;
+    k++;
+    while (*k == ' ' || *k == '\t' || *k == '\r' || *k == '\n') k++;
+    return *k != 'f';
+}
 
 void read_settings() {
     WIN32_FILE_ATTRIBUTE_DATA a;
     if (!g_settings[0]) return;
     if (!GetFileAttributesExW(g_settings, GetFileExInfoStandard, &a)) {
         if (!g_enabled) logf("ce ragdolls: on (no settings file)");
-        g_enabled = true;
+        g_enabled = g_keep = true;
         g_settings_time = FILETIME{};
         return;
     }
@@ -229,13 +267,61 @@ void read_settings() {
     CloseHandle(h);
     if (!ok) return;
     g_settings_time = a.ftLastWriteTime;
-    bool on = true;
-    if (const char* k = strstr(buf, "\"ce_ragdolls\"")) {
-        k = strchr(k + 13, ':');
-        if (k) { k++; while (*k == ' ' || *k == '\t' || *k == '\r' || *k == '\n') k++; on = *k != 'f'; }
-    }
+    bool on = flag_in(buf, "ce_ragdolls"), keep = flag_in(buf, "keep_bodies");
     if (on != g_enabled) logf("ce ragdolls: %s (user\\settings.json)", on ? "on" : "off");
+    if (keep != g_keep) logf("ce keep bodies: %s (user\\settings.json)", keep ? "on" : "off");
     g_enabled = on;
+    g_keep = keep;
+    float mul = 1.0f;                                // "ragdoll_gravity": a multiple of the baseline (the launcher's slider, 0.5 to 1.5)
+    if (const char* k = strstr(buf, "\"ragdoll_gravity\"")) {
+        k = strchr(k + 17, ':');
+        if (k) mul = clampf((float)atof(k + 1), 0.5f, 1.5f);
+    }
+    if (fabsf(mul * GRAVITY_BASE - GRAVITY) > 1e-4f) logf("ce ragdoll gravity: %.2f x the baseline", mul);
+    GRAVITY = GRAVITY_BASE * mul;
+}
+
+// --- dead bodies stay until their player dies again (the garbage collector, FUN_180b3c818, deletes a dead biped once the
+// object pool is under pressure unless this veto, FUN_180b394f8, says to keep it). A player's unit handle (player +0x64)
+// is empty from the moment it dies, so each tick remembers the unit a player is in; when the unit goes and the biped it
+// was is dead, that biped is the player's body, and the body before it is let go.
+uint8_t* object_of(uint32_t handle, int* type);
+const int MAX_PLAYERS = 16;
+uint32_t g_last_unit[MAX_PLAYERS], g_body[MAX_PLAYERS];
+typedef char(__fastcall* veto_fn)(uint64_t handle);
+veto_fn g_veto_orig;
+
+bool is_dead_biped(uint32_t handle) {
+    int type = -1;
+    uint8_t* o = object_of(handle, &type);
+    return o && type == 0 && (*(uint32_t*)(o + 0x10) & F_DEAD);
+}
+
+void track_bodies() {
+    uint8_t* hdr = *(uint8_t**)(g_h1 + RVA_PLAYERS);
+    if (!hdr) return;
+    int32_t rel = *(int32_t*)(hdr + 0x34);
+    uint16_t size = *(uint16_t*)(hdr + 0x22);
+    int count = *(int16_t*)(hdr + 0x20);
+    for (int i = 0; i < MAX_PLAYERS; i++) {
+        uint8_t* p = i < count ? hdr + rel + (uintptr_t)i * size : nullptr;
+        if (!p || !*(uint16_t*)p) { g_last_unit[i] = g_body[i] = 0; continue; }      // (no player in this slot)
+        uint32_t unit = *(uint32_t*)(p + 0x64);
+        int type = -1;
+        uint8_t* o = unit != 0xFFFFFFFFu ? object_of(unit, &type) : nullptr;
+        if (o && type == 0 && !(*(uint32_t*)(o + 0x10) & F_DEAD)) { g_last_unit[i] = unit; continue; }
+        if (g_last_unit[i] && is_dead_biped(g_last_unit[i])) { g_body[i] = g_last_unit[i]; g_last_unit[i] = 0; }
+        else if (g_body[i] && !object_of(g_body[i], nullptr)) g_body[i] = 0;
+    }
+}
+
+char __fastcall veto_hook(uint64_t handle) {
+    if (g_keep) {
+        uint32_t h = (uint32_t)handle;
+        for (int i = 0; i < MAX_PLAYERS; i++)
+            if (h && (h == g_body[i] || h == g_last_unit[i]) && is_dead_biped(h)) return 1;
+    }
+    return g_veto_orig(handle);
 }
 
 float rnd() { g_seed = g_seed * 1664525u + 1013904223u; return (g_seed >> 8) * (1.0f / 16777216.0f); }
@@ -475,6 +561,10 @@ void gather(Rag& r, bool deep) {
 
 void step(Rag& r) {
     gather(r, r.age < 2 || (r.age % 10) == 0);
+    bool airborne[NB];                              // no ground within reach of any of the part's spheres
+    for (int i = 0; i < NB; i++) airborne[i] = true;
+    for (int s = 0; s < NS; s++)
+        if (r.contact[s][0].on || r.contact[s][1].on) airborne[SPHERE[s].body] = false;
     for (int sub = 0; sub < SUB; sub++) {
         V sp[NS];
         for (int i = 0; i < NB; i++) {
@@ -484,6 +574,23 @@ void step(Rag& r) {
             b.qp = b.q;
             b.x = b.x + b.v * H;
             b.q = qturn(b.q, b.w * H);
+        }
+        if (g_limb) {                                // (limb inertia) parts drag against each other, not against the air: a
+            V cm{0, 0, 0}, dsum{0, 0, 0};              // trailing leg that the air alone slowed made the body a dart (head first, a
+            float mt = 0;                              // spiral dive, live Nov 13). Each part is slowed by its speed relative to the
+            for (int i = 0; i < NB; i++) { cm = cm + r.b[i].x * BODY_MASS[i]; mt += BODY_MASS[i]; }   // body's centre of mass motion,
+            V vcm{0, 0, 0};                            // and what that took from the parts is given back to all (momentum kept)
+            for (int i = 0; i < NB; i++) vcm = vcm + r.b[i].v * BODY_MASS[i];
+            vcm = vcm * (1.0f / mt);
+            V dv[NB];
+            for (int i = 0; i < NB; i++) {
+                V rel = r.b[i].v - vcm;
+                float sp2 = len(rel);
+                dv[i] = sp2 > 1e-4f ? rel * (-fminf(BODY_DRAG[i] * sp2 * H, 0.5f)) : V{0, 0, 0};
+                dsum = dsum + dv[i] * BODY_MASS[i];
+            }
+            dsum = dsum * (1.0f / mt);
+            for (int i = 0; i < NB; i++) r.b[i].v = r.b[i].v + dv[i] - dsum;
         }
         for (int s = 0; s < NS; s++) { const Body& b = r.b[SPHERE[s].body]; sp[s] = b.xp + qrot(b.qp, r.sphere[s]); }
         solve_joints(r);
@@ -561,6 +668,26 @@ void step(Rag& r) {
             r.b[i].w = r.b[i].w * (down ? sd * expf(-ROLL_DAMP * H) : sd);
         }
     }
+    {                                                // diagnostic (Nov 13): a sphere that jumps after the body was still (the limb drop)
+        float worst = 0;
+        int ws = -1;
+        for (int s = 0; s < NS; s++) {
+            const Body& b = r.b[SPHERE[s].body];
+            V p = b.x + qrot(b.q, r.sphere[s]);
+            float d = r.have_psp ? len(p - r.psp[s]) : 0;
+            if (d > worst) { worst = d; ws = s; }
+            r.psp[s] = p;
+        }
+        static int logged;
+        if (r.have_psp && worst > 0.012f && r.still >= 3 && logged < 60) {
+            logged++;
+            int cons = 0;
+            for (int s = 0; s < NS; s++) cons += r.contact[s][0].on + r.contact[s][1].on;
+            logf("ce ragdoll jump: %.3f u at sphere %d (body %d) after %d still ticks, age %d, moving %d, deep %d, %d contacts, awake %d",
+                 worst, ws, SPHERE[ws].body, r.still, r.age, r.moving, (int)(r.age < 2 || (r.age % 10) == 0), cons, (int)r.awake);
+        }
+        r.have_psp = true;
+    }
     r.age++;
     r.moving++;
     bool slow = true;                                // every collision sphere (what is seen) under REST_SPEED
@@ -569,9 +696,20 @@ void step(Rag& r) {
         if (len(b.v + cross(b.w, qrot(b.q, r.sphere[s]))) > REST_SPEED) slow = false;
     }
     r.still = slow ? r.still + 1 : 0;
+    // The limb drop (live, Nov 13): with the body lying still, an arm or leg went on creeping down, 0.02 u a tick for several
+    // ticks, long after the rest looked settled (every sphere had to be under REST_SPEED to sleep). The torso and head still,
+    // every other part under CREEP_SPEED, for CORE_TICKS ticks puts the body to sleep: a part that is really falling gains
+    // speed past CREEP_SPEED within a few ticks, so it never gets there
+    bool core = true;
+    for (int s = 0; s < NS; s++) {
+        const Body& b = r.b[SPHERE[s].body];
+        float sp = len(b.v + cross(b.w, qrot(b.q, r.sphere[s])));
+        if (sp > CREEP_SPEED || ((SPHERE[s].body == B_TORSO || SPHERE[s].body == B_HEAD) && sp > REST_SPEED)) core = false;
+    }
+    r.core = core ? r.core + 1 : 0;
     bool drifting = true;                            // (only drifting after 6 s, or 15 s gone: at rest. On real ground
     for (int i = 0; i < NB; i++) drifting &= len(r.b[i].v) < 0.3f;   // half the bodies crept at ~0.14 u/s, live)
-    if ((r.still >= 10 && r.age > RELAX_TICKS) || (drifting && r.moving > 180) || r.moving > 450) {
+    if ((r.still >= 10 && r.age > RELAX_TICKS) || (r.core >= CORE_TICKS && r.age > RELAX_TICKS) || (drifting && r.moving > 180) || r.moving > 450) {
         r.awake = false;
         for (int i = 0; i < NB; i++) r.b[i].v = r.b[i].w = V{0, 0, 0};
     }
@@ -710,6 +848,14 @@ void start(uint32_t handle, uint8_t* o, const Skeleton* sk, float* m, int nodes,
         r->slack0[j] = ms > 1 ? ms * 1.02f : 1;
         r->twist0[j] = twist_of(fr.c, cx, fr.y0, cy);
     }
+    if (g_limb) {                                    // (limb inertia) a body that starts out flying: its limbs trail
+        V vt = r->b[B_TORSO].v;
+        float sp = len(vt);
+        if (sp > LIMB_LAG_FROM) {
+            float lag = clampf((sp - LIMB_LAG_FROM) / (LIMB_LAG_FULL - LIMB_LAG_FROM), 0, 1) * LIMB_LAG_MAX;
+            for (int i = 1; i < NB; i++) r->b[i].v = r->b[i].v - vt * (lag * BODY_LAG[i]);
+        }
+    }
     // the push (Halo 2: min(0.7, the biped's) x (1.5 + 1.75 r) along the hit, bodies higher up harder so the body
     // topples, an upward part 0.75 + 0.75 r): along the torso's own motion (the death animation picked from the hit's
     // side), else backward; x PUSH_SCALE
@@ -722,9 +868,13 @@ void start(uint32_t handle, uint8_t* o, const Skeleton* sk, float* m, int nodes,
     V pop{0, 0, PUSH_SCALE * (0.75f + 0.75f * rnd())};
     float zlo = 1e9f, zhi = -1e9f;
     for (int i = 0; i < NB; i++) { zlo = fminf(zlo, r->b[i].x.z); zhi = fmaxf(zhi, r->b[i].x.z); }
+    // Halo 2 pushes higher bodies harder so a standing body topples. A body already flying (an explosion threw it) is
+    // pushed the same all over: the gradient turned it head first into a spiral dive in the air (live Nov 13)
+    float flying = clampf((len(r->b[B_TORSO].v) - LIMB_LAG_FROM) / 4.0f, 0, 1);
     for (int i = 0; i < NB; i++) {
         float h = (r->b[i].x.z - zlo) / (zhi - zlo + 1e-4f);
-        r->b[i].v = r->b[i].v + dir * (strength * (0.35f + 0.65f * h)) + pop;
+        float w = 0.35f + 0.65f * h;
+        r->b[i].v = r->b[i].v + dir * (strength * (w + (1.0f - w) * flying)) + pop;
     }
     r->obj_v = *(V*)(o + 0x24);
     pose(*r);
@@ -758,13 +908,54 @@ void __fastcall nodes_hook(uint64_t handle) {
     }
 }
 
+// The pose must be the LAST thing written to a ragdolled body's node matrices in a tick. The object's own update
+// (FUN_180b3a06c) runs the game's per-type callbacks (a dead biped's limbs settle there: live Nov 13, the limbs sank and
+// came back a second later) around the node build, and a corpse at rest skips the build the nodes_hook sits on. So the
+// whole update is hooked, and the pose written once more after it.
+uint64_t __fastcall update_hook(uint64_t handle) {
+    uint64_t ret = g_update_orig(handle);
+    __try {
+        if (Rag* r = rag_of((uint32_t)handle)) {
+            int type = -1;
+            uint8_t* o = object_of((uint32_t)handle, &type);
+            if (o && type == 0) write_pose(*r, o);
+        }
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    }
+    return ret;
+}
+
+// What is drawn is not the node matrices but a per-object snapshot of them (FUN_180b3af10 -> FUN_180ba8414 memcpys the
+// nodes, position and axes into a 0xD4C record the renderer interpolates). The node build ends by jumping into it, so
+// when the game rebuilt a corpse's nodes (its own dead pose, limbs slumping over the ground) the snapshot took that,
+// before the nodes_hook wrote the ragdoll's: the "limb drop" (live, Nov 13: a bot's head and arm sank for ~0.6 s 1.5 s
+// after death and came back; the node matrices themselves were the ragdoll's at every tick). The pose goes in first
+uint64_t __fastcall snapshot_hook(uint64_t handle) {
+    __try {
+        if (Rag* r = rag_of((uint32_t)handle)) {
+            int type = -1;
+            uint8_t* o = object_of((uint32_t)handle, &type);
+            if (o && type == 0) write_pose(*r, o);
+        }
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    }
+    return g_snapshot_orig(handle);
+}
+
 }  // namespace
 
 // botcore's tick hook (start of each Halo CE tick): step every awake body, write every body's pose
 void ce_ragdoll_tick() {
     if (!g_nodes_orig) return;
     if (g_tick++ % 60 == 0) read_settings();
+    if (g_tick % 150 == 0) {                         // (every 5 s: how many ragdolls there are, for the limb drop hunt)
+        int used = 0, awake = 0;
+        for (Rag& r : g_rag) { used += r.used; awake += r.used && r.awake; }
+        static int shown;
+        if (used && shown < 120) { shown++; logf("ce ragdolls: %d bodies, %d awake", used, awake); }
+    }
     __try {
+        track_bodies();
         int awake = 0;
         for (Rag& r : g_rag) awake += r.used && r.awake;
         for (Rag& r : g_rag) {
@@ -772,11 +963,18 @@ void ce_ragdoll_tick() {
             int type = -1;
             uint8_t* o = object_of(r.handle, &type);
             int nodes = 0;
-            if (!o || type != 0 || !matrices(o, &nodes) || nodes != r.nodes) { r.used = false; continue; }
+            if (!o || type != 0 || !matrices(o, &nodes) || nodes != r.nodes) {
+                static int released;                 // (why a body stopped being a ragdoll: the limb drop hunt, Nov 13)
+                if (released < 40) { released++; logf("ce ragdoll released: age %d, object %d, type %d, nodes %d (was %d), awake %d", r.age, o != nullptr, type, nodes, r.nodes, (int)r.awake); }
+                r.used = false;
+                continue;
+            }
             V ov = *(V*)(o + 0x24);                  // a kick to the corpse (its speed jumps): the body takes it
+            V dv = (ov - r.obj_v) * (1.0f / TICK);
             if (len(ov) > len(r.obj_v) + 0.02f && len(ov) > 0.05f) {
-                V dv = (ov - r.obj_v) * (1.0f / TICK);
-                for (int i = 0; i < NB; i++) r.b[i].v = r.b[i].v + dv;
+                static int kicks;
+                if (kicks < 40) { kicks++; logf("ce ragdoll kick: %.2f u/s, age %d, awake %d", len(dv), r.age, (int)r.awake); }
+                for (int i = 0; i < NB; i++) r.b[i].v = r.b[i].v + dv * (g_limb && i ? LIMB_KICK : 1.0f);   // (limb inertia: the torso takes the blast)
                 r.moving = 0;                    // (its rest clocks start again: a kicked old body tumbles)
                 if (!r.awake) { r.awake = true; r.still = 0; awake++; }
             }
@@ -788,7 +986,6 @@ void ce_ragdoll_tick() {
                 awake--;
             }
             if (r.awake) { step(r); pose(r); }
-            write_pose(r, o);
             // the corpse object (what the game culls by: a 0.42 u sphere about it, and the map area it is filed in)
             // kept under the body: bodies ended 1-6 u from it and vanished as they settled (live, Nov 13). The
             // game's own setter, so the object is filed in the map where it now is; its velocity zeroed (a kick
@@ -807,6 +1004,7 @@ void ce_ragdoll_tick() {
                 *(V*)(o + 0x24) = V{0, 0, 0};
                 r.obj_v = V{0, 0, 0};
             }
+            write_pose(r, o);                        // (last: object_set_position rebuilds and moves the nodes too)
         }
     } __except (EXCEPTION_EXECUTE_HANDLER) {
         for (Rag& r : g_rag) r.used = false;
@@ -816,23 +1014,31 @@ void ce_ragdoll_tick() {
 
 // installed with botcore's other halo1 hooks (enabled by their MH_EnableHook(MH_ALL_HOOKS)); false: left off
 bool ce_ragdoll_install(uint8_t* h1) {
-    if (g_h1) MH_RemoveHook(g_h1 + RVA_NODE_MATRICES);
+    if (g_h1) { MH_RemoveHook(g_h1 + RVA_NODE_MATRICES); MH_RemoveHook(g_h1 + RVA_GC_VETO); MH_RemoveHook(g_h1 + RVA_OBJECT_UPDATE); MH_RemoveHook(g_h1 + RVA_SNAPSHOT); }
     g_nodes_orig = nullptr;
     g_collide = nullptr;
     g_set_position = nullptr;
+    memset(g_last_unit, 0, sizeof g_last_unit);
+    memset(g_body, 0, sizeof g_body);
     for (Rag& r : g_rag) r.used = false;
     memset(g_cache, 0, sizeof g_cache);
     memset(g_skel, 0, sizeof g_skel);
     g_h1 = h1;
     if (memcmp(h1 + RVA_NODE_MATRICES, NODES_PROLOGUE, sizeof NODES_PROLOGUE) ||
         memcmp(h1 + RVA_COLLISION_TEST, COLLISION_PROLOGUE, sizeof COLLISION_PROLOGUE) ||
-        memcmp(h1 + RVA_SET_POSITION, SET_POSITION_PROLOGUE, sizeof SET_POSITION_PROLOGUE)) {
+        memcmp(h1 + RVA_SET_POSITION, SET_POSITION_PROLOGUE, sizeof SET_POSITION_PROLOGUE) ||
+        memcmp(h1 + RVA_GC_VETO, GC_VETO_PROLOGUE, sizeof GC_VETO_PROLOGUE) ||
+        memcmp(h1 + RVA_OBJECT_UPDATE, UPDATE_PROLOGUE, sizeof UPDATE_PROLOGUE) ||
+        memcmp(h1 + RVA_SNAPSHOT, SNAPSHOT_PROLOGUE, sizeof SNAPSHOT_PROLOGUE)) {
         logf("ce ragdolls: not the MCC 1.3528 build decoded: off");
         return false;
     }
     g_collide = (collide_fn)(h1 + RVA_COLLISION_TEST);
     g_set_position = (set_position_fn)(h1 + RVA_SET_POSITION);
-    if (MH_CreateHook(h1 + RVA_NODE_MATRICES, (void*)&nodes_hook, (void**)&g_nodes_orig) != MH_OK) {
+    if (MH_CreateHook(h1 + RVA_GC_VETO, (void*)&veto_hook, (void**)&g_veto_orig) != MH_OK ||
+        MH_CreateHook(h1 + RVA_OBJECT_UPDATE, (void*)&update_hook, (void**)&g_update_orig) != MH_OK ||
+        MH_CreateHook(h1 + RVA_SNAPSHOT, (void*)&snapshot_hook, (void**)&g_snapshot_orig) != MH_OK ||
+        MH_CreateHook(h1 + RVA_NODE_MATRICES, (void*)&nodes_hook, (void**)&g_nodes_orig) != MH_OK) {
         g_nodes_orig = nullptr;
         logf("ce ragdolls: hook failed");
         return false;

@@ -268,6 +268,8 @@
   .setting { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; min-width: 0; }
   .setting input { accent-color: var(--ember); width: 18px; height: 18px; margin-top: 2px; flex: none; }
   .setting-name { display: block; font-weight: 600; }
+  .setting[hidden] { display: none; }
+  .setting.slider input[type=range] { width: 100%; accent-color: var(--ember); margin: 6px 0 2px; }
   .setting .help { display: block; margin: 2px 0 0; overflow-wrap: anywhere; }
   button#uninstall:hover { color: var(--bad); }
 
@@ -456,6 +458,17 @@
           <span><span class="setting-name">Halo: CE ragdolls</span>
             <span class="help">Bodies in Halo: CE multiplayer go limp and fall like they do in Halo 2. Off: Halo: CE's own
               death animations. Changes take effect in a running game.</span></span>
+        </label>
+        <div class="setting slider" id="gravity-row" hidden>
+          <span><label class="setting-name" for="set-gravity">Halo: CE ragdoll gravity: <output id="set-gravity-out">100%</output></label>
+            <input type="range" id="set-gravity" min="50" max="150" step="5" value="100">
+            <span class="help">How heavy bodies are as they fall. 100% is the default; lower floats, higher drops faster.</span></span>
+        </div>
+        <label class="setting" for="set-keep-bodies">
+          <input type="checkbox" id="set-keep-bodies" checked>
+          <span><span class="setting-name">Halo: CE keep dead bodies</span>
+            <span class="help">A body stays where it fell until its player dies again. Off: the game clears bodies when it
+              needs room, as it always did. Changes take effect in a running game.</span></span>
         </label>
         <span id="settings-state" class="msg" aria-live="polite"></span>
       </div>
@@ -809,14 +822,32 @@ $("play-upd").onclick = async () => {
 };
 async function loadUpdate() { try { showUpdate(await (await fetch("/update")).json()); } catch (e) {} }
 // Settings (user/settings.json, tools/settings.py): botcore reads the file within 2 s, in a running game too
-async function loadSettings() {
-  try { const s = await (await fetch("/settings")).json(); $("set-ce-ragdolls").checked = s.ce_ragdolls !== false; } catch (e) {}
-}
-$("set-ce-ragdolls").onchange = async (e) => {
-  const s = await post("/settings", { ce_ragdolls: e.target.checked });
-  if (s.ok === false) { e.target.checked = !e.target.checked; setText("settings-state", s.message || "Not saved.", "bad"); }
-  else setText("settings-state", e.target.checked ? "Halo: CE ragdolls on." : "Halo: CE ragdolls off.", "ok");
+function showGravity() { $("gravity-row").hidden = !$("set-ce-ragdolls").checked; }   // (the slider shows under the ragdoll option while it is checked)
+function setGravity(v) { $("set-gravity").value = Math.round(v * 100); $("set-gravity-out").textContent = Math.round(v * 100) + "%"; }
+$("set-gravity").oninput = (e) => { $("set-gravity-out").textContent = e.target.value + "%"; };
+$("set-gravity").onchange = async (e) => {
+  const s = await post("/settings", { ragdoll_gravity: e.target.value / 100 });
+  if (s.ok === false) setText("settings-state", s.message || "Not saved.", "bad");
+  else setText("settings-state", `Halo: CE ragdoll gravity ${e.target.value}%.`, "ok");
 };
+async function loadSettings() {
+  try {
+    const s = await (await fetch("/settings")).json();
+    $("set-ce-ragdolls").checked = s.ce_ragdolls !== false;
+    showGravity();
+    $("set-keep-bodies").checked = s.keep_bodies !== false;
+    setGravity(typeof s.ragdoll_gravity === "number" ? s.ragdoll_gravity : 1);
+  } catch (e) {}
+}
+for (const [id, key, name] of [["set-ce-ragdolls", "ce_ragdolls", "Halo: CE ragdolls"],
+                               ["set-keep-bodies", "keep_bodies", "Halo: CE keep dead bodies"]]) {
+  $(id).onchange = async (e) => {
+    const s = await post("/settings", { [key]: e.target.checked });
+    if (s.ok === false) { e.target.checked = !e.target.checked; setText("settings-state", s.message || "Not saved.", "bad"); }
+    else setText("settings-state", `${name} ${e.target.checked ? "on" : "off"}.`, "ok");
+    showGravity();
+  };
+}
 loadSettings();
 $("updcheck").onclick = async () => { $("updstate").textContent = "Checking ..."; showUpdate(await post("/update/check")); };
 $("updauto").onchange = async (e) => { showUpdate(await post("/update/auto", { on: e.target.checked })); };

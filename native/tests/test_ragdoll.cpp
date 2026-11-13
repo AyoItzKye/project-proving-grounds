@@ -6,13 +6,15 @@
 // 0.6 of a free throw's height) and lands; one thrown at the wall stops at it. Exit 0 and "ragdoll OK", else FAIL lines.
 #include "../ce_ragdoll.cpp"
 #include <stdio.h>
+#include <stdarg.h>
 #include "test_ragdoll_pose.h"
 
-void logf(const char*, ...) {}
+void logf(const char* f, ...) { if (strstr(f, "jump")) { va_list a; va_start(a, f); vprintf(f, a); printf("\n"); va_end(a); } }   // (the limb-drop diagnostic shows)
 MH_STATUS WINAPI MH_CreateHook(LPVOID, LPVOID, LPVOID*) { return MH_OK; }
 MH_STATUS WINAPI MH_RemoveHook(LPVOID) { return MH_OK; }
 
 static const float WALL = 1.2f;
+static const float SLIDE_MAX = 2.7f;             // (2.92 u at friction 0.6, 1.63 at 1.6, 1.92 at 1.04, 2.32 at 0.83)
 static int g_fail;
 static float g_furthest = -1e9f;               // the furthest +x any node reached (the wall test)
 #define CHECK(c, ...) do { if (!(c)) { printf("FAIL: "); printf(__VA_ARGS__); printf("\n"); g_fail++; } } while (0)
@@ -186,6 +188,63 @@ int main() {
     CHECK(overlap(sl) < 0.015f, "on a slope: two parts %.3f u inside each other", overlap(sl));
     printf("slope 20 deg: at rest after %d ticks, lowest over it %.3f, overlap %.3f\n", slept, under, overlap(sl));
     g_floor = V{0, 0, 1};
+    // 4b. thrown sideways at 2 u/s (a run's speed) from standing, away from the wall: friction must stop it short
+    Rag& sd = die({-2, 0, 0.3f}, 240, &top, &slept);
+    float slid = fabsf(sd.b[B_TORSO].x.x - POSE[0][10]);
+    CHECK(slept >= 0, "sideways throw: not at rest within 8 s");
+    CHECK(slid < SLIDE_MAX, "sideways throw at 2 u/s slid %.2f u (limit %.2f)", slid, SLIDE_MAX);
+    printf("sideways throw: slid %.2f u, at rest after %d ticks\n", slid, slept);
+    // 4c. limb inertia (experimental): a body blown along at 8 u/s with 6 up keeps its pose with it off; with it on the
+    // forearms and calves trail behind the torso (against the direction of flight) and the joints still hold
+    static const int LIMBS[4] = {B_LFA, B_RFA, B_LCA, B_RCA};
+    float trail[2] = {0, 0}, gap_on = 0;
+    for (int on = 0; on < 2; on++) {
+        g_limb = on == 1;
+        Rag& lr = die({0, 0, 0}, 0, &top, &slept);
+        for (int i = 0; i < NB; i++) lr.b[i].v = lr.b[i].v + V{8, 0, 6};
+        if (g_limb) {                                // (what start() does to a body that begins flying)
+            V vt = lr.b[B_TORSO].v;
+            float lag = clampf((len(vt) - LIMB_LAG_FROM) / (LIMB_LAG_FULL - LIMB_LAG_FROM), 0, 1) * LIMB_LAG_MAX;
+            for (int i = 1; i < NB; i++) lr.b[i].v = lr.b[i].v - vt * (lag * BODY_LAG[i]);
+        }
+        V off[4];
+        for (int k = 0; k < 4; k++) off[k] = lr.b[LIMBS[k]].x - lr.b[B_TORSO].x;
+        for (int t = 0; t < 15; t++) { step(lr); pose(lr); }
+        for (int k = 0; k < 4; k++) trail[on] += -((lr.b[LIMBS[k]].x - lr.b[B_TORSO].x) - off[k]).x * 0.25f;
+        float g2, h2, w2, gp;
+        limits(lr, &g2, &h2, &w2, &gp);
+        if (on) gap_on = gp;
+        CHECK(finite_all(lr), "limb inertia %d: non-finite node matrix", on);
+    }
+    g_limb = false;
+    CHECK(trail[1] > trail[0] + 0.05f, "limb inertia: limbs trailed %.3f u behind the torso with it on, %.3f off", trail[1], trail[0]);
+    CHECK(gap_on < 0.02f, "limb inertia: a joint %.3f u apart while the limbs trail", gap_on);
+    printf("limb inertia: limbs trail %.3f u behind the torso after 0.5 s (off: %.3f), joint gap %.4f\n", trail[1], trail[0], gap_on);
+    // 4d. a body blown along flat does not nose-dive in the air (a trailing leg slowed by the air alone made it a dart: head
+    // first, a spiral dive, live Nov 13): its torso turns no more than 20 deg beyond what it does with limb inertia off
+    float pitch[2];
+    for (int on = 0; on < 2; on++) {
+        g_limb = on == 1;
+        Rag& dv = die({0, 0, 0}, 0, &top, &slept);
+        for (int i = 0; i < NB; i++) { dv.b[i].v = dv.b[i].v + V{7, 0, 4}; dv.b[i].x.z += 3.0f; }   // (up in the air: no floor in the first second)
+        if (g_limb) {
+            V vt = dv.b[B_TORSO].v;
+            float lag = clampf((len(vt) - LIMB_LAG_FROM) / (LIMB_LAG_FULL - LIMB_LAG_FROM), 0, 1) * LIMB_LAG_MAX;
+            for (int i = 1; i < NB; i++) dv.b[i].v = dv.b[i].v - vt * (lag * BODY_LAG[i]);
+        }
+        V up0 = qrot(dv.b[B_TORSO].q, {0, 0, 1});
+        for (int t = 0; t < 30; t++) {
+            step(dv); pose(dv);
+            if (t % 5 == 4) printf("  flight %d t=%d: torso turned %.0f deg, spin %.2f rad/s, head z-torso z %.2f\n", on, t + 1,
+                                   acosf(clampf(dot(up0, qrot(dv.b[B_TORSO].q, {0, 0, 1})), -1, 1)) / DEG, len(dv.b[B_TORSO].w),
+                                   dv.b[B_HEAD].x.z - dv.b[B_TORSO].x.z);
+        }
+        pitch[on] = acosf(clampf(dot(up0, qrot(dv.b[B_TORSO].q, {0, 0, 1})), -1, 1)) / DEG;
+        CHECK(finite_all(dv), "flight, limb inertia %d: non-finite node matrix", on);
+    }
+    g_limb = false;
+    CHECK(pitch[1] < pitch[0] + 20.0f, "limb inertia nose-dived: torso turned %.0f deg in 1 s against %.0f with it off", pitch[1], pitch[0]);
+    printf("flight: torso turned %.0f deg in 1 s with limb inertia on, %.0f off\n", pitch[1], pitch[0]);
     // 5. the launcher's switch: user\settings.json two folders up from botcore's; no file = on
     wchar_t tmp[MAX_PATH], dir[MAX_PATH], user[MAX_PATH], file[MAX_PATH];
     GetTempPathW(MAX_PATH, tmp);
@@ -213,6 +272,38 @@ int main() {
         }
         CHECK(g_enabled == (on == 1), "settings file \"ce_ragdolls\": %s read as %s", on ? "true" : "false",
               g_enabled ? "on" : "off");
+    }
+    for (int keep = 0; keep < 2; keep++) {          // "keep_bodies" is read on its own, and a missing key is on
+        FILE* f = nullptr;
+        _wfopen_s(&f, file, L"w");
+        if (!f) { CHECK(false, "could not write the test settings file"); break; }
+        fprintf(f, "{\n \"ce_ragdolls\": false,\n \"keep_bodies\": %s\n}", keep ? "true" : "false");
+        fclose(f);
+        Sleep(20);
+        read_settings();
+        CHECK(g_keep == (keep == 1) && !g_enabled, "settings: keep_bodies %s read as %s (ragdolls %s)", keep ? "true" : "false",
+              g_keep ? "on" : "off", g_enabled ? "on" : "off");
+    }
+    {
+        FILE* f = nullptr;
+        _wfopen_s(&f, file, L"w");
+        if (f) { fprintf(f, "{\n \"ce_ragdolls\": true\n}"); fclose(f); }
+        Sleep(20);
+        read_settings();
+        CHECK(g_keep, "settings: no keep_bodies key should read as on");
+    }
+    for (int k = 0; k < 3; k++) {                   // "ragdoll_gravity": a multiple of the baseline, kept to 0.5 .. 1.5
+        static const char* val[3] = {"0.8", "9", "1"};
+        static const float want[3] = {0.8f, 1.5f, 1.0f};
+        FILE* f = nullptr;
+        _wfopen_s(&f, file, L"w");
+        if (!f) { CHECK(false, "could not write the test settings file"); break; }
+        fprintf(f, "{\n \"ce_ragdolls\": true,\n \"ragdoll_gravity\": %s\n}", val[k]);
+        fclose(f);
+        Sleep(20);
+        read_settings();
+        CHECK(fabsf(GRAVITY - GRAVITY_BASE * want[k]) < 1e-3f, "ragdoll_gravity %s: gravity %.3f, wanted %.3f", val[k], GRAVITY,
+              GRAVITY_BASE * want[k]);
     }
     DeleteFileW(file);
     if (g_fail) return 1;
