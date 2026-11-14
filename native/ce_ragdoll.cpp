@@ -40,6 +40,7 @@
 #include "third_party/minhook/include/MinHook.h"
 
 void logf(const char* fmt, ...);
+uint32_t ce_theater_eyes();                         // ce_film.cpp: the unit a Theater film looks out of, or -1
 
 namespace {
 
@@ -930,16 +931,39 @@ uint64_t __fastcall update_hook(uint64_t handle) {
 // when the game rebuilt a corpse's nodes (its own dead pose, limbs slumping over the ground) the snapshot took that,
 // before the nodes_hook wrote the ragdoll's: the "limb drop" (live, Nov 13: a bot's head and arm sank for ~0.6 s 1.5 s
 // after death and came back; the node matrices themselves were the ragdoll's at every tick). The pose goes in first
+// A Theater film looking through a player's eyes (ce_film.cpp): that unit and the guns it carries (unit +0x2D8, 4
+// handles) go into the snapshot with every node at scale 0, so the drawing has no body round the camera (the game
+// leaves out only its own local player's); the nodes themselves are put back at once (the game's hits read them)
+bool eyes_hide(uint32_t handle) {
+    uint32_t eyes = ce_theater_eyes();
+    if (eyes == 0xFFFFFFFFu) return false;
+    if (handle == eyes) return true;
+    uint8_t* u = object_of(eyes, nullptr);
+    for (int k = 0; u && k < 4; k++) if (*(uint32_t*)(u + 0x2d8 + k * 4) == handle) return true;
+    return false;
+}
+
 uint64_t __fastcall snapshot_hook(uint64_t handle) {
+    float scale[MAX_NODES];
+    float* m = nullptr;
+    int n = 0, done = 0;
     __try {
         if (Rag* r = rag_of((uint32_t)handle)) {
             int type = -1;
             uint8_t* o = object_of((uint32_t)handle, &type);
             if (o && type == 0) write_pose(*r, o);
         }
+        if (eyes_hide((uint32_t)handle)) {
+            uint8_t* o = object_of((uint32_t)handle, nullptr);
+            m = o ? matrices(o, &n) : nullptr;
+            if (n > MAX_NODES) n = MAX_NODES;
+            for (int i = 0; m && i < n; i++) { scale[i] = m[i * 13]; m[i * 13] = 0; done = i + 1; }
+        }
     } __except (EXCEPTION_EXECUTE_HANDLER) {
     }
-    return g_snapshot_orig(handle);
+    uint64_t ret = g_snapshot_orig(handle);
+    if (m) __try { for (int i = 0; i < done; i++) m[i * 13] = scale[i]; } __except (EXCEPTION_EXECUTE_HANDLER) {}
+    return ret;
 }
 
 }  // namespace
@@ -1010,6 +1034,26 @@ void ce_ragdoll_tick() {
         for (Rag& r : g_rag) r.used = false;
         logf("ce ragdolls: fault in the solver: bodies dropped");
     }
+}
+
+// the Theater's orbit camera (ce_film.cpp, on the game thread): how much of the way `by` from `from` is clear of the
+// world, 0..1 (the game's collision test, as the bodies use it); 1 without the test
+float ce_ray_clear(const float from[3], const float by[3]) {
+    if (!g_collide) return 1;
+    __try {
+        V at, n, f{from[0], from[1], from[2]}, b{by[0], by[1], by[2]};
+        float l = len(b);
+        if (l < 1e-4f || !ray(f, b, &at, &n)) return 1;
+        float t = len(at - f) / l;
+        return t < 1 ? t : 1;
+    } __except (EXCEPTION_EXECUTE_HANDLER) { return 1; }
+}
+
+// a Theater film went back or ahead (ce_film.cpp put an older game state in): the bodies start again from it
+void ce_ragdoll_reset() {
+    for (Rag& r : g_rag) r.used = false;
+    memset(g_last_unit, 0, sizeof g_last_unit);
+    memset(g_body, 0, sizeof g_body);
 }
 
 // installed with botcore's other halo1 hooks (enabled by their MH_EnableHook(MH_ALL_HOOKS)); false: left off

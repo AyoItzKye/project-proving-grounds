@@ -14,6 +14,7 @@
 #include <wchar.h>
 #include <initializer_list>
 #include "shared.h"
+#include "film.h"
 #include "bots_panel.h"
 #include "third_party/minhook/include/MinHook.h"
 
@@ -155,10 +156,17 @@ static void fill_bot_actions(uint8_t* actions) {
     }
 }
 
+bool ce_film_actions(uint32_t tick, uint8_t* actions, size_t size);   // ce_film.cpp
+bool ce_film_playing();
+uint64_t ce_film_key();
+uint32_t ce_film_tick();
+void ce_film_tick_end();
 static uint64_t __fastcall dequeue_hook(uint8_t* actions, uint8_t* acks) {
     uint64_t ok = g_dequeue_orig(actions, acks);
     if ((ok & 0xFF) && g_shm) {
-        __try { fill_bot_actions(actions); } __except (EXCEPTION_EXECUTE_HANDLER) { g_shm->cmd_fault = 2; }
+        // a film: the recorded actions of everyone (ce_film.cpp); a match: the bots' actions, then the whole tick recorded
+        if (!ce_film_playing()) { __try { fill_bot_actions(actions); } __except (EXCEPTION_EXECUTE_HANDLER) { g_shm->cmd_fault = 2; } }
+        __try { ce_film_actions(g_shm->game_tick, actions, HB_MAX_PLAYERS * ACTION_STRIDE); } __except (EXCEPTION_EXECUTE_HANDLER) {}
     }
     return ok;
 }
@@ -271,14 +279,27 @@ static void ce_own_ids() {
 
 void ce_ragdoll_tick();                    // ce_ragdoll.cpp
 bool ce_ragdoll_install(uint8_t* h1);
+bool ce_film_install(uint8_t* h1);           // ce_film.cpp (Theater for CE)
+void ce_film_end();
 void ce_ragdoll_folder(const wchar_t* dll_dir);
+extern uint32_t g_playback;
 
 static void __fastcall tick_hook(void* a, void* b, void* c, void* d) {
     g_tick_orig(a, b, c, d);
     if (!g_shm) return;
     g_shm->game_tick++;
+    // Theater (ce_film.cpp, film.cpp): the bots' commands of a match are filed under its film key at the film's own
+    // tick; its film replays them there, so the same bots join at the same moments (no brain while a film plays)
+    uint64_t key = ce_film_key();
+    uint32_t ft = ce_film_tick();
+    bool play = ce_film_playing();
+    if (play) g_playback = 1;
+    const film_frame* fr = key ? film_tick(key, ft, play, 0) : nullptr;
     g_shm->game = 1;                          // Halo CE is the game being simulated
+    if (key && !play) film_command(ft);
     run_command();
+    if (fr && play) while (film_more(ft)) run_command();
+    ce_film_tick_end();
     update_bot_units();
     ce_own_ids();
     ce_ragdoll_tick();
@@ -317,6 +338,7 @@ static void hook(uint8_t* h1) {
     }
     g_h1 = h1;
     ce_ragdoll_install(h1);                   // (its own hook, enabled with these; it drops the old copy's)
+    ce_film_install(h1);
     void* stub = make_unit_local_stub();
     if (!stub ||
         MH_CreateHook(g_h1 + RVA_GAME_TICK, (void*)&tick_hook, (void**)&g_tick_orig) != MH_OK ||
@@ -337,6 +359,7 @@ static void hook(uint8_t* h1) {
 static wchar_t g_dir[MAX_PATH];          // folder of this DLL (native\bin)
 static HANDLE g_brain;
 bool overlay_start();
+void mcc_theater_install();
 void h2_watch();
 void h3_watch();
 void reach_watch();
@@ -542,6 +565,7 @@ static DWORD WINAPI main_thread(LPVOID self) {
     load_settings();
     MH_Initialize();
     overlay_start();
+    mcc_theater_install();                    // MCC's Theater offers CE and H2C films (native/mcc_theater.cpp)
     report_hooks();                           // what MCC shows for the bots: names, tags, emblems (native/report.cpp)
     for (;;) {
         g_shm->dll_alive++;
@@ -566,7 +590,7 @@ static DWORD WINAPI main_thread(LPVOID self) {
         int menu = mcc_menu_state();
         if (menu != g_last_menu && menu >= 0) {
             if (menu == 1) { g_brain_due = GetTickCount(); g_shm->game = 0; g_playback = 0; }
-            else if (menu == 0) { stop_brain(); g_brain_due = 0; }
+            else if (menu == 0) { stop_brain(); g_brain_due = 0; ce_film_end(); }
             g_last_menu = menu;
         }
         // start the brain once a game tick with bot support is seen (a few seconds into the

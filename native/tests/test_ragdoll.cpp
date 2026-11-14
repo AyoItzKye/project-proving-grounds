@@ -10,6 +10,7 @@
 #include "test_ragdoll_pose.h"
 
 void logf(const char* f, ...) { if (strstr(f, "jump")) { va_list a; va_start(a, f); vprintf(f, a); printf("\n"); va_end(a); } }   // (the limb-drop diagnostic shows)
+uint32_t ce_theater_eyes() { return 0xFFFFFFFFu; }   // (ce_film.cpp's: no Theater film looking out of a body here)
 MH_STATUS WINAPI MH_CreateHook(LPVOID, LPVOID, LPVOID*) { return MH_OK; }
 MH_STATUS WINAPI MH_RemoveHook(LPVOID) { return MH_OK; }
 

@@ -1,7 +1,7 @@
 """CTF effort, split attacks and flag defense (the player, Guardian: "the teams weren't making good efforts to
 get each others objectives", "a chance to split squads up and attack different routes", "defend the general area, not
 stand ontop of their flag with no cover"). On h3_guardian, 6 bots, both flags home:
-1. tied: a pull goes (runners); two ahead: the team holds (no runner)
+1. tied: a pull goes (runners); two ahead: the runs go on, one more defender (LEAD_KEEPS_SPLIT, the player Nov 12)
 2. defenders' posts: none on the stand (3 u off or more), every one sees it, 3 u apart
 3. a split cycle: two runners on different lanes, each escort with its own runner, the pushers on the lanes
 
@@ -45,9 +45,14 @@ def main():
     d, _ = setup(lead=0)
     if "runner" not in d.roles.values():
         fails.append(f"tied: no runner {d.roles}")
+    tied = sum(r == "defender" for r in d.roles.values())
     d, _ = setup(lead=2)
-    if "runner" in d.roles.values():
-        fails.append(f"two ahead: a runner still {d.roles}")
+    # two ahead the runs go on with one more defender (director LEAD_KEEPS_SPLIT, the player Nov 12: "more than half
+    # the team isnt attacking"; before, two ahead stopped pulling)
+    if "runner" not in d.roles.values():
+        fails.append(f"two ahead: no runner (the runs go on when ahead) {d.roles}")
+    if sum(r == "defender" for r in d.roles.values()) != tied + 1:
+        fails.append(f"two ahead: not one more defender than tied ({tied}) {d.roles}")
     d, bots = setup()
     T, eye = terrain(MAP), Vec(0, 0, 0.6)
     posts = [b.order.point for b in bots.values() if b.order.role == "defender"]

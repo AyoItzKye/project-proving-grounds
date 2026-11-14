@@ -10,11 +10,14 @@
 #include <math.h>
 #include <stdio.h>
 #include <time.h>
+#include <stdlib.h>
+#include <wincodec.h>
 #include "shared.h"
 #include "model_view.h"
 #include "bots_panel.h"
 #include "ui_layout.h"
 #include "input_gate.h"
+#include "theater.h"
 #include "third_party/minhook/include/MinHook.h"
 #include "third_party/imgui/imgui.h"
 #include "third_party/imgui/imgui_impl_win32.h"
@@ -499,6 +502,14 @@ static BOOL WINAPI h_getcursorpos(LPPOINT p) {
     if (g_parked && !t_ours && p) { *p = g_park_at; return TRUE; }
     return o_getcursorpos(p);
 }
+// every raw input event MCC reads (theater.cpp: a film's camera takes the mouse, the game gets no input)
+typedef UINT(WINAPI* rawdata_fn)(HRAWINPUT, UINT, LPVOID, PUINT, UINT);
+static rawdata_fn o_getrawinputdata;
+static UINT WINAPI h_getrawinputdata(HRAWINPUT h, UINT cmd, LPVOID data, PUINT size, UINT hs) {
+    UINT r = o_getrawinputdata(h, cmd, data, size, hs);
+    if (cmd == RID_INPUT && data && r != (UINT)-1 && r >= sizeof(RAWINPUTHEADER)) __try { theater_raw((RAWINPUT*)data); } __except (EXCEPTION_EXECUTE_HANDLER) {}
+    return r;
+}
 static BOOL WINAPI h_getphyscursorpos(LPPOINT p) {
     if (g_parked && !t_ours && p) { *p = g_park_at; return TRUE; }
     return o_getphyscursorpos(p);
@@ -513,6 +524,7 @@ static xinput_get_fn o_xinput_get;
 static DWORD WINAPI h_xinput_get(DWORD user, XINPUT_STATE* st) {
     DWORD r = o_xinput_get(user, st);
     if (r == ERROR_SUCCESS && st && g_pad_held && !t_ours) memset(&st->Gamepad, 0, sizeof st->Gamepad);
+    if (r == ERROR_SUCCESS && st && user == 0 && !t_ours) __try { theater_pad(st); } __except (EXCEPTION_EXECUTE_HANDLER) {}
     return r;
 }
 // each frame over the lobby: both sticks pressed together open or close the panel (MCC's lobby has no use for that);
@@ -568,6 +580,8 @@ static LRESULT CALLBACK wndproc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         if (msg == WM_KEYUP) g_esc_eat = 0;
         return 0;
     }
+    if (g_ready && !g_show_tile && !g_bug_open && theater_input(msg, wp, lp))   // a Theater film: the viewer's input is ours
+        return msg == WM_INPUT ? DefWindowProcW(h, msg, wp, lp) : 0;
     if (g_ready && g_show_tile) {
         bool typing = g_panel && ImGui::GetIO().WantTextInput;   // a bot's name being typed: B and Esc are its
         if (!typing && msg == WM_KEYDOWN && wp == 'B' && !(lp & (1 << 30))) { g_panel = !g_panel; return 0; }
@@ -641,6 +655,62 @@ static void draw_notice() {
                     IM_COL32(225, 236, 245, A), line);
 }
 
+// The Theater's screenshot (theater.cpp): the back buffer as the game drew it, before our UI, saved as a PNG in
+// Pictures\Project Proving Grounds (WIC, Windows' own encoder)
+static volatile bool g_shot;
+void theater_screenshot() { g_shot = true; }
+
+static void save_shot(IDXGISwapChain* sc) {
+    g_shot = false;
+    ID3D11Texture2D *bb = nullptr, *st = nullptr;
+    if (FAILED(sc->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)&bb))) return;
+    D3D11_TEXTURE2D_DESC d;
+    bb->GetDesc(&d);
+    bool bgra = d.Format == DXGI_FORMAT_B8G8R8A8_UNORM || d.Format == DXGI_FORMAT_B8G8R8A8_UNORM_SRGB;
+    bool rgba = d.Format == DXGI_FORMAT_R8G8B8A8_UNORM || d.Format == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+    if ((!bgra && !rgba) || d.SampleDesc.Count != 1) { logf("theater: screenshot: back buffer format %d not saved", (int)d.Format); bb->Release(); return; }
+    d.Usage = D3D11_USAGE_STAGING; d.BindFlags = 0; d.CPUAccessFlags = D3D11_CPU_ACCESS_READ; d.MiscFlags = 0;
+    D3D11_MAPPED_SUBRESOURCE m;
+    uint8_t* px = (uint8_t*)malloc((size_t)d.Width * d.Height * 3);
+    bool ok = false;
+    if (px && SUCCEEDED(g_dev->CreateTexture2D(&d, nullptr, &st))) {
+        g_ctx->CopyResource(st, bb);
+        if (SUCCEEDED(g_ctx->Map(st, 0, D3D11_MAP_READ, 0, &m))) {
+            for (UINT y = 0; y < d.Height; y++) {                // to 24-bit BGR (the game leaves alpha as it likes)
+                const uint8_t* r = (const uint8_t*)m.pData + (size_t)y * m.RowPitch;
+                uint8_t* o = px + (size_t)y * d.Width * 3;
+                for (UINT x = 0; x < d.Width; x++, r += 4, o += 3) { o[0] = r[bgra ? 0 : 2]; o[1] = r[1]; o[2] = r[bgra ? 2 : 0]; }
+            }
+            g_ctx->Unmap(st, 0);
+            ok = true;
+        }
+        st->Release();
+    }
+    bb->Release();
+    wchar_t dir[MAX_PATH], path[MAX_PATH];
+    if (ok && GetEnvironmentVariableW(L"USERPROFILE", dir, MAX_PATH)) {
+        wcscat_s(dir, L"\\Pictures");
+        CreateDirectoryW(dir, nullptr);
+        wcscat_s(dir, L"\\Project Proving Grounds");
+        CreateDirectoryW(dir, nullptr);
+        SYSTEMTIME t;
+        GetLocalTime(&t);
+        swprintf_s(path, L"%s\\Theater %04d-%02d-%02d %02d%02d%02d.png", dir, t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond);
+        CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+        IWICImagingFactory* f = nullptr; IWICStream* s = nullptr; IWICBitmapEncoder* e = nullptr; IWICBitmapFrameEncode* fr = nullptr;
+        WICPixelFormatGUID fmt = GUID_WICPixelFormat24bppBGR;
+        ok = SUCCEEDED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&f))) &&
+             SUCCEEDED(f->CreateStream(&s)) && SUCCEEDED(s->InitializeFromFilename(path, GENERIC_WRITE)) &&
+             SUCCEEDED(f->CreateEncoder(GUID_ContainerFormatPng, nullptr, &e)) && SUCCEEDED(e->Initialize(s, WICBitmapEncoderNoCache)) &&
+             SUCCEEDED(e->CreateNewFrame(&fr, nullptr)) && SUCCEEDED(fr->Initialize(nullptr)) &&
+             SUCCEEDED(fr->SetSize(d.Width, d.Height)) && SUCCEEDED(fr->SetPixelFormat(&fmt)) && fmt == GUID_WICPixelFormat24bppBGR &&
+             SUCCEEDED(fr->WritePixels(d.Height, d.Width * 3, d.Width * 3 * d.Height, px)) && SUCCEEDED(fr->Commit()) && SUCCEEDED(e->Commit());
+        if (fr) fr->Release(); if (e) e->Release(); if (s) s->Release(); if (f) f->Release();
+        logf(ok ? "theater: screenshot %ls" : "theater: screenshot not saved (%ls)", path);
+    }
+    free(px);
+}
+
 static HRESULT __stdcall h_present(IDXGISwapChain* sc, UINT sync, UINT flags) {
     __try {
         if (!g_ready && g_shm) {
@@ -700,12 +770,14 @@ static HRESULT __stdcall h_present(IDXGISwapChain* sc, UINT sync, UINT flags) {
             bool pause = match && cursor_up();
             bool bug = match && (pause || g_bug_open);
             g_bug_ui = bug;
+            if (g_shot) save_shot(sc);                           // (the Theater's screenshot: the game's frame, no UI)
+            bool th = !g_show_tile && theater_frame(cursor_up() || g_bug_open, g_hwnd);   // a Theater film's controls
             if (!bug) g_bug_hover = false;
             // ImGui hears the window's input under our UI only (wndproc): keys it had down when that stopped are
             // forgotten as it starts again (a release lost over the match ran the panel on as if Right were held)
             static hb_input_gate gate;
             gate.frame(g_show_tile || bug, ImGui::GetIO());
-            if (g_show_tile || notice || bug) {
+            if (g_show_tile || notice || bug || th) {
                 ImGuiIO& gio = ImGui::GetIO();
                 if (bug && g_bug_open && !g_bug_was_open) {          // F9 opened the window: nothing typed before is its text
                     gio.ClearEventsQueue();
@@ -751,6 +823,7 @@ static HRESULT __stdcall h_present(IDXGISwapChain* sc, UINT sync, UINT flags) {
                 if (g_show_tile && !g_panel) draw_tile((float)ImGui::GetTime());
                 else g_hover_tile = false;
                 if (g_show_tile && g_panel) draw_panel();
+                if (th) theater_draw(g_font_small, g_font_label);
                 g_popup_before = ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
                 if (notice) draw_notice();
                 ImGui::Render();
@@ -800,6 +873,9 @@ bool overlay_start() {
     bool cur = gcp && MH_CreateHook(gcp, (void*)&h_getcursorpos, (void**)&o_getcursorpos) == MH_OK && MH_EnableHook(gcp) == MH_OK;
     if (gpcp && MH_CreateHook(gpcp, (void*)&h_getphyscursorpos, (void**)&o_getphyscursorpos) == MH_OK) MH_EnableHook(gpcp);
     logf("cursor hooks %s", cur ? "on" : "FAILED (the lobby may still follow the cursor under the panel)");
+    void* grid = u32 ? (void*)GetProcAddress(u32, "GetRawInputData") : nullptr;
+    bool raw = grid && MH_CreateHook(grid, (void*)&h_getrawinputdata, (void**)&o_getrawinputdata) == MH_OK && MH_EnableHook(grid) == MH_OK;
+    logf("raw input hook %s", raw ? "on" : "FAILED (a Theater film's camera will not turn with the mouse)");
     HMODULE xi = GetModuleHandleW(L"xinput1_3.dll");                 // (the pad kept from the lobby: h_xinput_get)
     void* xg = xi ? (void*)GetProcAddress(xi, "XInputGetState") : nullptr;
     bool pad = xg && MH_CreateHook(xg, (void*)&h_xinput_get, (void**)&o_xinput_get) == MH_OK && MH_EnableHook(xg) == MH_OK;
