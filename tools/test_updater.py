@@ -17,9 +17,11 @@ import release_notes  # noqa: E402
 import updater  # noqa: E402
 
 REAL = open(os.path.join(updater.ROOT, "docs", "UPDATES.md"), encoding="utf-8").read()
-# the 0.2.2 checks run on UPDATES.md as it was while 0.2.2 was the newest version (the sections of newer versions cut)
-_v022 = REAL.rindex("<details", 0, REAL.index("<b>0.2.2</b>"))
-MD = REAL[:REAL.index("<details")] + REAL[_v022:]
+# the 0.2.2 checks run on UPDATES.md as it was while 0.2.2 was the newest version (the sections of newer versions cut),
+# from a frozen copy (tools/fixtures/updates_022.md, Nov 14): the real notes are edited (repeated fixes merged)
+_FIX = open(os.path.join(HERE, "fixtures", "updates_022.md"), encoding="utf-8").read()
+_v022 = _FIX.rindex("<details", 0, _FIX.index("<b>0.2.2</b>"))
+MD = _FIX[:_FIX.index("<details")] + _FIX[_v022:]
 STALE = updater.BUILD_MARK.sub("", MD)                                  # (an UPDATES.md from before the stamps)
 NEWEST = max(updater.BUILD_MARK.findall(MD))                         # (s181's newest update)
 NEXT = ("<details open>\n<summary><b>0.2.3</b> (December 1, 2026): a test version</summary>\n\n"

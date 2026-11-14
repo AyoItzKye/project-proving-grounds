@@ -21,6 +21,9 @@ from memread import Game  # noqa: E402
 PLAYERS_PTR, OBJECT_HEADERS_PTR, OBJECT_POOL_PTR, TAGS_PTR = 0x1C40480, 0x1C42248, 0x2D9CDF8, 0x2D9CE10
 TAG_BASE = 0x50000000
 NONE = 0xFFFFFFFF
+# Reach Firefight: an AI unit with the game's destroyed bit set is dead whatever its damage field reads (GitHub #29).
+# False: the damage field alone, as before
+AI_DEAD_BIT = True
 # tag file name -> the brain's weapon name (others keep their file name, spaces as underscores)
 WEAPON_ALIAS = {"sniper_rifle": "sniper", "rocket_launcher": "rockets", "plasma_cannon": "fuelrod",
                 "mp_needler": "needler", "energy_sword": "sword",
@@ -254,6 +257,10 @@ class Live:
     def engine(s):
         return struct.unpack("<i", s.g.read(s.g.base + s.VARIANT + 0x30, 4))[0]
 
+    def teams_on(s):
+        """The running variant is a team game (+0x34 nonzero); free for all: False."""
+        return struct.unpack("<i", s.g.read(s.g.base + s.VARIANT + 0x34, 4))[0] != 0
+
     # an object's parent (what it rides, its holder): +0xD8, the field players() reads for the vehicle a unit rides. The
     # vehicle list's default (+0x14) is another field in CE: live Blood Gulch Race, all 8 race vehicles read 0x2CDD1E..
     # there and were left out as guns riding something, so no bot ever took one; +0xD8 read NONE on all 8 and on 5 guns
@@ -344,12 +351,18 @@ class Live:
         """[{index, name, team, unit, pos, fwd, aim, health, shield, weapon}] per player slot in use (pos None = dead)."""
         base, mx, size = s._array(PLAYERS_PTR)
         out = []
+        # free for all: every player his own side whatever team number the lobby left him (a Rocket Slayer free for all
+        # on Hang 'Em High had its bots on red and blue, each seeing only the other team's eight: same-team bots never
+        # fought, Nov 13); the person keeps index 0's side as before
+        ffa = not s.teams_on()
         for i in range(mx):
             p = base + i * size
             if not struct.unpack("<H", s.g.read(p, 2))[0]:
                 continue
             b = s.g.read(p, 0x68)
             unit, team = struct.unpack_from("<I", b, 0x64)[0], struct.unpack_from("<i", b, 0x4C)[0]
+            if ffa:
+                team = i
             name = b[0x20:0x40].decode("utf-16-le", "replace").partition(chr(0))[0]
             o = s.object(unit)
             d = dict(index=i, name=name, team=team, unit=unit, pos=None, fwd=None, aim=None, vehicle=-1, health=0.0, shield=0.0,
@@ -1802,6 +1815,10 @@ class LiveReach(LiveH3):
                 continue
             shield_dmg, body_dmg = struct.unpack_from("<2f", u, 0x124)
             if struct.unpack_from("<I", u, 0x14)[0] != NONE or body_dmg >= 1.0:
+                continue
+            # the game's own destroyed bit too (DEAD_AT bit 2, what object_get_health answers 0 for): a dead body's damage
+            # field can read below full again, and bots kept shooting dead Grunts (GitHub #29)
+            if AI_DEAD_BIT and u[s.DEAD_AT] & 4:
                 continue
             if struct.unpack_from("<I", u, 0x1D0)[0] != NONE:   # a player's (a bot's old body)
                 continue

@@ -27,10 +27,11 @@
 
 // overlay.cpp: the lobby open is Firefight's. 1: ODST's (8 players: you and 7 bots, all on your team); 2: Reach's (set in
 // bots_panel by the lobby's title), MCC's custom Firefight since July 2023: 8 players in all, a Spartan team and an
-// Elite team (Versus, Generator Defense), this mod's rule 4 a side (docs/bot-brain/11-reach-firefight-versus.md 1.5)
+// Elite team (Versus, Generator Defense), any split (8 against 0 too: docs/bot-brain/11-reach-firefight-versus.md 1.4); 4 a side was this mod's rule
+// for Versus until GitHub #28 asked for more Spartans in plain Firefight: a side now holds up to the 8 in all
 int hb_panel_firefight = 0;
-static const int FF_SIDE = 4;    // (Reach Firefight: players a side, you included)
-static const char* FF_FULL = "Firefight holds 8 players in all and this mod runs 4 a side: a side cannot hold more than 4.";
+static const int FF_SIDE = 8;    // (Reach Firefight: players a side, you included: the 8 in all; Versus plays best 4 a side)
+static const char* FF_FULL = "Firefight holds 8 players in all.";
 static int roster_cap() { return hb_panel_firefight ? 7 : HB_ROSTER_MAX; }   // (Firefight: 8 players, you and 7 bots)
 static const char* side_name(int t) { return hb_panel_firefight == 2 ? (t == 0 ? "Spartan team" : "Elite team") : nullptr; }
 
@@ -1185,7 +1186,7 @@ static void inspector(bots_panel_env& e, bool& changed) {
         if (hb_panel_firefight == 2) {
             muted("Pick a bot to change its team, difficulty or play style. Names, clan tags and armor are in Settings.");
             ImGui::Dummy(ImVec2(0, px(12)));
-            muted("Firefight holds 8 players: a Spartan team and an Elite team of up to 4 each, you included. "
+            muted("Firefight holds 8 players in all, you included: a Spartan team and an Elite team. Versus plays best with 4 a side. "
                   "Elites fight beside the Covenant. In Versus and Generator Defense the teams swap sides each turn.");
             return;
         }
@@ -3339,7 +3340,7 @@ bool bots_panel(bots_panel_env& e) {
         scale_tooltip(e.scale_games ? (int)*e.scale_games : 5);
     ImGui::EndDisabled();
     char lim[96];
-    if (hb_panel_firefight == 2) sprintf_s(lim, "%d of 7 bots. Firefight holds 8 players, 4 a side.", r.n);
+    if (hb_panel_firefight == 2) sprintf_s(lim, "%d of 7 bots. Firefight holds 8 players; Versus plays best with 4 a side.", r.n);
     else if (hb_panel_firefight) sprintf_s(lim, "%d of 7 bots. Firefight holds 8 players.", r.n);
     else sprintf_s(lim, "%d of %d bots. The game holds 16 players.", r.n, HB_ROSTER_MAX);
     push(SMALL);

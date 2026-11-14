@@ -95,6 +95,14 @@ class SimModes:
             # hills on a floor the nav knows (a placeholder flag at the origin under Lockout's floor is no hill)
             s.hills = [h for h in hills(sim.m) if abs(sim.T.nav_z(h[0].x, h[0].y, h[0].z) - h[0].z) < ZONE_DZ] \
                 or hills(sim.m)
+            # hills both sides can get to by the nav (jumps too): Lockout's hill nearest its mid is a floor the nav has no
+            # way onto, Halo 2 King went 113-8 in 900 s on it (Nov 14); Hang 'Em High's hill 0 (the CE default) is kept
+            starts = [p for side in (sim.m["spawns"].get("slayer") or sim.m["spawns"].get("ctf") or {}).values()
+                      for p in side[:1]]
+            T = sim.T
+            ok = [h for h in s.hills if all(T.reaches(a, Vec(h[0].x, h[0].y, T.nav_z(h[0].x, h[0].y, h[0].z)), jump=True)
+                                            for a in starts)]
+            s.hills = ok or s.hills
             s.hill_k = min(range(len(s.hills)), key=lambda k: dist(s.hills[k][0], mid))   # the static hill: nearest mid
             b = ball_spawn(sim.m)                  # on the floor the nav knows there (H4 Warhouse's spot is 1.3 u over
             b = Vec(b.x, b.y, sim.T.nav_z(b.x, b.y, b.z))   # the nav's floor: the bots' paths ended under it, never

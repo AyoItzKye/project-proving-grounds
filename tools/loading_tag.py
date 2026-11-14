@@ -14,7 +14,7 @@ import threading
 import time
 
 READY_EVENT = "Local\\PPG_overlay_ready"
-TEXT = "Loading mod ...  wait for it before opening Multiplayer"
+TEXT = "Project Proving Grounds is loading. Open Multiplayer once this message closes."
 WS_POPUP, WS_EX_TOPMOST, WS_EX_TOOLWINDOW, WS_EX_NOACTIVATE, WS_EX_LAYERED, WS_EX_TRANSPARENT = (
     0x80000000, 0x8, 0x80, 0x08000000, 0x80000, 0x20)
 WM_PAINT, WM_DESTROY, WM_CLOSE = 0x000F, 0x0002, 0x0010
@@ -148,7 +148,7 @@ class LoadingTag:
             wc.lpszClassName = "PPGLoadingTag"
             u.RegisterClassW(ctypes.byref(wc))
             left, top, right, bottom = mcc_rect()
-            w, h = 560, 44
+            w, h = 760, 44
             x = left + max(0, (right - left - w) // 2)
             y = top + 14
             self.hwnd = u.CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED |

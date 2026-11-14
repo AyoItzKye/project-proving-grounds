@@ -401,13 +401,13 @@
           <span class="tool-icon"><svg class="i" aria-hidden="true"><use href="#i-radar"/></svg></span>
           <svg class="i sm ext" aria-hidden="true"><use href="#i-ext"/></svg><span class="chip run">Open</span>
           <span class="tool-text"><span class="tool-name"><span id="n-sim">LiDAR Simulator</span></span>
-            <span class="tool-desc" id="d-sim">Watch bots map any map, no game needed. Mapped maps play better.</span>
+            <span class="tool-desc" id="d-sim">Watch the bots scan any map without starting the game. Bots play better on scanned maps.</span>
             <span class="meter"><span class="tool-desc" id="r-lidar"></span><span class="meter-bar"><span id="lidar-bar"></span></span></span></span></button></li>
         <li><button class="tool" data-task="lidar_view" aria-labelledby="n-view" aria-describedby="d-view">
           <span class="tool-icon"><svg class="i" aria-hidden="true"><use href="#i-cube"/></svg></span>
           <svg class="i sm ext" aria-hidden="true"><use href="#i-ext"/></svg><span class="chip run">Open</span>
           <span class="tool-text"><span class="tool-name"><span id="n-view">LiDAR Viewer</span></span>
-            <span class="tool-desc" id="d-view">Your LiDAR match live in 3D, or a map's stored scan.</span></span></button></li>
+            <span class="tool-desc" id="d-view">See a LiDAR match live in 3D, or a map's saved scan.</span></span></button></li>
         <li><button class="tool" data-task="paint" aria-labelledby="n-paint" aria-describedby="d-paint">
           <span class="tool-icon"><svg class="i" aria-hidden="true"><use href="#i-brush"/></svg></span>
           <svg class="i sm ext" aria-hidden="true"><use href="#i-ext"/></svg><span class="chip run">Open</span>
@@ -495,7 +495,7 @@
         <label class="setting" for="set-ce-ragdolls">
           <input type="checkbox" id="set-ce-ragdolls" checked>
           <span><span class="setting-name">Halo: CE ragdolls</span>
-            <span class="help">Bodies in Halo: CE multiplayer go limp and fall like they do in Halo 2. Off: Halo: CE's own
+            <span class="help">Bodies in Halo: CE multiplayer go limp and fall as they do in Halo 2. Off: Halo: CE's own
               death animations. Changes take effect in a running game.</span></span>
         </label>
         <div class="setting slider" id="gravity-row" hidden>
@@ -783,7 +783,7 @@ function showUpdate(u) {
   } else if (job.state === "installing") {
     $("updmsg").textContent = "Installing the update. The launcher closes and opens again when it is done.";
   } else if (u.available && job.state === "ready") {
-    $("updmsg").textContent = `Version ${u.latest.replace(/^v/, "")} is downloaded. It installs when you close MCC: the bots are loaded into it.`;
+    $("updmsg").textContent = `Version ${u.latest.replace(/^v/, "")} is downloaded. It installs when you close MCC (the bots run inside it).`;
   } else if (job.state === "failed") {
     $("updmsg").textContent = job.error;
   } else {

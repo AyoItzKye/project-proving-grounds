@@ -87,6 +87,18 @@ def main():
     assert snap2.flags[0].state == "carried" and snap2.player(1).has_flag
     live_bots.flag_events(dirs, {0: "home", 1: "home"}, snap2, 1.0)
     live_bots.events({1: bot}, dirs, {p.id: p for p in snap.players}, snap2, 1.0)
+    # CTF captures counted from the flags (CE / Halo 2: no decoded score): carried to the other stand, then home, is
+    # one; carried home from far off (a kill zone's return) is none
+    from brain.core import FlagState, Snapshot, Vec
+    h0, h1 = Vec(95.69, -159.45, -0.29), Vec(40.24, -79.12, -0.29)
+    live_bots.CAPS.update({0: 0, 1: 0})
+    live_bots.CARRIED.clear()
+    for at, want in ((h1 + Vec(1.0, 0.5, 0.0), {0: 0, 1: 1}), (Vec(60.0, -100.0, 0.1), {0: 0, 1: 1})):
+        live_bots.flag_events(dirs, {0: "home", 1: "home"},
+                              Snapshot(2.0, [], {0: FlagState(0, h0, at, "carried", 1), 1: FlagState(1, h1, h1)}), 2.0)
+        live_bots.flag_events(dirs, {0: "carried", 1: "home"},
+                              Snapshot(2.1, [], {0: FlagState(0, h0, h0), 1: FlagState(1, h1, h1)}), 2.1)
+        assert live_bots.CAPS == want, f"captures from the flags: {live_bots.CAPS}, want {want}"
     # an item spawn next to the bot with nothing lying there: its team starts the timer
     it = min(range(len(live_bots.MAP["items"])), key=lambda k: (live_bots.MAP["items"][k]["pos"] - snap2.player(1).pos).flat())
     live_bots.MAP["items"][it]["pos"] = snap2.player(1).pos

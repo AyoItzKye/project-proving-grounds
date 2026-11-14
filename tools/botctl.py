@@ -44,7 +44,7 @@ MAX_PLAYERS, FIREFIGHT_PLAYERS = 16, 4
 # Reach Firefight in MCC custom games (July 2023 update): 8 players in all, both sides; this mod's rule 4 a side
 # (docs/bot-brain/11-reach-firefight-versus.md 1.4, 1.5). Live Beachhead Versus Nov 8: 4 Spartans and 4 Elites joined
 # and played both turns.
-REACH_FF_PLAYERS, FF_SIDE = 8, 4
+REACH_FF_PLAYERS, FF_SIDE = 8, 8   # (a side up to the 8 in all: GitHub #28, more Spartans in plain Firefight)
 # ODST Firefight in MCC: 8 players, all on the person's team (held at 4 after Oct 25, when 7, 15 and 16 players crashed
 # the renderer at halo3odst +0x15950b on an older botcore)
 ODST_FF_PLAYERS = 8

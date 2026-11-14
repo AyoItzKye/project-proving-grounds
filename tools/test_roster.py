@@ -91,8 +91,11 @@ def main():
     want = [(1, f"E{k}") for k in range(5)] + [(0, f"S{k}") for k in range(4)]
     got, left = ff_plan(want, me, "reach")
     sides = [sum(1 for t, _ in got if t == s) for s in (0, 1)]
-    if sides != [3, 4] or len(left) != 2:                # (you are the 4th Spartan; a 5th Elite and Spartan stay out)
-        fails.append(f"Reach Firefight: 4 a side with the person, 8 in all ({sides}, left {left})")
+    if sides != [2, 5] or len(left) != 2:                # (8 in all, any split: GitHub #28; the last two asked stay out)
+        fails.append(f"Reach Firefight: 8 in all, a side as full as asked ({sides}, left {left})")
+    got, _ = ff_plan([(0, f"S{k}") for k in range(9)], me, "reach")   # (plain Firefight: you and 7 Spartan bots)
+    if len(got) != 7 or {t for t, _ in got} != {0}:
+        fails.append(f"Reach Firefight: 7 Spartan bots with the person ({len(got)})")
     got, left = ff_plan(want, me, "odst")
     if len(got) != 7 or {t for t, _ in got} != {0}:   # (9 asked: 7 join, the person the 8th)
         fails.append(f"ODST Firefight: 7 bots, all on the person's team ({len(got)})")

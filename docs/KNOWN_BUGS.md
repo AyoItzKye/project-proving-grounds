@@ -27,7 +27,9 @@ For everything that works, game by game, see the [bot status sheet](BOT_STATUS.p
 
 **Works, but buggy**
 
-- **Capture the Flag**: Both teams have captured flags in real matches, but on Blood Gulch the bots rarely make it to the flag.
+- **Capture the Flag**: Both teams have captured flags in real matches, but on Blood Gulch the bots rarely make it to the flag, and on Hang 'Em High and Battle Creek games are still low-scoring (one or two captures in 15 minutes).
+- **Battle Creek**: a bot coming out of the teleporter into the blue base can stand beside the exit for up to half a minute before it finds its way.
+- **Hang 'Em High**: a red flag carrier can spend a while finding the way up to his flag (the bots learn the dead end during the match and take the other way after).
 - **Race**: Bots race the flags in order and finish laps; on Blood Gulch they drive, but often get stuck at one flag up on a rock.
 - **Ragdolls**: bodies do not collide with vehicles or other objects (they fall through a Warthog), and when more than 8 bodies are falling at once the oldest stops where it is.
 

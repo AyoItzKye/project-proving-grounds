@@ -242,7 +242,17 @@ def main():
         print("variant", v)
         teams = o.teams or (v["teams"] if v["teams"] is not None else not o.ffa)
     else:
-        teams = struct.unpack("<I", live.g.read(live.g.base + VARIANT + 0x34, 4))[0] != 0
+        # the running variant: engine 0 while the match is still loading (as Halo 2's above), and the teams flag read
+        # twice a moment apart (a Rocket Slayer free for all got red and blue bots, Nov 13)
+        rd = lambda off: struct.unpack("<i", live.g.read(live.g.base + VARIANT + off, 4))[0]
+        for _ in range(20):
+            if rd(0x30) > 0:
+                break
+            time.sleep(0.5)
+        t0 = rd(0x34)
+        time.sleep(0.5)
+        teams = rd(0x34) != 0
+        print("variant engine", rd(0x30), "teams", t0, rd(0x34))
     print("teams" if teams else "free for all")
     machine = 1 + max([0] + [p["index"] for p in players])
     if o.game == "reach":     # a respawn pick left by the last match (a bot dead at its end) moves this match's first
@@ -268,13 +278,14 @@ def main():
     if roster is not None:                           # the BOTS panel's list (Firefight: its own, 4 a side in Reach)
         print(f"bot list: {len(roster)} bots from {o.roster}" + (f", {max(0, room)} join (Firefight)" if ff else ""))
         plan = roster_plan(roster, players, teams, o.game)
+        if not teams and not ff and len({b["team"] for b in roster}) > 1:   # (the list's teams do not apply)
+            botctl.notice(m, "Free for all", "This game type has no teams: every bot plays for itself.")
         if ff:
             plan, left = ff_plan(plan, players, o.game)
             if left:                                 # (the person took a seat on a side the list filled)
                 print("Firefight: no room for", ", ".join(left))
                 botctl.notice(m, "Firefight is full", f"{len(left)} {'bot' if len(left) == 1 else 'bots'} left out: "
-                              f"{botctl.player_cap(o.game, ff)} players in all"
-                              + (f", {botctl.FF_SIDE} a side" if o.game != "odst" else ""))
+                              f"{botctl.player_cap(o.game, ff)} players in all")
         for team, name in plan[:max(0, room)]:
             add_bot(m, machine, team, name, o.game)
             machine += 1

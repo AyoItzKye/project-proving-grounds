@@ -67,7 +67,7 @@ body:
     id: attachments
     attributes:
       label: Bug report, screenshots or video
-      description: Drag the zipped F9 report folder here (or the Observer's Export game zip of that match; names and Xbox ids are removed from exports). Screenshots and clips help too.
+      description: Drag the zipped F9 report folder here (or the Observer's Export game zip of that match; names and Xbox ids are removed from exports). Screenshots and clips help too. Attachments are scanned before they are opened; please do not attach programs, scripts or modified mod files.
   - type: input
     id: pc
     attributes:

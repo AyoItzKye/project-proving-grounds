@@ -20,7 +20,7 @@ Everything about where the mod stands is in five places:
 | | |
 |---|---|
 | **[Release](https://github.com/AyoItzKye/project-proving-grounds/releases/latest)** | Version **0.2.3**, last updated **November 14, 2026**. Download it from the Releases page. <!-- release --> |
-| **[Updates](docs/UPDATES.md)** | What changed in each version (new, fixed, changed, known problems), newest first. |
+| **[Updates](docs/UPDATES.md)** | What was added and fixed in each version, newest first. |
 | **[Known bugs](docs/KNOWN_BUGS.md)** | Everything known to be broken, by game, and every bug reported on GitHub with its status. |
 | **[Bot status sheet (PDF)](docs/BOT_STATUS.pdf)** | An honest rating of every game, mode and vehicle, from green (good to go) to red (not working yet). |
 | **[LiDAR maps](lidar-maps/)** | Map scans by game: the author's own (Author Provided Scans, one zip per game) and the ones players share. Import them from the launcher's **LiDAR scans**. |

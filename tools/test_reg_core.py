@@ -634,6 +634,7 @@ def check_ff_sides():
 
     class FakeReach:
         ai_units, UNIT_TEAM, ACTOR_AT, ACTOR_CHARACTER = LiveReach.ai_units, LiveReach.UNIT_TEAM, LiveReach.ACTOR_AT, LiveReach.ACTOR_CHARACTER
+        DEAD_AT = LiveReach.DEAD_AT                      # (the destroyed bit, GitHub #29: zero here, every unit alive)
 
         def ai_rank(s, u):
             return None                                  # (no actor array here: brain/live.py ai_rank)

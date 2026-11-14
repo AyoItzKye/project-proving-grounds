@@ -20,6 +20,11 @@ from .director import Director
 from .equipment import game_of
 from .simgear import Gear
 
+# a dropped flag nobody touches goes home after this long (the sim kept one lying in a corner for 11 minutes, Nov 14: its
+# team could not score). Halo: CE's built-in CTF (MCC's lobby, Nov 14: Force Flag Reset No, Respawn Time 10 seconds): no
+# reset, a touch returns it (inferred: the dropped flag stays put), and the dead wait 10 s (CE_CTF_RESPAWN)
+FLAG_RESET_S = 30.0
+CE_CTF_RESPAWN, RESPAWN_S = 10.0, 5.0
 SPEED = 2.3          # world units/s (UNVERIFIED for CE, tune in-game)
 # man cannons (Sim.cannons): onto the pad this near its ride's take-off; rides from this near the launcher; Narrows' 28 u in
 # 4.2 s live (anchor_launches); the arc's height over the straight line
@@ -95,6 +100,7 @@ class Sim:
                                     jumps=0, fight_ticks=0, strafe_ticks=0)
                 pid += 1
         s.flags = {t: FlagState(t, s.m["flags"][t], s.m["flags"][t]) for t in (0, 1)}
+        s.flag_dropped_at = {}      # team -> when its flag was dropped (FLAG_RESET_S)
         s.score = {0: 0, 1: 0}
         s.log = []
         s.directors = {t: Director(t, s.m, {i: b for i, b in s.bots.items() if b.team == t},
@@ -123,7 +129,13 @@ class Sim:
                 pts = [p for p in every if dist(p, home) < dist(p, away)] or pts
         if getattr(s, "objmodes", None) is not None and s.objmodes.spawn_points(team):
             pts = s.objmodes.spawn_points(team)      # Invasion: the team's respawn zone of the phase
-        p = s.rng.choice(pts)
+        # only spawns on a floor the nav has (Sword Base: upper-deck spawns over cells with no walkable layer put the
+        # respawned at z 0 under the map, where they stood the rest of the match; Slayer 9-14 in 900 s, Nov 14)
+        on = s.__dict__.setdefault("_spawn_ok", {})
+        for q in pts:
+            if (q.x, q.y, q.z) not in on:
+                on[(q.x, q.y, q.z)] = abs(s.T.nav_z(q.x, q.y, q.z) - q.z) < 1.0
+        p = s.rng.choice([q for q in pts if on[(q.x, q.y, q.z)]] or pts)
         x, y = p.x + s.rng.uniform(-0.5, 0.5), p.y + s.rng.uniform(-0.5, 0.5)
         if not s.T.can_step(p, Vec(x, y)):
             x, y = p.x, p.y          # the jitter would land in a wall: use the exact spawn point
@@ -305,7 +317,7 @@ class Sim:
                 s.state[p.id]["tele_from"] = lock = None    # walked off the exit: pads work again
             for a, b in s.m["teleporters"] + s.lifts():   # stepping on a teleporter pad, into a gravity lift
                 if lock is None and (p.pos - a).flat() < 1.0 and -1.6 <= p.pos.z - a.z <= 0.6:
-                    p.pos = Vec(b.x, b.y, s.T.nav_z(b.x, b.y, b.z))
+                    p.pos = s.tele_exit(b)
                     s.state[p.id]["tele_from"] = p.pos      # no ping-pong with a pad by the exit
                     break
             for a, b in s.cannons():                      # into a man cannon: thrown across (the flight above)
@@ -313,6 +325,30 @@ class Sim:
                     s.state[p.id]["flight"] = (p.pos, b, s.now, s.now + dist(p.pos, b) / CANNON_SPEED)
                     break
             return
+
+    def tele_exit(s, b):
+        """Where a teleporter puts you: its exit, or the nearest point within 2 u that can be walked off (Beaver Creek's
+        red exit sits in a wall cell of the path grid: everyone it sent stood there for the rest of the match, five
+        bots at once, Nov 14)."""
+        cache = s.__dict__.setdefault("_tele_exits", {})
+        key = (round(b.x, 2), round(b.y, 2), round(b.z, 2))
+        if key not in cache:
+            # a point the map's middle can be walked to from, teleporters aside (the blue exit's own cell is walkable
+            # but a pocket: six bots wiggled there for minutes once the red one was moved, Slayer 8-5 in 900 s)
+            mid = s.m["points"]["mid"]
+            mid = Vec(mid.x, mid.y, s.T.nav_z(mid.x, mid.y, mid.z))
+
+            def free(x, y, same=True):   # (same: the exit's own floor; the grid's next one up is the base's deck)
+                q = Vec(x, y, s.T.nav_z(x, y, b.z))
+                if same and abs(q.z - b.z) >= 0.6:
+                    return None
+                way = [q] + s.T.path_ahead(q, mid, n=16, no_tele=True)    # (walked, step by step, as movement does)
+                return q if len(way) > 12 and all(s.T.can_step(u, v) for u, v in zip(way, way[1:])) else None
+            ring = [(b.x + r * math.cos(k * math.pi / 8), b.y + r * math.sin(k * math.pi / 8))
+                    for r in (0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0) for k in range(16)]
+            cache[key] = free(b.x, b.y) or next((q for x, y in ring for q in [free(x, y)] if q), None) or next(
+                (q for x, y in [(b.x, b.y)] + ring for q in [free(x, y, False)] if q), Vec(b.x, b.y, s.T.nav_z(b.x, b.y, b.z)))
+        return cache[key]
 
     def cannons(s):
         """Man cannons (map "launcher" features) as one-way pads: each to where people's ride from beside it landed
@@ -460,7 +496,8 @@ class Sim:
 
     def kill(s, e, src):
         e.alive = False
-        s.state[e.id]["respawn_at"], s.state[e.id]["flight"] = s.now + 5.0, None
+        s.state[e.id]["respawn_at"], s.state[e.id]["flight"] = s.now + (
+            CE_CTF_RESPAWN if s.mode == "ctf" and s.game == "ce" else RESPAWN_S), None
         s.stats[e.id]["deaths"] += 1
         s.stats[src.id]["kills"] += 1
         if s.mode == "slayer":
@@ -474,6 +511,7 @@ class Sim:
             e.has_flag = False
             f = s.flags[1 - e.team]
             f.state, f.pos, f.carrier = "dropped", e.pos, -1
+            s.flag_dropped_at[1 - e.team] = s.now
             # owners see their dropped flag on the HUD waypoint: announcer-fast
             s.report(1 - e.team, s.now, -1, "flag_dropped", e.pos)
 
@@ -523,7 +561,8 @@ class Sim:
                 p.has_flag = True
                 s.flag_events.append((s.now, "taken", p.team))
                 s.report(1 - p.team, s.now, -1, "flag_taken", own_flag.home)   # announcer
-            if own_flag.state == "dropped" and dist(p.pos, own_flag.pos) < 1.2:
+            if own_flag.state == "dropped" and (dist(p.pos, own_flag.pos) < 1.2 or (s.game != "ce" and
+                                                                         s.now - s.flag_dropped_at.get(p.team, s.now) >= FLAG_RESET_S)):
                 own_flag.state, own_flag.pos = "home", own_flag.home
                 s.flag_events.append((s.now, "returned", p.team))
             if p.has_flag:
@@ -725,9 +764,20 @@ def main():
     ap.add_argument("--per-team", type=int, default=4)
     ap.add_argument("--limit", type=int, default=50)
     ap.add_argument("--seed", type=int, default=3)
+    ap.add_argument("--tier", default=None, help="every bot this tier (top = Legendary); default a mix of all four")
+    ap.add_argument("--set", action="append", default=[], metavar="MODULE.NAME=VALUE",
+                    help="an A/B switch for this run, e.g. director.CTF_WAVE=False (a Python literal)")
     a = ap.parse_args()
+    import ast
+    import importlib
+    for kv in a.set:                       # (A/B: a brain constant for this run only)
+        name, val = kv.split("=", 1)
+        mod, const = name.rsplit(".", 1)
+        m = importlib.import_module("brain." + mod)
+        assert hasattr(m, const), kv
+        setattr(m, const, ast.literal_eval(val))
     if a.trace:
-        sim = Sim(a.mode, per_team=a.per_team, seed=a.seed, map_name=a.map)
+        sim = Sim(a.mode, per_team=a.per_team, seed=a.seed, map_name=a.map, tiers=[a.tier] if a.tier else None)
         sim.limit = a.limit
         with open(a.trace, "w") as f:
             sim.run(a.seconds, trace=f)
